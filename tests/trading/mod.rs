@@ -14,6 +14,8 @@ impl TradingSystem for FixedWeightTradingSystem {
 
 impl FixedWeightTradingSystem {
     pub fn new(weights: HashMap<String, f64>) -> FixedWeightTradingSystem {
-        FixedWeightTradingSystem { target_weights: weights }
+        FixedWeightTradingSystem {
+            target_weights: weights,
+        }
     }
 }

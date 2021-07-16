@@ -33,7 +33,6 @@ fn read_csv() -> Result<Vec<Row>, Box<csv::Error>> {
 pub fn build_csv(
     res: &mut HashMap<i64, Vec<alator::types::StockQuote>>,
 ) -> Result<bool, Box<csv::Error>> {
-
     let csv_contents = read_csv()?;
 
     fn grouper(i: &Row) -> String {

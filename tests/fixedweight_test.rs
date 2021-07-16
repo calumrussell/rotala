@@ -23,9 +23,7 @@ fn fixedweight_integration_test() {
     let raw_source = Rc::new(CSVDataSource { data: raw_data });
     let source = Rc::new(CSVDataSourceWrapper::new(Rc::clone(&raw_source)));
 
-    let fws: Rc<Box<dyn TradingSystem>> = Rc::new(Box::new(
-      FixedWeightTradingSystem::new(weights)
-    ));
+    let fws: Rc<Box<dyn TradingSystem>> = Rc::new(Box::new(FixedWeightTradingSystem::new(weights)));
     let brkr = Box::new(SimulatedBroker::new());
     let port = Rc::new(RefCell::new(SimPortfolio::new(brkr, universe)));
 
