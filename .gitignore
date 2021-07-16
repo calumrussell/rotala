@@ -1,0 +1,4 @@
+/target
+*.csv
+/.vscode
+Cargo.lock
