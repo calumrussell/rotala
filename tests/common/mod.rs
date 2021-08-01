@@ -1,8 +1,8 @@
 extern crate csv;
 
+use alator::broker::Quote;
+use alator::data::universe::DefinedUniverse;
 use alator::data::universe::StaticUniverse;
-use alator::types::Quote;
-use alator::types::StockQuote;
 use csv::StringRecord;
 use itertools::Itertools;
 use serde::Deserialize;
@@ -30,9 +30,7 @@ fn read_csv() -> Result<Vec<Row>, Box<csv::Error>> {
     Ok(tempbuff)
 }
 
-pub fn build_csv(
-    res: &mut HashMap<i64, Vec<alator::types::StockQuote>>,
-) -> Result<bool, Box<csv::Error>> {
+pub fn build_csv(res: &mut HashMap<i64, Vec<Quote>>) -> Result<bool, Box<csv::Error>> {
     let csv_contents = read_csv()?;
 
     fn grouper(i: &Row) -> String {
@@ -43,7 +41,7 @@ pub fn build_csv(
         s
     }
 
-    for (key, group) in &csv_contents.into_iter().group_by(grouper) {
+    for (_key, group) in &csv_contents.into_iter().group_by(grouper) {
         let mut bid = 0.0;
         let mut ask = 0.0;
         let mut date = 0 as i64;
@@ -59,36 +57,35 @@ pub fn build_csv(
             symbol = price.symbol;
         }
 
-        let quote = Quote { bid, ask, date };
-        let sq = StockQuote { symbol, quote };
-
+        let quote = Quote {
+            bid,
+            ask,
+            date,
+            symbol,
+        };
         if res.contains_key(&date) {
             let mut temp = res.get(&date).unwrap().clone();
-            temp.push(sq);
+            temp.push(quote);
             res.insert(date, temp);
         } else {
-            let mut temp: Vec<StockQuote> = Vec::new();
-            temp.push(sq);
+            let mut temp: Vec<Quote> = Vec::new();
+            temp.push(quote);
             res.insert(date, temp);
         }
     }
     Ok(true)
 }
 
-pub fn get_universe_weights() -> (Box<StaticUniverse>, HashMap<String, f64>) {
-    let uni = Box::new(StaticUniverse::new(vec![
+pub fn get_universe_weights() -> (StaticUniverse, HashMap<String, f64>) {
+    let uni = StaticUniverse::new(vec![
         "ABC", "BCD", "CDE", "DEF", "EFG", "FGH", "GHI", "HIJ", "IJK", "JKL", "KLM", "LMN", "MNO",
         "NOP",
-    ]));
+    ]);
+
+    let psize = 1.0 / uni.get_assets().len() as f64;
     let mut weights: HashMap<String, f64> = HashMap::new();
-    weights.insert(String::from("ABC"), 0.06);
-    weights.insert(String::from("BCD"), 0.06);
-    weights.insert(String::from("CDE"), 0.06);
-    weights.insert(String::from("DEF"), 0.06);
-    weights.insert(String::from("EFG"), 0.06);
-    weights.insert(String::from("FGH"), 0.06);
-    weights.insert(String::from("GHI"), 0.06);
-    weights.insert(String::from("HIJ"), 0.06);
-    weights.insert(String::from("IJK"), 0.06);
+    for a in uni.get_assets() {
+        weights.insert(a.clone(), psize);
+    }
     (uni, weights)
 }
