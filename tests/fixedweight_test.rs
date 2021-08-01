@@ -1,32 +1,33 @@
 mod common;
 mod trading;
 
-use std::cell::RefCell;
 use std::collections::HashMap;
 use std::rc::Rc;
 
-use alator::broker::SimulatedBroker;
-use alator::data::{CSVDataSource, CSVDataSourceWrapper};
+use alator::broker::{Quote, SimulatedBroker};
+use alator::data::{CSVDataSource, DataSourceSim};
 use alator::portfolio::SimPortfolio;
 use alator::simulator::Simulator;
-use alator::trading::TradingSystem;
-use alator::types::StockQuote;
 
 use trading::FixedWeightTradingSystem;
 
 #[test]
 fn fixedweight_integration_test() {
+    let initial_cash = 1e6;
     let (universe, weights) = common::get_universe_weights();
-    let mut raw_data: HashMap<i64, Vec<StockQuote>> = HashMap::new();
+
+    let mut raw_data: HashMap<i64, Vec<Quote>> = HashMap::new();
     common::build_csv(&mut raw_data);
 
-    let raw_source = Rc::new(CSVDataSource { data: raw_data });
-    let source = Rc::new(CSVDataSourceWrapper::new(Rc::clone(&raw_source)));
+    let dates = raw_data.keys().map(|d| d.clone()).collect();
+    let source: DataSourceSim<CSVDataSource> = DataSourceSim::<CSVDataSource>::get_csv(raw_data);
+    let rc_source = Rc::new(source);
 
-    let fws: Rc<Box<dyn TradingSystem>> = Rc::new(Box::new(FixedWeightTradingSystem::new(weights)));
-    let brkr = Box::new(SimulatedBroker::new());
-    let port = Rc::new(RefCell::new(SimPortfolio::new(brkr, universe)));
+    let simbrkr = SimulatedBroker::new(Rc::clone(&rc_source));
 
-    let mut sim = Simulator::new(source.clone(), port.clone(), fws.clone(), 100, 50000);
+    let port = SimPortfolio::new(universe);
+    let fws = Box::new(FixedWeightTradingSystem::new(weights));
+
+    let mut sim = Simulator::new(dates, port, simbrkr, fws, initial_cash);
     sim.run();
 }
