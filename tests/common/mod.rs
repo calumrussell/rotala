@@ -1,79 +1,58 @@
-extern crate csv;
-
-use alator::broker::Quote;
-use alator::data::universe::DefinedUniverse;
-use alator::data::universe::StaticUniverse;
-use csv::StringRecord;
-use itertools::Itertools;
-use serde::Deserialize;
 use std::collections::HashMap;
-use std::path::Path;
+use std::rc::Rc;
 
-#[derive(Debug, Deserialize)]
-struct Row {
-    symbol: String,
-    order_type: String,
-    price: f64,
-    date: u64,
-}
+use alator::broker::sim::SimulatedBroker;
+use alator::broker::Quote;
+use alator::data::universe::{DefinedUniverse, StaticUniverse};
+use alator::data::{DataSourceSim, DefaultDataSource};
 
-fn read_csv() -> Result<Vec<Row>, Box<csv::Error>> {
-    let file_path = Path::new("./tests/longer_sample.csv");
-    let mut rdr = csv::Reader::from_path(file_path)?;
-    let header = StringRecord::from(vec!["symbol", "order_type", "price", "date"]);
+pub fn build_data(universe: &StaticUniverse) -> HashMap<i64, Vec<Quote>> {
+    use rand::distributions::Uniform;
+    use rand::{thread_rng, Rng};
+    use rand_distr::{Distribution, Normal};
 
-    let mut tempbuff: Vec<Row> = Vec::new();
-    for result in rdr.records() {
-        let row: Row = result?.deserialize(Some(&header))?;
-        tempbuff.push(row);
-    }
-    Ok(tempbuff)
-}
+    let mut rng = thread_rng();
+    let start_price_dist = Uniform::new(1.0, 100.0);
+    let vol_dist = Uniform::new(0.01, 0.2);
 
-pub fn build_csv(res: &mut HashMap<i64, Vec<Quote>>) -> Result<bool, Box<csv::Error>> {
-    let csv_contents = read_csv()?;
+    let start_date = 100;
+    let end_date = 1000;
 
-    fn grouper(i: &Row) -> String {
-        let mut s = String::new();
-        s.push_str(i.symbol.as_str());
-        s.push_str(" - ");
-        s.push_str(i.date.to_string().as_str());
-        s
-    }
+    let mut temp: Vec<Vec<Quote>> = Vec::new();
 
-    for (_key, group) in &csv_contents.into_iter().group_by(grouper) {
-        let mut bid = 0.0;
-        let mut ask = 0.0;
-        let mut date = 0 as i64;
-        let mut symbol = String::new();
+    for stock in universe.get_assets() {
+        let price = rng.sample(start_price_dist);
+        let vol = rng.sample(vol_dist);
+        let ret_dist = Normal::new(0.0, vol).unwrap();
+        let mut quotes: Vec<Quote> = Vec::new();
 
-        for price in group {
-            if price.order_type == "bid" {
-                bid = price.price;
-            } else if price.order_type == "ask" {
-                ask = price.price;
-            }
-            date = price.date as i64;
-            symbol = price.symbol;
+        for date in start_date..end_date {
+            let period_ret = ret_dist.sample(&mut rng);
+            let new_price = price * (1.0 + period_ret);
+
+            let q = Quote {
+                symbol: stock.clone(),
+                date: date,
+                bid: new_price * 0.995,
+                ask: new_price,
+            };
+
+            quotes.push(q);
         }
-
-        let quote = Quote {
-            bid,
-            ask,
-            date,
-            symbol,
-        };
-        if res.contains_key(&date) {
-            let mut temp = res.get(&date).unwrap().clone();
-            temp.push(quote);
-            res.insert(date, temp);
-        } else {
-            let mut temp: Vec<Quote> = Vec::new();
-            temp.push(quote);
-            res.insert(date, temp);
-        }
+        temp.push(quotes);
     }
-    Ok(true)
+
+    let mut res: HashMap<i64, Vec<Quote>> = HashMap::new();
+    for n in 0..end_date - start_date {
+        let mut date_quotes: Vec<Quote> = Vec::new();
+        for stock_quotes in &temp {
+            let quote = &stock_quotes[n as usize];
+            date_quotes.push(quote.clone());
+        }
+        let date = date_quotes[0].date;
+        res.insert(date, date_quotes);
+    }
+    res
 }
 
 pub fn get_universe_weights() -> (StaticUniverse, HashMap<String, f64>) {
@@ -88,4 +67,47 @@ pub fn get_universe_weights() -> (StaticUniverse, HashMap<String, f64>) {
         weights.insert(a.clone(), psize);
     }
     (uni, weights)
+}
+
+pub fn build_fake_data() -> (SimulatedBroker<DefaultDataSource>, StaticUniverse) {
+    let mut raw_data: HashMap<i64, Vec<Quote>> = HashMap::new();
+
+    let quote = Quote {
+        symbol: String::from("ABC"),
+        date: 100,
+        bid: 101.0,
+        ask: 102.0,
+    };
+
+    let quote1 = Quote {
+        symbol: String::from("ABC"),
+        date: 101,
+        bid: 102.0,
+        ask: 103.0,
+    };
+
+    let quote2 = Quote {
+        symbol: String::from("BCD"),
+        date: 100,
+        bid: 501.0,
+        ask: 502.0,
+    };
+
+    let quote3 = Quote {
+        symbol: String::from("BCD"),
+        date: 101,
+        bid: 503.0,
+        ask: 504.0,
+    };
+
+    raw_data.insert(100, vec![quote, quote2]);
+    raw_data.insert(101, vec![quote1, quote3]);
+
+    let source: DataSourceSim<DefaultDataSource> =
+        DataSourceSim::<DefaultDataSource>::from_hashmap(raw_data);
+    let rc_source = Rc::new(source);
+    let sb = SimulatedBroker::new(Rc::clone(&rc_source));
+    let universe = StaticUniverse::new(vec!["ABC", "BCD"]);
+
+    (sb, universe)
 }

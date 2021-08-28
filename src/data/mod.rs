@@ -13,7 +13,7 @@ pub trait Quotable {
 }
 
 pub struct DataSource<T: Quotable> {
-    source: T,
+    _source: T,
 }
 
 pub trait SimSource {
@@ -35,19 +35,19 @@ impl<T> DataSourceSim<T>
 where
     T: SimSource,
 {
-    pub fn get_csv(data: HashMap<i64, Vec<Quote>>) -> DataSourceSim<CSVDataSource> {
-        let source = CSVDataSource::new(data);
+    pub fn from_hashmap(data: HashMap<i64, Vec<Quote>>) -> DataSourceSim<DefaultDataSource> {
+        let source = DefaultDataSource::new(data);
         DataSourceSim { source }
     }
 }
 
-pub struct CSVDataSource {
+pub struct DefaultDataSource {
     data: HashMap<i64, Vec<Quote>>,
     pos: usize,
     keys: Vec<i64>,
 }
 
-impl SimSource for CSVDataSource {
+impl SimSource for DefaultDataSource {
     fn get_keys(&self) -> Vec<&i64> {
         self.data.keys().collect_vec()
     }
@@ -77,9 +77,9 @@ impl SimSource for CSVDataSource {
     }
 }
 
-impl CSVDataSource {
+impl DefaultDataSource {
     pub fn new(data: HashMap<i64, Vec<Quote>>) -> Self {
         let keys = data.keys().map(|k| k.clone()).collect();
-        CSVDataSource { data, pos: 0, keys }
+        DefaultDataSource { data, pos: 0, keys }
     }
 }
