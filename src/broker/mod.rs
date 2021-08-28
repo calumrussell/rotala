@@ -1,8 +1,7 @@
 use std::collections::HashMap;
-use std::rc::Rc;
 
-use crate::data::{DataSourceSim, SimSource};
-use crate::types::{Order, OrderType};
+pub mod order;
+pub mod sim;
 
 #[derive(Clone)]
 pub struct Quote {
@@ -12,176 +11,141 @@ pub struct Quote {
     pub symbol: String,
 }
 
+#[derive(Clone)]
 pub struct Trade {
     symbol: String,
     value: f64,
+    quantity: f64,
+}
+
+pub struct Holdings(HashMap<String, f64>);
+
+pub struct TradeRecord {
+    history: Vec<Trade>,
 }
 
 pub enum BrokerEvent {
     TradeSuccess(Trade),
-    TradeFailure(Order),
+    TradeFailure(order::Order),
+    OrderCreated(order::Order),
+    OrderFailure(order::Order),
     SuccessfulWithdraw(f64),
+    CashTransactionSuccess(f64),
     InsufficientCash(f64),
 }
 
 pub trait CashManager {
     fn withdraw_cash(&mut self, cash: f64) -> BrokerEvent;
     fn deposit_cash(&mut self, cash: f64) -> BrokerEvent;
-}
-
-pub trait OrderExecutor {
-    fn execute_order(&mut self, order: &Order) -> BrokerEvent;
-    fn execute_orders(&mut self, orders: Vec<Order>) -> Vec<BrokerEvent>;
-    fn trade_logic(&mut self, value: &f64, order: &Order) -> BrokerEvent;
+    fn debit(&mut self, value: f64) -> BrokerEvent;
+    fn credit(&mut self, value: f64) -> BrokerEvent;
+    fn get_cash_balance(&self) -> f64;
 }
 
 pub trait PositionInfo {
     fn get_position_qty(&self, symbol: &String) -> Option<f64>;
     fn get_position_value(&self, symbol: &String) -> Option<f64>;
+    fn get_position_cost(&self, symbol: &String) -> Option<f64>;
+    fn get_position_profit(&self, symbol: &String) -> Option<f64>;
 }
 
 pub trait PriceQuote {
     fn get_quote(&self, symbol: &String) -> Option<Quote>;
 }
 
-pub struct SimulatedBroker<T>
-where
-    T: SimSource,
-{
-    holdings: HashMap<String, f64>,
-    raw_data: Rc<DataSourceSim<T>>,
-    date: i64,
-    cash: f64,
+pub trait ClientControlled {
+    fn update_holdings(&mut self, symbol: &String, change: &f64);
+    fn get_holdings(&self) -> &Holdings;
+    fn get(&self, symbol: &String) -> Option<&f64>;
 }
 
-impl<T> CashManager for SimulatedBroker<T>
-where
-    T: SimSource,
-{
-    fn withdraw_cash(&mut self, cash: f64) -> BrokerEvent {
-        if cash > self.cash {
-            return BrokerEvent::InsufficientCash(cash);
-        }
-        self.cash -= cash;
-        BrokerEvent::SuccessfulWithdraw(cash)
-    }
-
-    fn deposit_cash(&mut self, cash: f64) -> BrokerEvent {
-        self.cash += cash.clone();
-        BrokerEvent::SuccessfulWithdraw(cash)
-    }
+pub trait TradeLedger {
+    fn record(&mut self, trade: &Trade);
+    fn cost_basis(&self, symbol: &String) -> Option<f64>;
 }
 
-impl<T> OrderExecutor for SimulatedBroker<T>
-where
-    T: SimSource,
-{
-    fn execute_order(&mut self, order: &Order) -> BrokerEvent {
-        let quote = self
-            .raw_data
-            .source
-            .get_date_symbol(&self.date, &order.symbol);
-
-        if quote.is_err() {
-            return BrokerEvent::TradeFailure(order.clone());
-        }
-
-        let mut price = 0.0;
-        match order.order_type {
-            OrderType::MarketBuy => price = quote.unwrap().ask,
-            OrderType::MarketSell => price = quote.unwrap().bid,
-        }
-        let value = price * order.shares as f64;
-        self.trade_logic(&value, order)
-    }
-
-    fn execute_orders(&mut self, orders: Vec<Order>) -> Vec<BrokerEvent> {
-        let mut res = Vec::new();
-        for o in orders {
-            let trade = self.execute_order(&o);
-            res.push(trade);
-        }
-        res
-    }
-
-    fn trade_logic(&mut self, value: &f64, order: &Order) -> BrokerEvent {
-        if self.cash > *value {
-            return BrokerEvent::TradeFailure(order.clone());
-        }
-
-        //Update holdings
-        let curr = self.holdings.get(&order.symbol).unwrap_or(&0.0);
-        let updated = curr + order.shares as f64;
-        self.holdings.insert(order.symbol.clone(), updated.clone());
-
-        //Update cash
-        self.cash -= *value as f64;
-
-        let t = Trade {
-            symbol: order.symbol.clone(),
-            value: *value,
-        };
-        BrokerEvent::TradeSuccess(t)
-    }
+pub trait PendingOrders {
+    fn insert_order(&mut self, order: &order::Order);
+    fn delete_order(&mut self, id: &u8);
 }
 
-impl<T> PositionInfo for SimulatedBroker<T>
-where
-    T: SimSource,
-{
-    fn get_position_qty(&self, symbol: &String) -> Option<f64> {
-        let pos = self.holdings.get(symbol);
-        match pos {
-            Some(p) => Some(p.clone()),
-            _ => None,
-        }
+impl TradeLedger for TradeRecord {
+    fn record(&mut self, trade: &Trade) {
+        self.history.push(trade.clone());
     }
 
-    fn get_position_value(&self, symbol: &String) -> Option<f64> {
-        let quote = self.raw_data.source.get_date_symbol(&self.date, symbol);
-        //TODO: we need to introduce some kind of distinction between short and long
-        //      positions.
+    fn cost_basis(&self, symbol: &String) -> Option<f64> {
+        let mut cum_qty = 0.0;
+        let mut cum_val = 0.0;
+        for h in &self.history {
+            if h.symbol.eq(symbol) {
+                cum_qty += h.quantity;
+                cum_val += h.value;
 
-        if quote.is_ok() {
-            let price = quote.unwrap().ask;
-            let qty = self.get_position_qty(symbol);
-            if qty.is_some() {
-                return Some(price * qty.unwrap() as f64);
+                //reset the value if we are back to zero
+                if cum_qty == 0.0 {
+                    cum_val = 0.0;
+                }
             }
+        }
+        if cum_qty == 0.0 {
             return None;
         }
-        None
+        Some(cum_val / cum_qty)
     }
 }
 
-impl<T> PriceQuote for SimulatedBroker<T>
-where
-    T: SimSource,
-{
-    fn get_quote(&self, symbol: &String) -> Option<Quote> {
-        let quote = self.raw_data.source.get_date_symbol(&self.date, symbol);
-        match quote {
-            Ok(q) => Some(q),
-            _ => None,
-        }
+impl TradeRecord {
+    pub fn new() -> Self {
+        let history = Vec::new();
+        TradeRecord { history }
     }
 }
 
-impl<T> SimulatedBroker<T>
-where
-    T: SimSource,
-{
-    pub fn set_date(&mut self, date: i64) {
-        self.date = date;
-    }
+#[cfg(test)]
+mod tests {
+    use super::TradeLedger;
 
-    pub fn new(raw_data: Rc<DataSourceSim<T>>) -> SimulatedBroker<T> {
-        let holdings: HashMap<String, f64> = HashMap::new();
-        SimulatedBroker {
-            holdings,
-            raw_data,
-            date: -1,
-            cash: 0.0,
-        }
+    #[test]
+    fn test_that_ledger_calculates_the_cost_basis_correctly() {
+        let mut rec = super::TradeRecord::new();
+
+        let t1 = super::Trade {
+            symbol: String::from("ABC"),
+            quantity: 10.00,
+            value: 100.0,
+        };
+        let t2 = super::Trade {
+            symbol: String::from("ABC"),
+            quantity: 90.00,
+            value: 500.0,
+        };
+        let t3 = super::Trade {
+            symbol: String::from("BCD"),
+            quantity: 100.00,
+            value: 100.0,
+        };
+        let t4 = super::Trade {
+            symbol: String::from("BCD"),
+            quantity: -100.00,
+            value: -500.0,
+        };
+        let t5 = super::Trade {
+            symbol: String::from("BCD"),
+            quantity: 50.00,
+            value: 50.0,
+        };
+
+        rec.record(&t1);
+        rec.record(&t2);
+        rec.record(&t3);
+        rec.record(&t4);
+        rec.record(&t5);
+
+        let abc_cost = rec.cost_basis(&String::from("ABC")).unwrap();
+        let bcd_cost = rec.cost_basis(&String::from("BCD")).unwrap();
+
+        assert_eq!(abc_cost, 6.0);
+        assert_eq!(bcd_cost, 1.0);
     }
 }

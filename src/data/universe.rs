@@ -5,7 +5,7 @@ pub trait DefinedUniverse {
 }
 
 pub struct Universe {
-    assets: Vec<String>,
+    _assets: Vec<String>,
 }
 
 pub struct StaticUniverse {
