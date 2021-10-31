@@ -9,6 +9,7 @@ edition = "2018"
 [dependencies]
 itertools = "0.10.1"
 libmath = "0.1.4"
+time = "0.3.4"
 
 [dev-dependencies]
 rand = "0.8.4"
