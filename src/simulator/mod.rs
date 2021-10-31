@@ -28,9 +28,11 @@ where
         for date in &self.sim_dates {
             self.perf.update(&self.port, &self.brkr);
             self.brkr.set_date(date);
-            let weights = self.system.calculate_weights();
-            let orders = self.port.update_weights(&weights, &mut self.brkr);
-            self.brkr.execute_orders(orders);
+            if self.system.should_trade_now(&date) {
+                let weights = self.system.calculate_weights();
+                let orders = self.port.update_weights(&weights, &mut self.brkr);
+                self.brkr.execute_orders(orders);
+            }
         }
     }
 
