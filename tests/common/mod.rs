@@ -1,4 +1,8 @@
+use rand::distributions::Uniform;
+use rand::{thread_rng, Rng};
+use rand_distr::{Distribution, Normal};
 use std::collections::HashMap;
+use std::ops::Range;
 use std::rc::Rc;
 
 use alator::broker::sim::SimulatedBroker;
@@ -6,51 +10,62 @@ use alator::broker::Quote;
 use alator::data::universe::{DefinedUniverse, StaticUniverse};
 use alator::data::{DataSourceSim, DefaultDataSource};
 
-pub fn build_data(universe: &StaticUniverse) -> HashMap<i64, Vec<Quote>> {
-    use rand::distributions::Uniform;
-    use rand::{thread_rng, Rng};
-    use rand_distr::{Distribution, Normal};
-
+pub fn build_fake_quote_stream(
+    stock: &String,
+    price_dist: Uniform<f64>,
+    vol_dist: Uniform<f64>,
+    range: Range<i64>,
+    step: Option<usize>,
+) -> Vec<Quote> {
     let mut rng = thread_rng();
-    let start_price_dist = Uniform::new(1.0, 100.0);
+    let price = rng.sample(price_dist);
+    let vol = rng.sample(vol_dist);
+    let ret_dist = Normal::new(0.0, vol).unwrap();
+    let mut quotes: Vec<Quote> = Vec::new();
+
+    let mut range_step = 1;
+    if step.is_some() {
+        range_step = step.unwrap();
+    }
+
+    for date in range.step_by(range_step) {
+        let period_ret = ret_dist.sample(&mut rng);
+        let new_price = price * (1.0 + period_ret);
+
+        let q = Quote {
+            symbol: stock.clone(),
+            date: date,
+            bid: new_price * 0.995,
+            ask: new_price,
+        };
+
+        quotes.push(q);
+    }
+    quotes
+}
+
+pub fn build_data(universe: &StaticUniverse) -> HashMap<i64, Vec<Quote>> {
+    let price_dist = Uniform::new(1.0, 100.0);
     let vol_dist = Uniform::new(0.01, 0.2);
 
     let start_date = 100;
     let end_date = 1000;
 
-    let mut temp: Vec<Vec<Quote>> = Vec::new();
+    let mut res: HashMap<i64, Vec<Quote>> = HashMap::new();
 
     for stock in universe.get_assets() {
-        let price = rng.sample(start_price_dist);
-        let vol = rng.sample(vol_dist);
-        let ret_dist = Normal::new(0.0, vol).unwrap();
-        let mut quotes: Vec<Quote> = Vec::new();
-
-        for date in start_date..end_date {
-            let period_ret = ret_dist.sample(&mut rng);
-            let new_price = price * (1.0 + period_ret);
-
-            let q = Quote {
-                symbol: stock.clone(),
-                date: date,
-                bid: new_price * 0.995,
-                ask: new_price,
-            };
-
-            quotes.push(q);
+        let quotes =
+            build_fake_quote_stream(stock, price_dist, vol_dist, start_date..end_date, None);
+        for quote in quotes {
+            let date = quote.date;
+            if res.contains_key(&date) {
+                let mut current = res.get(&date).unwrap().to_owned();
+                current.push(quote);
+                res.insert(date, current);
+            } else {
+                res.insert(date, vec![quote]);
+            }
         }
-        temp.push(quotes);
-    }
-
-    let mut res: HashMap<i64, Vec<Quote>> = HashMap::new();
-    for n in 0..end_date - start_date {
-        let mut date_quotes: Vec<Quote> = Vec::new();
-        for stock_quotes in &temp {
-            let quote = &stock_quotes[n as usize];
-            date_quotes.push(quote.clone());
-        }
-        let date = date_quotes[0].date;
-        res.insert(date, date_quotes);
     }
     res
 }
