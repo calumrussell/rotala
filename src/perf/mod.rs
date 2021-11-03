@@ -20,10 +20,10 @@ impl PortfolioPerformance {
             }
             let pct_change = (snap.value / last) - 1.0;
             if pct_change != 0.0 {
-                sum += (1.0+pct_change).log10();
+                sum += (1.0 + pct_change).log10();
             }
         }
-        (10_f64.powf(sum)-1.0) * 100.0
+        (10_f64.powf(sum) - 1.0) * 100.0
     }
 
     pub fn update(&mut self, port: &impl PortfolioStats, brkr: &(impl PositionInfo + CashManager)) {
