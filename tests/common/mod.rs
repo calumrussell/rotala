@@ -70,11 +70,11 @@ pub fn build_data(universe: &StaticUniverse) -> HashMap<i64, Vec<Quote>> {
     res
 }
 
-pub fn get_universe_weights() -> (StaticUniverse, HashMap<String, f64>) {
-    let uni = StaticUniverse::new(vec![
+pub fn get_universe_weights() -> (Rc<StaticUniverse>, HashMap<String, f64>) {
+    let uni = Rc::new(StaticUniverse::new(vec![
         "ABC", "BCD", "CDE", "DEF", "EFG", "FGH", "GHI", "HIJ", "IJK", "JKL", "KLM", "LMN", "MNO",
         "NOP",
-    ]);
+    ]));
 
     let psize = 1.0 / uni.get_assets().len() as f64;
     let mut weights: HashMap<String, f64> = HashMap::new();
@@ -84,7 +84,7 @@ pub fn get_universe_weights() -> (StaticUniverse, HashMap<String, f64>) {
     (uni, weights)
 }
 
-pub fn build_fake_data() -> (SimulatedBroker<DefaultDataSource>, StaticUniverse) {
+pub fn build_fake_data() -> (SimulatedBroker<DefaultDataSource>, Rc<StaticUniverse>) {
     let mut raw_data: HashMap<i64, Vec<Quote>> = HashMap::new();
 
     let quote = Quote {
@@ -122,7 +122,7 @@ pub fn build_fake_data() -> (SimulatedBroker<DefaultDataSource>, StaticUniverse)
         DataSourceSim::<DefaultDataSource>::from_hashmap(raw_data);
     let rc_source = Rc::new(source);
     let sb = SimulatedBroker::new(Rc::clone(&rc_source));
-    let universe = StaticUniverse::new(vec!["ABC", "BCD"]);
+    let universe = Rc::new(StaticUniverse::new(vec!["ABC", "BCD"]));
 
     (sb, universe)
 }

@@ -48,7 +48,7 @@ fn staticweight_integration_test() {
         raw_data.insert(b.0.date.clone(), vec![b.0.clone(), b.1.clone()]);
     }
 
-    let universe = StaticUniverse::new(vec!["ABC", "BCD"]);
+    let universe = Rc::new(StaticUniverse::new(vec!["ABC", "BCD"]));
     let mut weights: Vec<HashMap<String, f64>> = Vec::new();
     for _i in 0..length_in_days {
         let mut temp: HashMap<String, f64> = HashMap::new();
@@ -63,7 +63,7 @@ fn staticweight_integration_test() {
     let rc_source = Rc::new(source);
 
     let simbrkr = SimulatedBroker::new(Rc::clone(&rc_source));
-    let port = SimPortfolio::new(universe);
+    let port = SimPortfolio::new(Rc::clone(&universe));
     let fws = Box::new(MonthlyRebalancingStaticWeightTradingSystem::new(weights));
     let perf = PortfolioPerformance::new();
 
