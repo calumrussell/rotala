@@ -1,5 +1,6 @@
 use math::round;
 use std::collections::HashMap;
+use std::rc::Rc;
 
 use crate::broker::order::{Order, OrderType};
 use crate::broker::{CashManager, PositionInfo, PriceQuote};
@@ -18,7 +19,7 @@ pub trait PortfolioStats {
 }
 
 pub struct SimPortfolio {
-    universe: StaticUniverse,
+    universe: Rc<StaticUniverse>,
 }
 
 impl PortfolioStats for SimPortfolio {
@@ -36,7 +37,7 @@ impl PortfolioStats for SimPortfolio {
 }
 
 impl SimPortfolio {
-    pub fn new(universe: StaticUniverse) -> SimPortfolio {
+    pub fn new(universe: Rc<StaticUniverse>) -> SimPortfolio {
         SimPortfolio { universe }
     }
 

@@ -23,7 +23,7 @@ fn fixedweight_integration_test() {
     let rc_source = Rc::new(source);
 
     let simbrkr = SimulatedBroker::new(Rc::clone(&rc_source));
-    let port = SimPortfolio::new(universe);
+    let port = SimPortfolio::new(Rc::clone(&universe));
     let fws = Box::new(FixedWeightTradingSystem::new(weights));
     let perf = PortfolioPerformance::new();
 

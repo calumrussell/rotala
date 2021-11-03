@@ -1,6 +1,7 @@
 mod common;
 
 use std::collections::HashMap;
+use std::rc::Rc;
 
 use alator::broker::order::OrderExecutor;
 use alator::broker::CashManager;
@@ -39,7 +40,7 @@ fn test_that_portfolio_calculates_performance_accurately() {
     target_weights.insert(String::from("ABC"), 0.5);
     target_weights.insert(String::from("BCD"), 0.5);
 
-    let port = SimPortfolio::new(universe);
+    let port = SimPortfolio::new(Rc::clone(&universe));
 
     brkr.set_date(&100);
     let orders = port.update_weights(&target_weights, &brkr);
