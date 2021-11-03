@@ -8,7 +8,7 @@ pub struct FixedWeightTradingSystem {
 }
 
 impl TradingSystem for FixedWeightTradingSystem {
-    fn calculate_weights(&self) -> HashMap<String, f64> {
+    fn calculate_weights(&mut self) -> HashMap<String, f64> {
         self.target_weights.clone()
     }
 
@@ -30,7 +30,7 @@ pub struct MonthlyRebalancingFixedWeightTradingSystem {
 }
 
 impl TradingSystem for MonthlyRebalancingFixedWeightTradingSystem {
-    fn calculate_weights(&self) -> HashMap<String, f64> {
+    fn calculate_weights(&mut self) -> HashMap<String, f64> {
         self.target_weights.clone()
     }
 
@@ -43,6 +43,33 @@ impl MonthlyRebalancingFixedWeightTradingSystem {
     pub fn new(weights: HashMap<String, f64>) -> Self {
         MonthlyRebalancingFixedWeightTradingSystem {
             target_weights: weights,
+        }
+    }
+}
+
+
+pub struct MonthlyRebalancingStaticWeightTradingSystem {
+    target_weights: Vec<HashMap<String, f64>>,
+    count: usize,
+}
+
+impl TradingSystem for MonthlyRebalancingStaticWeightTradingSystem {
+    fn calculate_weights(&mut self) -> HashMap<String, f64> {
+        let weights = &self.target_weights[self.count];
+        self.count+=1;
+        weights.to_owned()
+    }
+
+    fn should_trade_now(&self, date: &i64) -> bool {
+        LastBusinessDayTradingSchedule::should_trade(date)
+    }
+}
+
+impl MonthlyRebalancingStaticWeightTradingSystem {
+    pub fn new(weights: Vec<HashMap<String, f64>>) -> Self{
+        MonthlyRebalancingStaticWeightTradingSystem {
+            target_weights: weights,
+            count: 0
         }
     }
 }

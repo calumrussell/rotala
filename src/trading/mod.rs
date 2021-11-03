@@ -3,7 +3,7 @@ use std::collections::HashMap;
 use time::OffsetDateTime;
 
 pub trait TradingSystem {
-    fn calculate_weights(&self) -> HashMap<String, f64>;
+    fn calculate_weights(&mut self) -> HashMap<String, f64>;
     fn should_trade_now(&self, date: &i64) -> bool;
 }
 
