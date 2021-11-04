@@ -17,12 +17,11 @@ struct PortfolioSnapshot {
 pub struct PortfolioCalculator;
 
 impl PortfolioCalculator {
-
     fn get_log_returns(values: &Vec<f64>) -> Vec<f64> {
         let mut res: Vec<f64> = Vec::new();
         let mut temp = &values[0];
         for i in values.iter().skip(1).into_iter() {
-            let pct_change = i/temp;
+            let pct_change = i / temp;
             res.push(pct_change.log10());
             temp = i
         }
@@ -62,7 +61,11 @@ impl PortfolioCalculator {
 
     fn get_variance(values: &Vec<f64>) -> f64 {
         let mean: f64 = values.iter().sum::<f64>() / (values.len() as f64);
-        let squared_diffs = values.iter().map(|ret| ret - mean).map(|diff| diff.powf(2.0)).collect_vec();
+        let squared_diffs = values
+            .iter()
+            .map(|ret| ret - mean)
+            .map(|diff| diff.powf(2.0))
+            .collect_vec();
         let sum_of_diff = squared_diffs.iter().sum::<f64>();
         sum_of_diff / (values.len() as f64)
     }
@@ -80,26 +83,25 @@ impl PortfolioCalculator {
             days = trading_days.unwrap() as f64;
         }
         match frequency {
-            DataFrequency::Daily => ((1.0 + (ret/100.0)).powf(days) -1.0)*100.0,
-            DataFrequency::Monthly => ((1.0 + (ret/100.0)).powf(12.0) -1.0)*100.0,
-            DataFrequency::Yearly => ret
+            DataFrequency::Daily => ((1.0 + (ret / 100.0)).powf(days) - 1.0) * 100.0,
+            DataFrequency::Monthly => ((1.0 + (ret / 100.0)).powf(12.0) - 1.0) * 100.0,
+            DataFrequency::Yearly => ret,
         }
     }
 
     fn annualize_volatility(vol: f64, trading_days: Option<i32>, frequency: DataFrequency) -> f64 {
         let mut days = 0.0;
         if trading_days.is_none() {
-            days=252.0;
+            days = 252.0;
         } else {
-            days=trading_days.unwrap() as f64;
+            days = trading_days.unwrap() as f64;
         }
         match frequency {
-            DataFrequency::Daily => ((vol/100.0) * days.sqrt()) * 100.0,
-            DataFrequency::Monthly => ((vol/100.0) * (12_f64).sqrt())*100.0,
-            DataFrequency::Yearly => vol 
+            DataFrequency::Daily => ((vol / 100.0) * days.sqrt()) * 100.0,
+            DataFrequency::Monthly => ((vol / 100.0) * (12_f64).sqrt()) * 100.0,
+            DataFrequency::Yearly => vol,
         }
     }
-
 }
 
 pub struct PortfolioPerformance {
@@ -109,8 +111,9 @@ pub struct PortfolioPerformance {
 
 impl PortfolioPerformance {
     fn to_values(&mut self) -> &Vec<f64> {
-        if self.values.is_none(){
-            let values = self.history
+        if self.values.is_none() {
+            let values = self
+                .history
                 .iter()
                 .map(|snap| -> f64 { snap.value })
                 .collect_vec();
@@ -134,7 +137,9 @@ impl PortfolioPerformance {
     }
 
     pub fn get_portfolio_return(&mut self) -> f64 {
-        let sum_log_rets = PortfolioCalculator::get_log_returns(&self.to_values()).iter().sum();
+        let sum_log_rets = PortfolioCalculator::get_log_returns(&self.to_values())
+            .iter()
+            .sum();
         (10_f64.powf(sum_log_rets) - 1.0) * 100.0
     }
 
@@ -146,14 +151,17 @@ impl PortfolioPerformance {
 
     pub fn new() -> Self {
         let history: Vec<PortfolioSnapshot> = Vec::new();
-        PortfolioPerformance { history, values: None }
+        PortfolioPerformance {
+            history,
+            values: None,
+        }
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use super::PortfolioCalculator;
     use super::DataFrequency;
+    use super::PortfolioCalculator;
 
     fn setup() -> Vec<f64> {
         let mut fake_prices: Vec<f64> = Vec::new();
@@ -196,14 +204,30 @@ mod tests {
 
     #[test]
     fn test_that_annualizations_calculate_correctly() {
-        assert_eq!(PortfolioCalculator::annualize_returns(0.1, None, DataFrequency::Daily).round(), 29.0);
-        assert_eq!(PortfolioCalculator::annualize_returns(2.0, None, DataFrequency::Monthly).round(), 27.0);
-        assert_eq!(PortfolioCalculator::annualize_returns(27.0, None, DataFrequency::Yearly).round(), 27.0);
+        assert_eq!(
+            PortfolioCalculator::annualize_returns(0.1, None, DataFrequency::Daily).round(),
+            29.0
+        );
+        assert_eq!(
+            PortfolioCalculator::annualize_returns(2.0, None, DataFrequency::Monthly).round(),
+            27.0
+        );
+        assert_eq!(
+            PortfolioCalculator::annualize_returns(27.0, None, DataFrequency::Yearly).round(),
+            27.0
+        );
 
-        assert_eq!(PortfolioCalculator::annualize_volatility(1.0, None, DataFrequency::Daily).round(), 16.0);
-        assert_eq!(PortfolioCalculator::annualize_volatility(5.0, None, DataFrequency::Monthly).round(), 17.0);
-        assert_eq!(PortfolioCalculator::annualize_volatility(27.0, None, DataFrequency::Yearly).round(), 27.0);
+        assert_eq!(
+            PortfolioCalculator::annualize_volatility(1.0, None, DataFrequency::Daily).round(),
+            16.0
+        );
+        assert_eq!(
+            PortfolioCalculator::annualize_volatility(5.0, None, DataFrequency::Monthly).round(),
+            17.0
+        );
+        assert_eq!(
+            PortfolioCalculator::annualize_volatility(27.0, None, DataFrequency::Yearly).round(),
+            27.0
+        );
     }
-
-
 }
