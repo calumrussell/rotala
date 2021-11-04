@@ -36,7 +36,7 @@ where
         }
     }
 
-    pub fn calculate_perf(&self) -> (f64, f64, f64, f64) {
+    pub fn calculate_perf(&mut self) -> (f64, f64, f64, f64) {
         let ret = self.perf.get_portfolio_return();
         let vol = self.perf.get_portfolio_volatility();
         let mdd = self.perf.get_portfolio_max_dd();
