@@ -36,9 +36,12 @@ where
         }
     }
 
-    pub fn calculate_perf(&self) -> (f64, f64) {
-        let value = self.perf.get_portfolio_return();
-        (value, 1.0)
+    pub fn calculate_perf(&self) -> (f64, f64, f64, f64) {
+        let ret = self.perf.get_portfolio_return();
+        let vol = self.perf.get_portfolio_volatility();
+        let mdd = self.perf.get_portfolio_max_dd();
+        let sharpe = self.perf.get_portfolio_sharpe_ratio();
+        (ret, vol, mdd, sharpe)
     }
 
     pub fn new(
