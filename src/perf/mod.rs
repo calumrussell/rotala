@@ -123,7 +123,8 @@ impl PortfolioPerformance {
     }
 
     pub fn get_portfolio_volatility(&mut self) -> f64 {
-        PortfolioCalculator::get_volatility(self.to_values())
+        let rets = PortfolioCalculator::get_returns(self.to_values());
+        PortfolioCalculator::get_volatility(&rets)
     }
 
     pub fn get_portfolio_sharpe_ratio(&mut self) -> f64 {
