@@ -55,5 +55,5 @@ fn test_that_portfolio_calculates_performance_accurately() {
     let portfolio_return = perf.get_portfolio_return();
     //We need to round up to cmp properly
     let to_comp = (portfolio_return * 100.0).round() as i64;
-    assert!((to_comp as f64 / 100.0).eq(&0.28));
+    assert!((to_comp as f64).eq(&69.0));
 }

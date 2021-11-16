@@ -61,7 +61,7 @@ impl OrderExecutionRules {
             OrderType::MarketBuy => brkr.debit(value),
             OrderType::MarketSell => brkr.credit(value),
             _ => panic!("Cannot call trade_logic with a non-market order"),
-        }
+        };
 
         let t = Trade {
             symbol: order.symbol.clone(),
