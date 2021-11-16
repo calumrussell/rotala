@@ -65,7 +65,10 @@ impl Portfolio for SimPortfolio {
         broker: &(impl PriceQuote + PositionInfo + CashManager),
     ) -> Vec<Order> {
         let total_value = self.get_total_value(broker);
-        let mut orders = Vec::new();
+        let mut orders: Vec<Order> = Vec::new();
+
+        let mut buy_orders: Vec<Order> = Vec::new();
+        let mut sell_orders: Vec<Order> = Vec::new();
 
         for symbol in target_weights.keys() {
             let diff_val = self.get_position_diff(symbol, broker, target_weights, total_value);
@@ -80,7 +83,7 @@ impl Portfolio for SimPortfolio {
                             shares: target_shares,
                             price: None,
                         };
-                        orders.push(order);
+                        buy_orders.push(order);
                     } else {
                         let target_shares = round::floor(diff_val / q.bid, 0);
                         let order = Order {
@@ -89,12 +92,15 @@ impl Portfolio for SimPortfolio {
                             shares: target_shares * -1.0,
                             price: None,
                         };
-                        orders.push(order);
+                        sell_orders.push(order);
                     }
                 }
                 None => panic!("Can't find price for symbol"),
             }
         }
+        //Sell orders have to be executed before buy orders
+        orders.extend(sell_orders);
+        orders.extend(buy_orders);
         orders
     }
 }

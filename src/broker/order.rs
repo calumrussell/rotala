@@ -3,7 +3,7 @@ use std::collections::HashMap;
 
 use super::{BrokerEvent, CashManager, ClientControlled, Quote, Trade, TradeLedger};
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Debug)]
 pub enum OrderType {
     MarketSell,
     MarketBuy,
@@ -13,7 +13,7 @@ pub enum OrderType {
     StopBuy,
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct Order {
     pub order_type: OrderType,
     pub symbol: String,
@@ -32,7 +32,7 @@ impl OrderExecutionRules {
         match order.order_type {
             OrderType::MarketBuy => {
                 let value = price * order.shares as f64;
-                if brkr.get_cash_balance() > value {
+                if brkr.get_cash_balance() >= value {
                     return Ok(true);
                 }
                 Err(value)
@@ -57,7 +57,11 @@ impl OrderExecutionRules {
         brkr.update_holdings(&order.symbol, &updated);
 
         //Update cash
-        brkr.debit(value);
+        match order.order_type {
+            OrderType::MarketBuy => brkr.debit(value),
+            OrderType::MarketSell => brkr.credit(value),
+            _ => panic!("Cannot call trade_logic with a non-market order"),
+        }
 
         let t = Trade {
             symbol: order.symbol.clone(),

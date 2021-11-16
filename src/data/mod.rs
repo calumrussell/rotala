@@ -176,7 +176,10 @@ impl TimeSeries {
             }
         } else {
             if values.len() == 0 {
-                TimeSeries { index: Vec::new(), values }
+                TimeSeries {
+                    index: Vec::new(),
+                    values,
+                }
             } else {
                 let idx = (0..values.len() - 1).map(|v| v as f64).collect_vec();
                 TimeSeries { index: idx, values }

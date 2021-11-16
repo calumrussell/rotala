@@ -3,7 +3,7 @@ use std::collections::HashMap;
 pub mod order;
 pub mod sim;
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct Quote {
     pub bid: f64,
     pub ask: f64,
@@ -11,7 +11,7 @@ pub struct Quote {
     pub symbol: String,
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct Trade {
     symbol: String,
     value: f64,
