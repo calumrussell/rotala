@@ -1,9 +1,8 @@
 mod common;
-mod trading;
 
+use alator::strategy::StaticWeightStrategyRulesMonthlyRebalancing;
 use rand::distributions::Uniform;
 use std::collections::HashMap;
-use std::rc::Rc;
 
 use alator::broker::sim::SimulatedBroker;
 use alator::broker::Quote;
@@ -14,8 +13,6 @@ use alator::portfolio::SimPortfolio;
 use alator::simulator::Simulator;
 
 use common::build_fake_quote_stream;
-
-use crate::trading::MonthlyRebalancingStaticWeightTradingSystem;
 
 #[test]
 fn staticweight_integration_test() {
@@ -48,7 +45,6 @@ fn staticweight_integration_test() {
         raw_data.insert(b.0.date.clone(), vec![b.0.clone(), b.1.clone()]);
     }
 
-    let universe = Rc::new(StaticUniverse::new(vec!["ABC", "BCD"]));
     let mut weights: Vec<HashMap<String, f64>> = Vec::new();
     for _i in 0..length_in_days {
         let mut temp: HashMap<String, f64> = HashMap::new();
@@ -60,13 +56,13 @@ fn staticweight_integration_test() {
     let dates = raw_data.keys().map(|d| d.clone()).collect();
     let source: DataSourceSim<DefaultDataSource> =
         DataSourceSim::<DefaultDataSource>::from_hashmap(raw_data);
-    let rc_source = Rc::new(source);
 
-    let simbrkr = SimulatedBroker::new(Rc::clone(&rc_source));
-    let port = SimPortfolio::new(Rc::clone(&universe));
-    let fws = Box::new(MonthlyRebalancingStaticWeightTradingSystem::new(weights));
+    let universe = StaticUniverse::new(vec!["ABC", "BCD"]);
+    let simbrkr = SimulatedBroker::new(source);
+    let port = SimPortfolio::new(simbrkr);
+
+    let strat = Box::new(StaticWeightStrategyRulesMonthlyRebalancing::new(port, universe, weights));
     let perf = PortfolioPerformance::new();
-
-    let mut sim = Simulator::new(dates, port, simbrkr, fws, perf, initial_cash);
+    let mut sim = Simulator::new(dates, initial_cash, strat, perf);
     sim.run();
 }

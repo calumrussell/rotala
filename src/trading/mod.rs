@@ -1,11 +1,4 @@
-use std::collections::HashMap;
-
 use time::OffsetDateTime;
-
-pub trait TradingSystem {
-    fn calculate_weights(&mut self) -> HashMap<String, f64>;
-    fn should_trade_now(&self, date: &i64) -> bool;
-}
 
 pub trait TradingSchedule {
     fn should_trade(date: &i64) -> bool;

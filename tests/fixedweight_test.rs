@@ -1,15 +1,13 @@
 mod common;
-mod trading;
-
-use std::rc::Rc;
 
 use alator::broker::sim::SimulatedBroker;
+use alator::data::universe::StaticUniverse;
 use alator::data::{DataSourceSim, DefaultDataSource};
 use alator::perf::PortfolioPerformance;
 use alator::portfolio::SimPortfolio;
 use alator::simulator::Simulator;
 
-use trading::FixedWeightTradingSystem;
+use alator::strategy::FixedWeightStrategy;
 
 #[test]
 fn fixedweight_integration_test() {
@@ -20,13 +18,13 @@ fn fixedweight_integration_test() {
     let dates = raw_data.keys().map(|d| d.clone()).collect();
     let source: DataSourceSim<DefaultDataSource> =
         DataSourceSim::<DefaultDataSource>::from_hashmap(raw_data);
-    let rc_source = Rc::new(source);
 
-    let simbrkr = SimulatedBroker::new(Rc::clone(&rc_source));
-    let port = SimPortfolio::new(Rc::clone(&universe));
-    let fws = Box::new(FixedWeightTradingSystem::new(weights));
+    let universe = StaticUniverse::new(vec!["ABC", "BCD"]);
+    let simbrkr = SimulatedBroker::new(source);
+    let port = SimPortfolio::new(simbrkr);
+
+    let strat = Box::new(FixedWeightStrategy::new(port, universe, weights));
     let perf = PortfolioPerformance::new();
-
-    let mut sim = Simulator::new(dates, port, simbrkr, fws, perf, initial_cash);
+    let mut sim = Simulator::new(dates, initial_cash, strat, perf);
     sim.run();
 }

@@ -1,12 +1,10 @@
 mod common;
 
 use std::collections::HashMap;
-use std::rc::Rc;
 
-use alator::broker::order::OrderExecutor;
 use alator::broker::CashManager;
 use alator::perf::PortfolioPerformance;
-use alator::portfolio::{Portfolio, SimPortfolio};
+use alator::portfolio::{Portfolio, SimPortfolio, PortfolioStats};
 
 #[test]
 fn test_that_portfolio_creates_correct_orders_given_weights() {
@@ -18,8 +16,8 @@ fn test_that_portfolio_creates_correct_orders_given_weights() {
     target_weights.insert(String::from("ABC"), 0.5);
     target_weights.insert(String::from("BCD"), 0.5);
 
-    let port = SimPortfolio::new(universe);
-    let orders = port.update_weights(&target_weights, &brkr);
+    let port = SimPortfolio::new(brkr);
+    let orders = port.update_weights(&target_weights, &universe);
     for order in orders {
         match order.symbol.as_str() {
             "ABC" => assert!(order.shares == 490.0),
@@ -40,17 +38,17 @@ fn test_that_portfolio_calculates_performance_accurately() {
     target_weights.insert(String::from("ABC"), 0.5);
     target_weights.insert(String::from("BCD"), 0.5);
 
-    let port = SimPortfolio::new(Rc::clone(&universe));
+    let mut port = SimPortfolio::new(brkr);
 
-    brkr.set_date(&100);
-    let orders = port.update_weights(&target_weights, &brkr);
-    brkr.execute_orders(orders);
-    perf.update(&port, &brkr);
+    port.set_date(&100);
+    let orders = port.update_weights(&target_weights, &universe);
+    port.execute_orders(orders);
+    perf.update(port.get_total_value(&universe));
 
-    brkr.set_date(&101);
-    let orders = port.update_weights(&target_weights, &brkr);
-    brkr.execute_orders(orders);
-    perf.update(&port, &brkr);
+    port.set_date(&101);
+    let orders = port.update_weights(&target_weights, &universe);
+    port.execute_orders(orders);
+    perf.update(port.get_total_value(&universe));
 
     let portfolio_return = perf.get_portfolio_return();
     //We need to round up to cmp properly

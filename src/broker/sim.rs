@@ -1,6 +1,5 @@
 use core::panic;
 use std::collections::HashMap;
-use std::rc::Rc;
 
 use super::order::{Order, OrderExecutionRules, OrderExecutor, OrderType, SimOrderBook};
 use super::{
@@ -246,7 +245,7 @@ where
         self.check_orderbook();
     }
 
-    pub fn new(raw_data: Rc<DataSourceSim<T>>) -> SimulatedBroker<T> {
+    pub fn new(raw_data: DataSourceSim<T>) -> SimulatedBroker<T> {
         let holdings_data: HashMap<String, f64> = HashMap::new();
         let holdings = Holdings(holdings_data);
         let orderbook = SimOrderBook::new();
@@ -273,7 +272,7 @@ struct BrokerSimAPI<T>
 where
     T: SimSource,
 {
-    raw_data: Rc<DataSourceSim<T>>,
+    raw_data: DataSourceSim<T>,
     date: i64,
 }
 
@@ -310,7 +309,7 @@ where
         self.date = date.clone();
     }
 
-    pub fn new(raw_data: Rc<DataSourceSim<T>>) -> Self {
+    pub fn new(raw_data: DataSourceSim<T>) -> Self {
         BrokerSimAPI { raw_data, date: -1 }
     }
 }
@@ -324,7 +323,6 @@ mod tests {
     use crate::data::{DataSourceSim, DefaultDataSource};
 
     use std::collections::HashMap;
-    use std::rc::Rc;
 
     fn setup() -> (SimulatedBroker<DefaultDataSource>, i64) {
         let mut prices: HashMap<i64, Vec<Quote>> = HashMap::new();
@@ -380,7 +378,7 @@ mod tests {
         prices.insert(101, price_row1);
         prices.insert(102, price_row2);
 
-        let source = Rc::new(DataSourceSim::<DefaultDataSource>::from_hashmap(prices));
+        let source = DataSourceSim::<DefaultDataSource>::from_hashmap(prices);
         let brkr = SimulatedBroker::new(source);
         (brkr, 10)
     }

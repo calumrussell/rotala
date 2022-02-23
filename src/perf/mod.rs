@@ -1,8 +1,4 @@
-use itertools::Itertools;
-
-use crate::broker::{CashManager, PositionInfo};
 use crate::data::TimeSeries;
-use crate::portfolio::PortfolioStats;
 
 enum DataFrequency {
     Daily,
@@ -67,8 +63,7 @@ impl PortfolioPerformance {
         (10_f64.powf(sum_log_rets) - 1.0) * 100.0
     }
 
-    pub fn update(&mut self, port: &impl PortfolioStats, brkr: &(impl PositionInfo + CashManager)) {
-        let value = port.get_total_value(brkr);
+    pub fn update(&mut self, value:f64) {
         self.portfolio_value.append(None, value);
     }
 

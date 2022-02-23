@@ -8,14 +8,6 @@ use crate::broker::Quote;
 
 type DataSourceResp = Result<Quote, Box<dyn Error>>;
 
-pub trait Quotable {
-    fn get_latest_quote(&self, symbol: &String) -> DataSourceResp;
-}
-
-pub struct DataSource<T: Quotable> {
-    _source: T,
-}
-
 pub trait SimSource {
     fn get_keys(&self) -> Vec<&i64>;
     fn get_date(&self, date: &i64) -> Option<&Vec<Quote>>;

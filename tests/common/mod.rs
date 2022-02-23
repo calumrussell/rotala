@@ -120,8 +120,7 @@ pub fn build_fake_data() -> (SimulatedBroker<DefaultDataSource>, Rc<StaticUniver
 
     let source: DataSourceSim<DefaultDataSource> =
         DataSourceSim::<DefaultDataSource>::from_hashmap(raw_data);
-    let rc_source = Rc::new(source);
-    let sb = SimulatedBroker::new(Rc::clone(&rc_source));
+    let sb = SimulatedBroker::new(source);
     let universe = Rc::new(StaticUniverse::new(vec!["ABC", "BCD"]));
 
     (sb, universe)
