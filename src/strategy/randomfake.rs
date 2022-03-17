@@ -8,6 +8,7 @@ use crate::schedule::{LastBusinessDayTradingSchedule, TradingSchedule};
 use crate::strategy::Strategy;
 use crate::universe::{DefinedUniverse, StaticUniverse};
 
+#[derive(Clone)]
 pub struct RandomStrategyRulesWithFakeDataSource {
     portfolio: SimPortfolio,
     date: i64,
@@ -57,5 +58,19 @@ impl RandomStrategyRulesWithFakeDataSource {
             date: -1,
             universe,
         }
+    }
+}
+
+impl From<&RandomStrategyRulesWithFakeDataSource> for Box<RandomStrategyRulesWithFakeDataSource> {
+    fn from(strat: &RandomStrategyRulesWithFakeDataSource) -> Self {
+        let owned: RandomStrategyRulesWithFakeDataSource = strat.clone();
+        Box::new(owned)
+    }
+}
+
+impl From<&RandomStrategyRulesWithFakeDataSource> for Box<dyn Strategy> {
+    fn from(strat: &RandomStrategyRulesWithFakeDataSource) -> Self {
+        let owned: RandomStrategyRulesWithFakeDataSource = strat.clone();
+        Box::new(owned)
     }
 }

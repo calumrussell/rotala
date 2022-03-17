@@ -10,6 +10,7 @@ use super::{
 };
 use crate::data::{DataSourceSim, SimSource};
 
+#[derive(Clone)]
 pub struct SimulatedBroker<T>
 where
     T: SimSource,
@@ -270,6 +271,7 @@ trait Prices {
     fn get_all_prices(&self) -> Vec<Quote>;
 }
 
+#[derive(Clone)]
 struct BrokerSimAPI<T>
 where
     T: SimSource,

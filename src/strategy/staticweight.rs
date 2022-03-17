@@ -6,6 +6,7 @@ use crate::schedule::{LastBusinessDayTradingSchedule, TradingSchedule};
 use crate::strategy::Strategy;
 use crate::universe::StaticUniverse;
 
+#[derive(Clone)]
 pub struct StaticWeightStrategyRulesMonthlyRebalancing {
     portfolio: SimPortfolio,
     date: i64,
@@ -51,5 +52,21 @@ impl StaticWeightStrategyRulesMonthlyRebalancing {
             target_weights,
             count: 0,
         }
+    }
+}
+
+impl From<&StaticWeightStrategyRulesMonthlyRebalancing>
+    for Box<StaticWeightStrategyRulesMonthlyRebalancing>
+{
+    fn from(strat: &StaticWeightStrategyRulesMonthlyRebalancing) -> Self {
+        let owned: StaticWeightStrategyRulesMonthlyRebalancing = strat.clone();
+        Box::new(owned)
+    }
+}
+
+impl From<&StaticWeightStrategyRulesMonthlyRebalancing> for Box<dyn Strategy> {
+    fn from(strat: &StaticWeightStrategyRulesMonthlyRebalancing) -> Self {
+        let owned: StaticWeightStrategyRulesMonthlyRebalancing = strat.clone();
+        Box::new(owned)
     }
 }

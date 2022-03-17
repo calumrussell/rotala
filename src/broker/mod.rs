@@ -20,8 +20,10 @@ pub struct Trade {
     quantity: f64,
 }
 
+#[derive(Clone)]
 pub struct Holdings(HashMap<String, f64>);
 
+#[derive(Clone)]
 pub struct TradeRecord {
     history: Vec<Trade>,
 }

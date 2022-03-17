@@ -14,6 +14,7 @@ pub trait SimSource {
     fn step(&mut self);
 }
 
+#[derive(Clone)]
 pub struct DataSourceSim<T>
 where
     T: SimSource,
@@ -31,6 +32,7 @@ where
     }
 }
 
+#[derive(Clone)]
 pub struct DefaultDataSource {
     data: HashMap<i64, Vec<Quote>>,
     pos: usize,

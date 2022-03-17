@@ -9,6 +9,7 @@ use crate::data::DefaultDataSource;
 use crate::portfolio::{Portfolio, PortfolioStats};
 use crate::universe::{DefinedUniverse, StaticUniverse};
 
+#[derive(Clone)]
 pub struct SimPortfolio {
     brkr: SimulatedBroker<DefaultDataSource>,
 }

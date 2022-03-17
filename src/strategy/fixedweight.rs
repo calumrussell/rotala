@@ -6,6 +6,7 @@ use crate::schedule::{DefaultTradingSchedule, TradingSchedule};
 use crate::strategy::Strategy;
 use crate::universe::StaticUniverse;
 
+#[derive(Clone)]
 pub struct FixedWeightStrategy {
     portfolio: SimPortfolio,
     date: i64,
@@ -48,5 +49,19 @@ impl FixedWeightStrategy {
             universe,
             target_weights,
         }
+    }
+}
+
+impl From<&FixedWeightStrategy> for Box<FixedWeightStrategy> {
+    fn from(strat: &FixedWeightStrategy) -> Self {
+        let owned: FixedWeightStrategy = strat.clone();
+        Box::new(owned)
+    }
+}
+
+impl From<&FixedWeightStrategy> for Box<dyn Strategy> {
+    fn from(strat: &FixedWeightStrategy) -> Self {
+        let owned: FixedWeightStrategy = strat.clone();
+        Box::new(owned)
     }
 }

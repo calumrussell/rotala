@@ -8,6 +8,7 @@ pub struct Universe {
     _assets: Vec<String>,
 }
 
+#[derive(Clone)]
 pub struct StaticUniverse {
     assets: Vec<String>,
 }

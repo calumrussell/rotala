@@ -4,6 +4,7 @@ use std::collections::HashMap;
 use super::order::{Order, OrderType};
 use super::{BrokerEvent, Quote};
 
+#[derive(Clone)]
 pub struct SimOrderBook {
     orderbook: HashMap<u8, Order>,
     last: u8,

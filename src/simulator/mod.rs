@@ -27,16 +27,17 @@ impl Simulator {
         (ret, vol, mdd, sharpe)
     }
 
-    pub fn new(
+    pub fn new<T: Into<Box<dyn Strategy>>>(
         sim_dates: Vec<i64>,
         initial_cash: f64,
-        strat: Box<dyn Strategy>,
+        strat: T,
         perf: PortfolioPerformance,
     ) -> Simulator {
+        let boxed: Box<dyn Strategy> = strat.into();
         Simulator {
             sim_dates,
             initial_cash,
-            strat,
+            strat: boxed,
             perf,
         }
     }

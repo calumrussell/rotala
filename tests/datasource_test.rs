@@ -52,8 +52,8 @@ fn datasource_integration_test() {
     let simbrkr = SimulatedBroker::new(source);
     let port = SimPortfolio::new(simbrkr);
 
-    let strat = Box::new(RandomStrategyRulesWithFakeDataSource::new(port, universe));
+    let strat = RandomStrategyRulesWithFakeDataSource::new(port, universe);
     let perf = PortfolioPerformance::new();
-    let mut sim = Simulator::new(dates, initial_cash, strat, perf);
+    let mut sim = Simulator::new(dates, initial_cash, &strat, perf);
     sim.run();
 }
