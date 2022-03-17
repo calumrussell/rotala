@@ -2,8 +2,8 @@ use std::collections::HashMap;
 
 use crate::portfolio::sim::SimPortfolio;
 use crate::portfolio::{Portfolio, PortfolioStats};
-use crate::strategy::Strategy;
 use crate::schedule::{DefaultTradingSchedule, TradingSchedule};
+use crate::strategy::Strategy;
 use crate::universe::StaticUniverse;
 
 pub struct FixedWeightStrategy {

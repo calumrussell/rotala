@@ -2,8 +2,8 @@ use std::collections::HashMap;
 
 use crate::portfolio::sim::SimPortfolio;
 use crate::portfolio::{Portfolio, PortfolioStats};
-use crate::strategy::Strategy;
 use crate::schedule::{LastBusinessDayTradingSchedule, TradingSchedule};
+use crate::strategy::Strategy;
 use crate::universe::StaticUniverse;
 
 pub struct StaticWeightStrategyRulesMonthlyRebalancing {

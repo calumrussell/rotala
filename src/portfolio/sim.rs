@@ -6,8 +6,8 @@ use crate::broker::order::{Order, OrderExecutor, OrderType};
 use crate::broker::sim::SimulatedBroker;
 use crate::broker::{BrokerEvent, CashManager, PositionInfo, PriceQuote};
 use crate::data::DefaultDataSource;
-use crate::universe::{DefinedUniverse, StaticUniverse};
 use crate::portfolio::{Portfolio, PortfolioStats};
+use crate::universe::{DefinedUniverse, StaticUniverse};
 
 pub struct SimPortfolio {
     brkr: SimulatedBroker<DefaultDataSource>,
