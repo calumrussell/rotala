@@ -1,4 +1,4 @@
-use crate::data::TimeSeries;
+use crate::series::TimeSeries;
 
 enum DataFrequency {
     Daily,
@@ -63,7 +63,7 @@ impl PortfolioPerformance {
         (10_f64.powf(sum_log_rets) - 1.0) * 100.0
     }
 
-    pub fn update(&mut self, value:f64) {
+    pub fn update(&mut self, value: f64) {
         self.portfolio_value.append(None, value);
     }
 

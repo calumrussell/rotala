@@ -7,8 +7,8 @@ use std::rc::Rc;
 
 use alator::broker::sim::SimulatedBroker;
 use alator::broker::Quote;
-use alator::data::universe::{DefinedUniverse, StaticUniverse};
 use alator::data::{DataSourceSim, DefaultDataSource};
+use alator::universe::{DefinedUniverse, StaticUniverse};
 
 pub fn build_fake_quote_stream(
     stock: &String,

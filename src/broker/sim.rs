@@ -1,7 +1,9 @@
 use core::panic;
 use std::collections::HashMap;
 
-use super::order::{Order, OrderExecutionRules, OrderExecutor, OrderType, SimOrderBook};
+use super::book::SimOrderBook;
+use super::execution::OrderExecutionRules;
+use super::order::{Order, OrderExecutor, OrderType};
 use super::{
     BrokerEvent, CashManager, ClientControlled, Holdings, PendingOrders, PositionInfo, PriceQuote,
     Quote, Trade, TradeLedger, TradeRecord,

@@ -1,16 +1,16 @@
 mod common;
 
-use alator::strategy::RandomStrategyRulesWithFakeDataSource;
 use rand::distributions::Uniform;
 use std::collections::HashMap;
 
 use alator::broker::sim::SimulatedBroker;
 use alator::broker::Quote;
-use alator::data::universe::StaticUniverse;
 use alator::data::{DataSourceSim, DefaultDataSource};
 use alator::perf::PortfolioPerformance;
-use alator::portfolio::SimPortfolio;
+use alator::portfolio::sim::SimPortfolio;
 use alator::simulator::Simulator;
+use alator::strategy::randomfake::RandomStrategyRulesWithFakeDataSource;
+use alator::universe::StaticUniverse;
 
 use common::build_fake_quote_stream;
 

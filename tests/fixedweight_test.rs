@@ -1,13 +1,13 @@
 mod common;
 
 use alator::broker::sim::SimulatedBroker;
-use alator::data::universe::StaticUniverse;
 use alator::data::{DataSourceSim, DefaultDataSource};
 use alator::perf::PortfolioPerformance;
-use alator::portfolio::SimPortfolio;
+use alator::portfolio::sim::SimPortfolio;
 use alator::simulator::Simulator;
+use alator::universe::StaticUniverse;
 
-use alator::strategy::FixedWeightStrategy;
+use alator::strategy::fixedweight::FixedWeightStrategy;
 
 #[test]
 fn fixedweight_integration_test() {

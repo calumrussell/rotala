@@ -1,5 +1,5 @@
-use crate::strategy::Strategy;
 use crate::perf::PortfolioPerformance;
+use crate::strategy::Strategy;
 
 pub struct Simulator {
     sim_dates: Vec<i64>,
@@ -37,7 +37,7 @@ impl Simulator {
             sim_dates,
             initial_cash,
             strat,
-            perf
+            perf,
         }
     }
 }

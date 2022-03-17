@@ -4,7 +4,8 @@ use std::collections::HashMap;
 
 use alator::broker::CashManager;
 use alator::perf::PortfolioPerformance;
-use alator::portfolio::{Portfolio, SimPortfolio, PortfolioStats};
+use alator::portfolio::sim::SimPortfolio;
+use alator::portfolio::{Portfolio, PortfolioStats};
 
 #[test]
 fn test_that_portfolio_creates_correct_orders_given_weights() {
