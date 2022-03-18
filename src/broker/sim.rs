@@ -4,9 +4,10 @@ use std::collections::HashMap;
 use super::book::SimOrderBook;
 use super::execution::OrderExecutionRules;
 use super::order::{Order, OrderExecutor, OrderType};
+use super::record::TradeRecord;
 use super::{
     BrokerEvent, CashManager, ClientControlled, Holdings, PendingOrders, PositionInfo, PriceQuote,
-    Quote, Trade, TradeLedger, TradeRecord,
+    Quote, Trade, TradeLedger,
 };
 use crate::data::{DataSource, SimSource};
 
