@@ -5,7 +5,7 @@ use std::collections::HashMap;
 
 use alator::broker::sim::SimulatedBroker;
 use alator::broker::Quote;
-use alator::data::{DataSourceSim, DefaultDataSource};
+use alator::data::DataSource;
 use alator::perf::PortfolioPerformance;
 use alator::portfolio::sim::SimPortfolio;
 use alator::simulator::Simulator;
@@ -45,8 +45,7 @@ fn datasource_integration_test() {
         raw_data.insert(b.0.date.clone(), vec![b.0.clone(), b.1.clone()]);
     }
     let dates = raw_data.keys().map(|d| d.clone()).collect();
-    let source: DataSourceSim<DefaultDataSource> =
-        DataSourceSim::<DefaultDataSource>::from_hashmap(raw_data);
+    let source = DataSource::from_hashmap(raw_data);
 
     let universe = StaticUniverse::new(vec!["ABC", "BCD"]);
     let simbrkr = SimulatedBroker::new(source);

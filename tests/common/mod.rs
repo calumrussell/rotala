@@ -7,7 +7,7 @@ use std::rc::Rc;
 
 use alator::broker::sim::SimulatedBroker;
 use alator::broker::Quote;
-use alator::data::{DataSourceSim, DefaultDataSource};
+use alator::data::DataSource;
 use alator::universe::{DefinedUniverse, StaticUniverse};
 
 pub fn build_fake_quote_stream(
@@ -84,7 +84,7 @@ pub fn get_universe_weights() -> (Rc<StaticUniverse>, HashMap<String, f64>) {
     (uni, weights)
 }
 
-pub fn build_fake_data() -> (SimulatedBroker<DefaultDataSource>, Rc<StaticUniverse>) {
+pub fn build_fake_data() -> (SimulatedBroker, Rc<StaticUniverse>) {
     let mut raw_data: HashMap<i64, Vec<Quote>> = HashMap::new();
 
     let quote = Quote {
@@ -118,8 +118,7 @@ pub fn build_fake_data() -> (SimulatedBroker<DefaultDataSource>, Rc<StaticUniver
     raw_data.insert(100, vec![quote, quote2]);
     raw_data.insert(101, vec![quote1, quote3]);
 
-    let source: DataSourceSim<DefaultDataSource> =
-        DataSourceSim::<DefaultDataSource>::from_hashmap(raw_data);
+    let source = DataSource::from_hashmap(raw_data);
     let sb = SimulatedBroker::new(source);
     let universe = Rc::new(StaticUniverse::new(vec!["ABC", "BCD"]));
 

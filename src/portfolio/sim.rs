@@ -5,13 +5,12 @@ use math::round;
 use crate::broker::order::{Order, OrderExecutor, OrderType};
 use crate::broker::sim::SimulatedBroker;
 use crate::broker::{BrokerEvent, CashManager, PositionInfo, PriceQuote};
-use crate::data::DefaultDataSource;
 use crate::portfolio::{Portfolio, PortfolioStats};
 use crate::universe::{DefinedUniverse, StaticUniverse};
 
 #[derive(Clone)]
 pub struct SimPortfolio {
-    brkr: SimulatedBroker<DefaultDataSource>,
+    brkr: SimulatedBroker,
 }
 
 impl PortfolioStats for SimPortfolio {
@@ -29,7 +28,7 @@ impl PortfolioStats for SimPortfolio {
 }
 
 impl SimPortfolio {
-    pub fn new(brkr: SimulatedBroker<DefaultDataSource>) -> SimPortfolio {
+    pub fn new(brkr: SimulatedBroker) -> SimPortfolio {
         SimPortfolio { brkr }
     }
 

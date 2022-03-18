@@ -1,7 +1,7 @@
 mod common;
 
 use alator::broker::sim::SimulatedBroker;
-use alator::data::{DataSourceSim, DefaultDataSource};
+use alator::data::DataSource;
 use alator::perf::PortfolioPerformance;
 use alator::portfolio::sim::SimPortfolio;
 use alator::simulator::Simulator;
@@ -16,8 +16,7 @@ fn fixedweight_integration_test() {
     let raw_data = common::build_data(&universe);
 
     let dates = raw_data.keys().map(|d| d.clone()).collect();
-    let source: DataSourceSim<DefaultDataSource> =
-        DataSourceSim::<DefaultDataSource>::from_hashmap(raw_data);
+    let source = DataSource::from_hashmap(raw_data);
 
     let universe = StaticUniverse::new(vec!["ABC", "BCD"]);
     let simbrkr = SimulatedBroker::new(source);

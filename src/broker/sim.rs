@@ -8,24 +8,18 @@ use super::{
     BrokerEvent, CashManager, ClientControlled, Holdings, PendingOrders, PositionInfo, PriceQuote,
     Quote, Trade, TradeLedger, TradeRecord,
 };
-use crate::data::{DataSourceSim, SimSource};
+use crate::data::{DataSource, SimSource};
 
 #[derive(Clone)]
-pub struct SimulatedBroker<T>
-where
-    T: SimSource,
-{
+pub struct SimulatedBroker {
     pub holdings: Holdings,
-    simapi: BrokerSimAPI<T>,
+    simapi: BrokerSimAPI,
     pub orderbook: SimOrderBook,
     pub cash: f64,
     pub ledger: TradeRecord,
 }
 
-impl<T> CashManager for SimulatedBroker<T>
-where
-    T: SimSource,
-{
+impl CashManager for SimulatedBroker {
     fn withdraw_cash(&mut self, cash: f64) -> BrokerEvent {
         if cash > self.cash {
             return BrokerEvent::InsufficientCash(cash);
@@ -57,10 +51,7 @@ where
     }
 }
 
-impl<T> PositionInfo for SimulatedBroker<T>
-where
-    T: SimSource,
-{
+impl PositionInfo for SimulatedBroker {
     fn get_position_cost(&self, symbol: &String) -> Option<f64> {
         self.ledger.cost_basis(symbol)
     }
@@ -106,19 +97,13 @@ where
     }
 }
 
-impl<T> PriceQuote for SimulatedBroker<T>
-where
-    T: SimSource,
-{
+impl PriceQuote for SimulatedBroker {
     fn get_quote(&self, symbol: &String) -> Option<Quote> {
         self.simapi.get_prices(symbol)
     }
 }
 
-impl<T> OrderExecutor for SimulatedBroker<T>
-where
-    T: SimSource,
-{
+impl OrderExecutor for SimulatedBroker {
     fn execute_order(&mut self, order: &Order) -> BrokerEvent {
         if let OrderType::LimitBuy
         | OrderType::LimitSell
@@ -163,10 +148,7 @@ where
     }
 }
 
-impl<T> PendingOrders for SimulatedBroker<T>
-where
-    T: SimSource,
-{
+impl PendingOrders for SimulatedBroker {
     fn insert_order(&mut self, order: &Order) {
         self.orderbook.insert_order(order);
     }
@@ -176,10 +158,7 @@ where
     }
 }
 
-impl<T> ClientControlled for SimulatedBroker<T>
-where
-    T: SimSource,
-{
+impl ClientControlled for SimulatedBroker {
     fn get_holdings(&self) -> &Holdings {
         &self.holdings
     }
@@ -193,10 +172,7 @@ where
     }
 }
 
-impl<T> TradeLedger for SimulatedBroker<T>
-where
-    T: SimSource,
-{
+impl TradeLedger for SimulatedBroker {
     fn record(&mut self, trade: &Trade) {
         self.ledger.record(trade);
     }
@@ -206,10 +182,7 @@ where
     }
 }
 
-impl<T> SimulatedBroker<T>
-where
-    T: SimSource,
-{
+impl SimulatedBroker {
     fn check_orderbook(&mut self) {
         //Should always return because we are running after we set a new date
         let quotes = self.simapi.get_all_prices();
@@ -248,7 +221,7 @@ where
         self.check_orderbook();
     }
 
-    pub fn new(raw_data: DataSourceSim<T>) -> SimulatedBroker<T> {
+    pub fn new(raw_data: DataSource) -> SimulatedBroker {
         let holdings_data: HashMap<String, f64> = HashMap::new();
         let holdings = Holdings(holdings_data);
         let orderbook = SimOrderBook::new();
@@ -272,20 +245,14 @@ trait Prices {
 }
 
 #[derive(Clone)]
-struct BrokerSimAPI<T>
-where
-    T: SimSource,
-{
-    raw_data: DataSourceSim<T>,
+struct BrokerSimAPI {
+    raw_data: DataSource,
     date: i64,
 }
 
-impl<T> Prices for BrokerSimAPI<T>
-where
-    T: SimSource,
-{
+impl Prices for BrokerSimAPI {
     fn get_prices(&self, symbol: &String) -> Option<Quote> {
-        let quote = self.raw_data.source.get_date_symbol(&self.date, symbol);
+        let quote = self.raw_data.get_date_symbol(&self.date, symbol);
         match quote {
             Ok(q) => Some(q),
             _ => None,
@@ -295,7 +262,7 @@ where
     //Returns a copy so that we don't need a mutable reference to the underlying data
     fn get_all_prices(&self) -> Vec<Quote> {
         let mut res: Vec<Quote> = Vec::new();
-        let prices = self.raw_data.source.get_date(&self.date);
+        let prices = self.raw_data.get_date(&self.date);
         if prices.is_some() {
             for price in prices.unwrap() {
                 res.push(price.clone());
@@ -305,15 +272,12 @@ where
     }
 }
 
-impl<T> BrokerSimAPI<T>
-where
-    T: SimSource,
-{
+impl BrokerSimAPI {
     pub fn set_date(&mut self, date: &i64) {
         self.date = date.clone();
     }
 
-    pub fn new(raw_data: DataSourceSim<T>) -> Self {
+    pub fn new(raw_data: DataSource) -> Self {
         BrokerSimAPI { raw_data, date: -1 }
     }
 }
@@ -324,11 +288,11 @@ mod tests {
     use super::{PendingOrders, SimulatedBroker};
     use crate::broker::order::{Order, OrderExecutor, OrderType};
     use crate::broker::{BrokerEvent, CashManager, PositionInfo, Quote, TradeLedger};
-    use crate::data::{DataSourceSim, DefaultDataSource};
+    use crate::data::DataSource;
 
     use std::collections::HashMap;
 
-    fn setup() -> (SimulatedBroker<DefaultDataSource>, i64) {
+    fn setup() -> (SimulatedBroker, i64) {
         let mut prices: HashMap<i64, Vec<Quote>> = HashMap::new();
 
         let mut price_row: Vec<Quote> = Vec::new();
@@ -382,7 +346,7 @@ mod tests {
         prices.insert(101, price_row1);
         prices.insert(102, price_row2);
 
-        let source = DataSourceSim::<DefaultDataSource>::from_hashmap(prices);
+        let source = DataSource::from_hashmap(prices);
         let brkr = SimulatedBroker::new(source);
         (brkr, 10)
     }

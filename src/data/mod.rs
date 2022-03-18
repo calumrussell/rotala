@@ -6,6 +6,8 @@ use crate::broker::Quote;
 
 type DataSourceResp = Result<Quote, Box<dyn Error>>;
 
+/* Abstracts basic data operations for components that use data.
+ */
 pub trait SimSource {
     fn get_keys(&self) -> Vec<&i64>;
     fn get_date(&self, date: &i64) -> Option<&Vec<Quote>>;
@@ -15,31 +17,13 @@ pub trait SimSource {
 }
 
 #[derive(Clone)]
-pub struct DataSourceSim<T>
-where
-    T: SimSource,
-{
-    pub source: T,
-}
-
-impl<T> DataSourceSim<T>
-where
-    T: SimSource,
-{
-    pub fn from_hashmap(data: HashMap<i64, Vec<Quote>>) -> DataSourceSim<DefaultDataSource> {
-        let source = DefaultDataSource::new(data);
-        DataSourceSim { source }
-    }
-}
-
-#[derive(Clone)]
-pub struct DefaultDataSource {
+pub struct DataSource {
     data: HashMap<i64, Vec<Quote>>,
     pos: usize,
     keys: Vec<i64>,
 }
 
-impl SimSource for DefaultDataSource {
+impl SimSource for DataSource {
     fn get_keys(&self) -> Vec<&i64> {
         self.data.keys().collect_vec()
     }
@@ -69,9 +53,9 @@ impl SimSource for DefaultDataSource {
     }
 }
 
-impl DefaultDataSource {
-    pub fn new(data: HashMap<i64, Vec<Quote>>) -> Self {
+impl DataSource {
+    pub fn from_hashmap(data: HashMap<i64, Vec<Quote>>) -> DataSource {
         let keys = data.keys().map(|k| k.clone()).collect();
-        DefaultDataSource { data, pos: 0, keys }
+        DataSource { data, pos: 0, keys }
     }
 }
