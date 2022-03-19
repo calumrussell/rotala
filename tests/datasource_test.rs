@@ -3,12 +3,12 @@ mod common;
 use rand::distributions::Uniform;
 use std::collections::HashMap;
 
-use alator::broker::sim::SimulatedBroker;
+use alator::sim::broker::SimulatedBroker;
 use alator::broker::Quote;
 use alator::data::DataSource;
 use alator::perf::PortfolioPerformance;
-use alator::portfolio::sim::SimPortfolio;
-use alator::simulator::Simulator;
+use alator::sim::portfolio::SimPortfolio;
+use alator::simcontext::SimContext;
 use alator::strategy::randomfake::RandomStrategyRulesWithFakeDataSource;
 use alator::universe::StaticUniverse;
 
@@ -53,6 +53,6 @@ fn datasource_integration_test() {
 
     let strat = RandomStrategyRulesWithFakeDataSource::new(port, universe);
     let perf = PortfolioPerformance::new();
-    let mut sim = Simulator::new(dates, initial_cash, &strat, perf);
+    let mut sim = SimContext::new(dates, initial_cash, &strat, perf);
     sim.run();
 }

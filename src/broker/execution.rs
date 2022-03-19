@@ -64,6 +64,8 @@ impl OrderExecutionRules {
             return Err(BrokerEvent::InsufficientCash(has_cash.unwrap_err()));
         }
         let trade = move || OrderExecutionRules::trade_logic(order, price, brkr);
+        //We return a function so that the caller has a chance to stop the trade
+        //or control when it is executed
         Ok(trade)
     }
 }

@@ -4,7 +4,7 @@ use std::collections::HashMap;
 
 use alator::broker::CashManager;
 use alator::perf::PortfolioPerformance;
-use alator::portfolio::sim::SimPortfolio;
+use alator::sim::portfolio::SimPortfolio;
 use alator::portfolio::{Portfolio, PortfolioStats};
 
 #[test]

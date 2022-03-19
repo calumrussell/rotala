@@ -2,7 +2,7 @@ use rand::{thread_rng, Rng};
 use rand_distr::Uniform;
 use std::collections::HashMap;
 
-use crate::portfolio::sim::SimPortfolio;
+use crate::sim::portfolio::SimPortfolio;
 use crate::portfolio::{Portfolio, PortfolioStats};
 use crate::schedule::{LastBusinessDayTradingSchedule, TradingSchedule};
 use crate::strategy::Strategy;

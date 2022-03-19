@@ -4,6 +4,7 @@ pub mod perf;
 pub mod portfolio;
 pub mod schedule;
 pub mod series;
-pub mod simulator;
+pub mod sim;
+pub mod simcontext;
 pub mod strategy;
 pub mod universe;

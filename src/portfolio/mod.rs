@@ -3,8 +3,6 @@ use std::collections::HashMap;
 use crate::broker::order::Order;
 use crate::universe::StaticUniverse;
 
-pub mod sim;
-
 pub trait Portfolio {
     fn deposit_cash(&mut self, cash: &f64);
     fn update_weights(

@@ -1,10 +1,9 @@
 use std::collections::HashMap;
 
-mod book;
-mod execution;
+pub mod book;
+pub mod execution;
 pub mod order;
-mod record;
-pub mod sim;
+pub mod record;
 
 #[derive(Clone, Debug)]
 pub struct Quote {
@@ -22,7 +21,7 @@ pub struct Trade {
 }
 
 #[derive(Clone)]
-pub struct Holdings(HashMap<String, f64>);
+pub struct Holdings(pub HashMap<String, f64>);
 
 #[derive(Clone)]
 

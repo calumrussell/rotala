@@ -1,14 +1,14 @@
 use crate::perf::PortfolioPerformance;
 use crate::strategy::Strategy;
 
-pub struct Simulator {
+pub struct SimContext {
     sim_dates: Vec<i64>,
     initial_cash: f64,
     strat: Box<dyn Strategy>,
     perf: PortfolioPerformance,
 }
 
-impl Simulator {
+impl SimContext {
     pub fn run(&mut self) {
         self.sim_dates.sort();
         self.strat.init(&self.initial_cash);
@@ -32,9 +32,9 @@ impl Simulator {
         initial_cash: f64,
         strat: T,
         perf: PortfolioPerformance,
-    ) -> Simulator {
+    ) -> SimContext {
         let boxed: Box<dyn Strategy> = strat.into();
-        Simulator {
+        SimContext {
             sim_dates,
             initial_cash,
             strat: boxed,

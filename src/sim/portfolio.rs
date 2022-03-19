@@ -3,10 +3,10 @@ use std::collections::HashMap;
 use math::round;
 
 use crate::broker::order::{Order, OrderExecutor, OrderType};
-use crate::broker::sim::SimulatedBroker;
 use crate::broker::{BrokerEvent, CashManager, PositionInfo, PriceQuote};
 use crate::portfolio::{Portfolio, PortfolioStats};
 use crate::universe::{DefinedUniverse, StaticUniverse};
+use super::broker::SimulatedBroker;
 
 #[derive(Clone)]
 pub struct SimPortfolio {

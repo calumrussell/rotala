@@ -1,10 +1,10 @@
 mod common;
 
-use alator::broker::sim::SimulatedBroker;
+use alator::sim::broker::SimulatedBroker;
 use alator::data::DataSource;
 use alator::perf::PortfolioPerformance;
-use alator::portfolio::sim::SimPortfolio;
-use alator::simulator::Simulator;
+use alator::sim::portfolio::SimPortfolio;
+use alator::simcontext::SimContext;
 use alator::universe::StaticUniverse;
 
 use alator::strategy::fixedweight::FixedWeightStrategy;
@@ -24,6 +24,6 @@ fn fixedweight_integration_test() {
 
     let strat = FixedWeightStrategy::new(port, universe, weights);
     let perf = PortfolioPerformance::new();
-    let mut sim = Simulator::new(dates, initial_cash, &strat, perf);
+    let mut sim = SimContext::new(dates, initial_cash, &strat, perf);
     sim.run();
 }
