@@ -14,11 +14,11 @@ use crate::data::{DataSource, SimSource};
 
 #[derive(Clone)]
 pub struct SimulatedBroker {
-    pub holdings: Holdings,
+    holdings: Holdings,
     simapi: BrokerSimAPI,
-    pub orderbook: SimOrderBook,
-    pub cash: f64,
-    pub ledger: TradeRecord,
+    orderbook: SimOrderBook,
+    cash: f64,
+    ledger: TradeRecord,
 }
 
 impl CashManager for SimulatedBroker {
