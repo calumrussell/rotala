@@ -2,7 +2,7 @@ use std::collections::HashMap;
 
 use math::round;
 
-use crate::broker::order::{Order, OrderExecutor, OrderType};
+use crate::broker::{Order, OrderExecutor, OrderType};
 use crate::broker::{BrokerEvent, CashManager, PositionInfo, PriceQuote};
 use crate::portfolio::{Portfolio, PortfolioStats};
 use crate::universe::{DefinedUniverse, StaticUniverse};

@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use crate::broker::order::Order;
+use crate::broker::Order;
 use crate::universe::StaticUniverse;
 
 pub trait Portfolio {

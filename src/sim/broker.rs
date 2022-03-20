@@ -4,7 +4,7 @@ use std::ops::Index;
 
 use super::orderbook::SimOrderBook;
 use super::execution::OrderExecutionRules;
-use crate::broker::order::{Order, OrderExecutor, OrderType};
+use crate::broker::{Order, OrderExecutor, OrderType};
 use crate::broker::record::TradeRecord;
 use crate::broker::{
     BrokerEvent, CashManager, ClientControlled, PendingOrders, PositionInfo, PriceQuote,
@@ -289,7 +289,7 @@ impl BrokerSimAPI {
 mod tests {
 
     use super::{PendingOrders, SimulatedBroker};
-    use crate::broker::order::{Order, OrderExecutor, OrderType};
+    use crate::broker::{Order, OrderExecutor, OrderType};
     use crate::broker::{BrokerEvent, CashManager, PositionInfo, Quote, TradeLedger};
     use crate::data::DataSource;
 

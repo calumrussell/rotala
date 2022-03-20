@@ -1,7 +1,7 @@
 use itertools::Itertools;
 use std::collections::HashMap;
 
-use crate::broker::order::{Order, OrderType};
+use crate::broker::{Order, OrderType};
 use crate::broker::{BrokerEvent, Quote};
 
 #[derive(Clone)]

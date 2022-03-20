@@ -1,6 +1,5 @@
 use std::ops::Index;
 
-pub mod order;
 pub mod record;
 
 #[derive(Clone, Debug)]
@@ -22,9 +21,9 @@ pub struct Trade {
 
 pub enum BrokerEvent {
     TradeSuccess(Trade),
-    TradeFailure(order::Order),
-    OrderCreated(order::Order),
-    OrderFailure(order::Order),
+    TradeFailure(Order),
+    OrderCreated(Order),
+    OrderFailure(Order),
     SuccessfulWithdraw(f64),
     CashTransactionSuccess(f64),
     InsufficientCash(f64),
@@ -69,11 +68,61 @@ pub trait TradeLedger {
 }
 
 pub trait PendingOrders {
-    fn insert_order(&mut self, order: &order::Order);
+    fn insert_order(&mut self, order: &Order);
     fn delete_order(&mut self, id: &u8);
 }
 
 pub trait PriceAPI {
     fn get_prices(&self, symbol: &String) -> Option<Quote>;
     fn get_all_prices(&self) -> Vec<Quote>;
+}
+
+#[derive(Clone, Copy, Debug)]
+pub enum OrderType {
+    MarketSell,
+    MarketBuy,
+    LimitSell,
+    LimitBuy,
+    StopSell,
+    StopBuy,
+}
+
+#[derive(Clone, Debug)]
+pub struct Order {
+    order_type: OrderType,
+    symbol: String,
+    shares: f64,
+    price: Option<f64>,
+}
+
+impl Order {
+    pub fn get_symbol(&self) -> String {
+        self.symbol.clone()
+    }
+
+    pub fn get_shares(&self) -> f64 {
+        self.shares
+    }
+
+    pub fn get_price(&self) -> Option<f64> {
+        self.price
+    }
+
+    pub fn get_order_type(&self) -> OrderType {
+        self.order_type
+    }
+
+    pub fn new(order_type: OrderType, symbol: String, shares: f64, price: Option<f64> ) -> Self {
+        Order {
+            order_type,
+            symbol,
+            shares,
+            price
+        }
+    }
+}
+
+pub trait OrderExecutor {
+    fn execute_order(&mut self, order: &Order) -> BrokerEvent;
+    fn execute_orders(&mut self, orders: Vec<Order>) -> Vec<BrokerEvent>;
 }
