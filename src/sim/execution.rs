@@ -1,5 +1,5 @@
-use super::order::{Order, OrderType};
-use super::{BrokerEvent, CashManager, ClientControlled, Trade, TradeLedger};
+use crate::broker::order::{Order, OrderType};
+use crate::broker::{BrokerEvent, CashManager, ClientControlled, Trade, TradeLedger};
 
 pub struct OrderExecutionRules;
 
@@ -9,9 +9,9 @@ impl OrderExecutionRules {
         price: &f64,
         brkr: &impl CashManager,
     ) -> Result<bool, f64> {
-        match order.order_type {
+        match order.get_order_type() {
             OrderType::MarketBuy => {
-                let value = price * order.shares as f64;
+                let value = price * order.get_shares() as f64;
                 if brkr.get_cash_balance() >= value {
                     return Ok(true);
                 }
@@ -26,27 +26,27 @@ impl OrderExecutionRules {
         price: &f64,
         brkr: &mut (impl CashManager + ClientControlled + TradeLedger),
     ) -> Trade {
-        let value = price * order.shares;
+        let value = price * order.get_shares();
         //Update holdings
-        let curr = brkr.get(&order.symbol).unwrap_or(&0.0);
-        let updated = match order.order_type {
-            OrderType::MarketBuy => curr + order.shares as f64,
-            OrderType::MarketSell => curr - order.shares as f64,
+        let curr = brkr.get(&order.get_symbol()).unwrap_or(&0.0);
+        let updated = match order.get_order_type() {
+            OrderType::MarketBuy => curr + order.get_shares() as f64,
+            OrderType::MarketSell => curr - order.get_shares() as f64,
             _ => panic!("Cannot call trade_logic with a non-market order"),
         };
-        brkr.update_holdings(&order.symbol, &updated);
+        brkr.update_holdings(&order.get_symbol(), &updated);
 
         //Update cash
-        match order.order_type {
+        match order.get_order_type() {
             OrderType::MarketBuy => brkr.debit(value),
             OrderType::MarketSell => brkr.credit(value),
             _ => panic!("Cannot call trade_logic with a non-market order"),
         };
 
         let t = Trade {
-            symbol: order.symbol.clone(),
+            symbol: order.get_symbol().clone(),
             value,
-            quantity: order.shares.clone() as f64,
+            quantity: order.get_shares().clone() as f64,
         };
 
         //Update trade ledger

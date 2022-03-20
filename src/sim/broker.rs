@@ -1,16 +1,20 @@
 use core::panic;
 use std::collections::HashMap;
+use std::ops::Index;
 
-
-use crate::broker::book::SimOrderBook;
-use crate::broker::execution::OrderExecutionRules;
+use super::orderbook::SimOrderBook;
+use super::execution::OrderExecutionRules;
 use crate::broker::order::{Order, OrderExecutor, OrderType};
 use crate::broker::record::TradeRecord;
 use crate::broker::{
-    BrokerEvent, CashManager, ClientControlled, Holdings, PendingOrders, PositionInfo, PriceQuote,
-    Quote, Trade, TradeLedger,
+    BrokerEvent, CashManager, ClientControlled, PendingOrders, PositionInfo, PriceQuote,
+    Quote, Trade, TradeLedger, PriceAPI,
 };
 use crate::data::{DataSource, SimSource};
+
+#[derive(Clone)]
+pub struct Holdings(pub HashMap<String, f64>);
+
 
 #[derive(Clone)]
 pub struct SimulatedBroker {
@@ -110,17 +114,17 @@ impl OrderExecutor for SimulatedBroker {
         if let OrderType::LimitBuy
         | OrderType::LimitSell
         | OrderType::StopBuy
-        | OrderType::StopSell = order.order_type
+        | OrderType::StopSell = order.get_order_type()
         {
             panic!("Can only call execute order with market orders")
         };
 
-        let quote = self.get_quote(&order.symbol);
+        let quote = self.get_quote(&order.get_symbol());
         if quote.is_none() {
             return BrokerEvent::TradeFailure(order.clone());
         }
 
-        let price = match order.order_type {
+        let price = match order.get_order_type() {
             OrderType::MarketBuy => quote.unwrap().ask,
             OrderType::MarketSell => quote.unwrap().bid,
             _ => unreachable!("Can only get here with market orders"),
@@ -161,8 +165,8 @@ impl PendingOrders for SimulatedBroker {
 }
 
 impl ClientControlled for SimulatedBroker {
-    fn get_holdings(&self) -> &Holdings {
-        &self.holdings
+    fn get_holdings(&self) -> &(dyn Index<&String, Output = f64>) {
+        &self.holdings.0
     }
 
     fn get(&self, symbol: &String) -> Option<&f64> {
@@ -193,19 +197,19 @@ impl SimulatedBroker {
             if pending_orders.is_some() {
                 let active_orders = pending_orders.unwrap();
                 for (order_id, order) in active_orders {
-                    let order = match order.order_type {
-                        OrderType::LimitBuy | OrderType::StopBuy => Order {
-                            order_type: OrderType::MarketBuy,
-                            symbol: quote.symbol.clone(),
-                            shares: order.shares,
-                            price: None,
-                        },
-                        OrderType::LimitSell | OrderType::StopSell => Order {
-                            order_type: OrderType::MarketSell,
-                            symbol: quote.symbol.clone(),
-                            shares: order.shares,
-                            price: None,
-                        },
+                    let order = match order.get_order_type() {
+                        OrderType::LimitBuy | OrderType::StopBuy => Order::new(
+                            OrderType::MarketBuy,
+                            quote.symbol.clone(),
+                            order.get_shares(),
+                            None
+                        ),
+                        OrderType::LimitSell | OrderType::StopSell => Order::new(
+                            OrderType::MarketSell,
+                            quote.symbol.clone(),
+                            order.get_shares(),
+                            None
+                        ),
                         _ => panic!("Orderbook should have only non-market orders"),
                     };
                     let order_result = self.execute_order(&order);
@@ -241,10 +245,7 @@ impl SimulatedBroker {
     }
 }
 
-trait Prices {
-    fn get_prices(&self, symbol: &String) -> Option<Quote>;
-    fn get_all_prices(&self) -> Vec<Quote>;
-}
+
 
 #[derive(Clone)]
 struct BrokerSimAPI {
@@ -252,7 +253,7 @@ struct BrokerSimAPI {
     date: i64,
 }
 
-impl Prices for BrokerSimAPI {
+impl PriceAPI for BrokerSimAPI {
     fn get_prices(&self, symbol: &String) -> Option<Quote> {
         let quote = self.raw_data.get_date_symbol(&self.date, symbol);
         match quote {
@@ -359,13 +360,12 @@ mod tests {
         brkr.deposit_cash(100_000.00);
         brkr.set_date(&100);
 
-        let order = Order {
-            order_type: OrderType::MarketBuy,
-            symbol: String::from("ABC"),
-            shares: 495.00,
-            price: None,
-        };
-
+        let order = Order::new(
+            OrderType::MarketBuy,
+            String::from("ABC"),
+            495.00,
+            None
+        );
         let _res = brkr.execute_order(&order);
 
         let cash = brkr.get_cash_balance();
@@ -378,13 +378,12 @@ mod tests {
         brkr.deposit_cash(100.00);
         brkr.set_date(&100);
 
-        let order = Order {
-            order_type: OrderType::MarketBuy,
-            symbol: String::from("ABC"),
-            shares: 495.00,
-            price: None,
-        };
-
+        let order = Order::new(
+            OrderType::MarketBuy,
+            String::from("ABC"),
+            495.00,
+            None
+        );
         let res = brkr.execute_order(&order);
 
         let cash = brkr.get_cash_balance();
@@ -398,13 +397,12 @@ mod tests {
         brkr.deposit_cash(100_000.00);
         brkr.set_date(&100);
 
-        let order = Order {
-            order_type: OrderType::MarketBuy,
-            symbol: String::from("ABC"),
-            shares: 495.00,
-            price: None,
-        };
-
+        let order = Order::new(
+            OrderType::MarketBuy,
+            String::from("ABC"),
+            495.00,
+            None
+        );
         let _res = brkr.execute_order(&order);
 
         let qty = brkr.get_position_qty(&String::from("ABC")).unwrap();
@@ -417,21 +415,20 @@ mod tests {
         brkr.deposit_cash(100_000.00);
         brkr.set_date(&100);
 
-        let order = Order {
-            order_type: OrderType::MarketBuy,
-            symbol: String::from("ABC"),
-            shares: 495.00,
-            price: None,
-        };
-
+        let order = Order::new(
+            OrderType::MarketBuy,
+            String::from("ABC"),
+            495.00,
+            None
+        );
         let _res = brkr.execute_order(&order);
 
-        let order1 = Order {
-            order_type: OrderType::MarketSell,
-            symbol: String::from("ABC"),
-            shares: 295.00,
-            price: None,
-        };
+        let order1 = Order::new(
+            OrderType::MarketSell,
+            String::from("ABC"),
+            295.00,
+            None
+        );
         let _res1 = brkr.execute_order(&order1);
 
         let qty = brkr.get_position_qty(&String::from("ABC")).unwrap();
@@ -448,13 +445,12 @@ mod tests {
         brkr.deposit_cash(100_000.00);
         brkr.set_date(&100);
 
-        let order = Order {
-            order_type: OrderType::LimitBuy,
-            symbol: String::from("ABC"),
-            shares: 495.00,
-            price: Some(102.00),
-        };
-
+        let order = Order::new(
+            OrderType::LimitBuy,
+            String::from("ABC"),
+            495.00,
+            Some(102.00)
+        );
         let _res = brkr.insert_order(&order);
 
         brkr.set_date(&101);
@@ -471,22 +467,20 @@ mod tests {
         brkr.deposit_cash(100_000.00);
         brkr.set_date(&100);
 
-        let entry_order = Order {
-            order_type: OrderType::MarketBuy,
-            symbol: String::from("ABC"),
-            shares: 500.0,
-            price: None,
-        };
-
+        let entry_order= Order::new(
+            OrderType::MarketBuy,
+            String::from("ABC"),
+            500.0,
+            None
+        );
         let _res = brkr.execute_order(&entry_order);
 
-        let stop_order = Order {
-            order_type: OrderType::StopSell,
-            symbol: String::from("ABC"),
-            shares: 500.0,
-            price: Some(98.0),
-        };
-
+        let stop_order= Order::new(
+            OrderType::StopSell,
+            String::from("ABC"),
+            500.0,
+            Some(98.0),
+        );
         let _res1 = brkr.insert_order(&stop_order);
         brkr.set_date(&101);
         brkr.set_date(&102);
@@ -502,13 +496,12 @@ mod tests {
         brkr.deposit_cash(100_000.00);
         brkr.set_date(&100);
 
-        let order = Order {
-            order_type: OrderType::MarketBuy,
-            symbol: String::from("ABC"),
-            shares: 495.00,
-            price: None,
-        };
-
+        let order = Order::new(
+            OrderType::MarketBuy,
+            String::from("ABC"),
+            495.0,
+            None
+        );
         let _res = brkr.execute_order(&order);
 
         let val = brkr.get_position_value(&String::from("ABC")).unwrap();
@@ -523,13 +516,12 @@ mod tests {
         brkr.deposit_cash(100_000.00);
         brkr.set_date(&100);
 
-        let order = Order {
-            order_type: OrderType::MarketBuy,
-            symbol: String::from("ABC"),
-            shares: 495.00,
-            price: None,
-        };
-
+        let order = Order::new(
+            OrderType::MarketBuy,
+            String::from("ABC"),
+            495.0,
+            None
+        );
         let _res = brkr.execute_order(&order);
 
         brkr.set_date(&101);

@@ -20,9 +20,9 @@ fn test_that_portfolio_creates_correct_orders_given_weights() {
     let port = SimPortfolio::new(brkr);
     let orders = port.update_weights(&target_weights, &universe);
     for order in orders {
-        match order.symbol.as_str() {
-            "ABC" => assert!(order.shares == 490.0),
-            "BCD" => assert!(order.shares == 99.0),
+        match order.get_symbol().as_str() {
+            "ABC" => assert!(order.get_shares() == 490.0),
+            "BCD" => assert!(order.get_shares() == 99.0),
             _ => unreachable!("Shouldn't call with any other symbol"),
         }
     }

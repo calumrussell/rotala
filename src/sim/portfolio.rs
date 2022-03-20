@@ -79,21 +79,21 @@ impl Portfolio for SimPortfolio {
                 Some(q) => {
                     if diff_val > 0.0 {
                         let target_shares = round::floor(diff_val / q.ask, 0);
-                        let order = Order {
-                            order_type: OrderType::MarketBuy,
-                            symbol: symbol.clone(),
-                            shares: target_shares,
-                            price: None,
-                        };
+                        let order = Order::new(
+                            OrderType::MarketBuy,
+                            symbol.clone(),
+                            target_shares,
+                            None
+                        );
                         buy_orders.push(order);
                     } else {
                         let target_shares = round::floor(diff_val / q.bid, 0);
-                        let order = Order {
-                            order_type: OrderType::MarketSell,
-                            symbol: symbol.clone(),
-                            shares: target_shares * -1.0,
-                            price: None,
-                        };
+                        let order = Order::new(
+                            OrderType::MarketSell,
+                            symbol.clone(),
+                            target_shares * -1.0,
+                            None
+                        );
                         sell_orders.push(order);
                     }
                 }
