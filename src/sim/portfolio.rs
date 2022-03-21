@@ -2,11 +2,11 @@ use std::collections::HashMap;
 
 use math::round;
 
-use crate::broker::{Order, OrderExecutor, OrderType};
+use super::broker::SimulatedBroker;
 use crate::broker::{BrokerEvent, CashManager, PositionInfo, PriceQuote};
+use crate::broker::{Order, OrderExecutor, OrderType};
 use crate::portfolio::{Portfolio, PortfolioStats};
 use crate::universe::{DefinedUniverse, StaticUniverse};
-use super::broker::SimulatedBroker;
 
 #[derive(Clone)]
 pub struct SimPortfolio {
@@ -79,12 +79,8 @@ impl Portfolio for SimPortfolio {
                 Some(q) => {
                     if diff_val > 0.0 {
                         let target_shares = round::floor(diff_val / q.ask, 0);
-                        let order = Order::new(
-                            OrderType::MarketBuy,
-                            symbol.clone(),
-                            target_shares,
-                            None
-                        );
+                        let order =
+                            Order::new(OrderType::MarketBuy, symbol.clone(), target_shares, None);
                         buy_orders.push(order);
                     } else {
                         let target_shares = round::floor(diff_val / q.bid, 0);
@@ -92,7 +88,7 @@ impl Portfolio for SimPortfolio {
                             OrderType::MarketSell,
                             symbol.clone(),
                             target_shares * -1.0,
-                            None
+                            None,
                         );
                         sell_orders.push(order);
                     }

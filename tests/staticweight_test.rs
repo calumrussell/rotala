@@ -3,10 +3,10 @@ mod common;
 use rand::distributions::Uniform;
 use std::collections::HashMap;
 
-use alator::sim::broker::SimulatedBroker;
 use alator::broker::Quote;
 use alator::data::DataSource;
 use alator::perf::PortfolioPerformance;
+use alator::sim::broker::SimulatedBroker;
 use alator::sim::portfolio::SimPortfolio;
 use alator::simcontext::SimContext;
 use alator::strategy::staticweight::StaticWeightStrategyRulesMonthlyRebalancing;

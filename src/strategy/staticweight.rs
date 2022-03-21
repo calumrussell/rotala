@@ -1,8 +1,8 @@
 use std::collections::HashMap;
 
-use crate::sim::portfolio::SimPortfolio;
 use crate::portfolio::{Portfolio, PortfolioStats};
 use crate::schedule::{LastBusinessDayTradingSchedule, TradingSchedule};
+use crate::sim::portfolio::SimPortfolio;
 use crate::strategy::Strategy;
 use crate::universe::StaticUniverse;
 

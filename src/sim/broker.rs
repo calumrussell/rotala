@@ -3,18 +3,17 @@ use std::collections::HashMap;
 use std::ops::Index;
 
 use super::orderbook::SimOrderBook;
-use crate::broker::rules::OrderExecutionRules;
-use crate::broker::{Order, OrderExecutor, OrderType};
 use crate::broker::record::TradeRecord;
+use crate::broker::rules::OrderExecutionRules;
 use crate::broker::{
-    BrokerEvent, CashManager, ClientControlled, PendingOrders, PositionInfo, PriceQuote,
-    Quote, Trade, TradeLedger, PriceAPI,
+    BrokerEvent, CashManager, ClientControlled, PendingOrders, PositionInfo, PriceAPI, PriceQuote,
+    Quote, Trade, TradeLedger,
 };
+use crate::broker::{Order, OrderExecutor, OrderType};
 use crate::data::{DataSource, SimSource};
 
 #[derive(Clone)]
 pub struct Holdings(pub HashMap<String, f64>);
-
 
 #[derive(Clone)]
 pub struct SimulatedBroker {
@@ -202,13 +201,13 @@ impl SimulatedBroker {
                             OrderType::MarketBuy,
                             quote.symbol.clone(),
                             order.get_shares(),
-                            None
+                            None,
                         ),
                         OrderType::LimitSell | OrderType::StopSell => Order::new(
                             OrderType::MarketSell,
                             quote.symbol.clone(),
                             order.get_shares(),
-                            None
+                            None,
                         ),
                         _ => panic!("Orderbook should have only non-market orders"),
                     };
@@ -244,8 +243,6 @@ impl SimulatedBroker {
         }
     }
 }
-
-
 
 #[derive(Clone)]
 struct BrokerSimAPI {
@@ -289,8 +286,8 @@ impl BrokerSimAPI {
 mod tests {
 
     use super::{PendingOrders, SimulatedBroker};
-    use crate::broker::{Order, OrderExecutor, OrderType};
     use crate::broker::{BrokerEvent, CashManager, PositionInfo, Quote, TradeLedger};
+    use crate::broker::{Order, OrderExecutor, OrderType};
     use crate::data::DataSource;
 
     use std::collections::HashMap;
@@ -360,12 +357,7 @@ mod tests {
         brkr.deposit_cash(100_000.00);
         brkr.set_date(&100);
 
-        let order = Order::new(
-            OrderType::MarketBuy,
-            String::from("ABC"),
-            495.00,
-            None
-        );
+        let order = Order::new(OrderType::MarketBuy, String::from("ABC"), 495.00, None);
         let _res = brkr.execute_order(&order);
 
         let cash = brkr.get_cash_balance();
@@ -378,12 +370,7 @@ mod tests {
         brkr.deposit_cash(100.00);
         brkr.set_date(&100);
 
-        let order = Order::new(
-            OrderType::MarketBuy,
-            String::from("ABC"),
-            495.00,
-            None
-        );
+        let order = Order::new(OrderType::MarketBuy, String::from("ABC"), 495.00, None);
         let res = brkr.execute_order(&order);
 
         let cash = brkr.get_cash_balance();
@@ -397,12 +384,7 @@ mod tests {
         brkr.deposit_cash(100_000.00);
         brkr.set_date(&100);
 
-        let order = Order::new(
-            OrderType::MarketBuy,
-            String::from("ABC"),
-            495.00,
-            None
-        );
+        let order = Order::new(OrderType::MarketBuy, String::from("ABC"), 495.00, None);
         let _res = brkr.execute_order(&order);
 
         let qty = brkr.get_position_qty(&String::from("ABC")).unwrap();
@@ -415,20 +397,10 @@ mod tests {
         brkr.deposit_cash(100_000.00);
         brkr.set_date(&100);
 
-        let order = Order::new(
-            OrderType::MarketBuy,
-            String::from("ABC"),
-            495.00,
-            None
-        );
+        let order = Order::new(OrderType::MarketBuy, String::from("ABC"), 495.00, None);
         let _res = brkr.execute_order(&order);
 
-        let order1 = Order::new(
-            OrderType::MarketSell,
-            String::from("ABC"),
-            295.00,
-            None
-        );
+        let order1 = Order::new(OrderType::MarketSell, String::from("ABC"), 295.00, None);
         let _res1 = brkr.execute_order(&order1);
 
         let qty = brkr.get_position_qty(&String::from("ABC")).unwrap();
@@ -449,7 +421,7 @@ mod tests {
             OrderType::LimitBuy,
             String::from("ABC"),
             495.00,
-            Some(102.00)
+            Some(102.00),
         );
         let _res = brkr.insert_order(&order);
 
@@ -467,20 +439,10 @@ mod tests {
         brkr.deposit_cash(100_000.00);
         brkr.set_date(&100);
 
-        let entry_order= Order::new(
-            OrderType::MarketBuy,
-            String::from("ABC"),
-            500.0,
-            None
-        );
+        let entry_order = Order::new(OrderType::MarketBuy, String::from("ABC"), 500.0, None);
         let _res = brkr.execute_order(&entry_order);
 
-        let stop_order= Order::new(
-            OrderType::StopSell,
-            String::from("ABC"),
-            500.0,
-            Some(98.0),
-        );
+        let stop_order = Order::new(OrderType::StopSell, String::from("ABC"), 500.0, Some(98.0));
         let _res1 = brkr.insert_order(&stop_order);
         brkr.set_date(&101);
         brkr.set_date(&102);
@@ -496,12 +458,7 @@ mod tests {
         brkr.deposit_cash(100_000.00);
         brkr.set_date(&100);
 
-        let order = Order::new(
-            OrderType::MarketBuy,
-            String::from("ABC"),
-            495.0,
-            None
-        );
+        let order = Order::new(OrderType::MarketBuy, String::from("ABC"), 495.0, None);
         let _res = brkr.execute_order(&order);
 
         let val = brkr.get_position_value(&String::from("ABC")).unwrap();
@@ -516,12 +473,7 @@ mod tests {
         brkr.deposit_cash(100_000.00);
         brkr.set_date(&100);
 
-        let order = Order::new(
-            OrderType::MarketBuy,
-            String::from("ABC"),
-            495.0,
-            None
-        );
+        let order = Order::new(OrderType::MarketBuy, String::from("ABC"), 495.0, None);
         let _res = brkr.execute_order(&order);
 
         brkr.set_date(&101);

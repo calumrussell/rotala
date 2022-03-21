@@ -5,9 +5,9 @@ use std::collections::HashMap;
 use std::ops::Range;
 use std::rc::Rc;
 
-use alator::sim::broker::SimulatedBroker;
 use alator::broker::Quote;
 use alator::data::DataSource;
+use alator::sim::broker::SimulatedBroker;
 use alator::universe::{DefinedUniverse, StaticUniverse};
 
 pub fn build_fake_quote_stream(

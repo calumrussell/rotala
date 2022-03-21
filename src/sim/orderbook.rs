@@ -1,8 +1,8 @@
 use itertools::Itertools;
 use std::collections::HashMap;
 
-use crate::broker::{Order, OrderType};
 use crate::broker::{BrokerEvent, Quote};
+use crate::broker::{Order, OrderType};
 
 #[derive(Clone)]
 pub struct SimOrderBook {
@@ -99,18 +99,8 @@ mod tests {
 
     #[test]
     fn test_that_orderbook_with_buy_limit_triggers_correctly() {
-        let order = Order::new(
-            OrderType::LimitBuy,
-            String::from("ABC"),
-            100.0,
-            Some(100.0)
-        );
-        let order1 = Order::new(
-            OrderType::LimitBuy,
-            String::from("ABC"),
-            100.0,
-            Some(105.0)
-        );
+        let order = Order::new(OrderType::LimitBuy, String::from("ABC"), 100.0, Some(100.0));
+        let order1 = Order::new(OrderType::LimitBuy, String::from("ABC"), 100.0, Some(105.0));
         let (mut orderbook, quote) = setup();
         orderbook.insert_order(&order);
         orderbook.insert_order(&order1);
@@ -125,13 +115,13 @@ mod tests {
             OrderType::LimitSell,
             String::from("ABC"),
             100.0,
-            Some(100.0)
+            Some(100.0),
         );
         let order1 = Order::new(
             OrderType::LimitSell,
             String::from("ABC"),
             100.0,
-            Some(105.0)
+            Some(105.0),
         );
 
         let (mut orderbook, quote) = setup();
@@ -147,18 +137,8 @@ mod tests {
         //We are short from 90, and we put a StopBuy of 100 & 105 to take
         //off the position. If we are quoted 101/102 then our 100 order
         //should be executed.
-        let order = Order::new(
-            OrderType::StopBuy,
-            String::from("ABC"),
-            100.0,
-            Some(100.0)
-        );
-        let order1 = Order::new(
-            OrderType::StopBuy,
-            String::from("ABC"),
-            100.0,
-            Some(105.0)
-        );
+        let order = Order::new(OrderType::StopBuy, String::from("ABC"), 100.0, Some(100.0));
+        let order1 = Order::new(OrderType::StopBuy, String::from("ABC"), 100.0, Some(105.0));
 
         let (mut orderbook, quote) = setup();
         orderbook.insert_order(&order);
@@ -172,18 +152,8 @@ mod tests {
     fn test_that_orderbook_with_sell_stop_triggers_correctly() {
         //Long from 110, we place orders to exit at 100 and 105.
         //If we are quoted 101/102 then our 105 StopSell is executed.
-        let order = Order::new(
-            OrderType::StopSell,
-            String::from("ABC"),
-            100.0,
-            Some(100.0)
-        );
-        let order1 = Order::new(
-            OrderType::StopSell,
-            String::from("ABC"),
-            100.0,
-            Some(105.0)
-        );
+        let order = Order::new(OrderType::StopSell, String::from("ABC"), 100.0, Some(100.0));
+        let order1 = Order::new(OrderType::StopSell, String::from("ABC"), 100.0, Some(105.0));
         let (mut orderbook, quote) = setup();
         orderbook.insert_order(&order);
         orderbook.insert_order(&order1);
@@ -194,18 +164,8 @@ mod tests {
 
     #[test]
     fn test_that_orderbook_doesnt_load_market_orders() {
-        let order = Order::new(
-            OrderType::MarketBuy,
-            String::from("ABC"),
-            100.0,
-            None
-        );
-        let order1 = Order::new(
-            OrderType::MarketSell,
-            String::from("ABC"),
-            100.0,
-            None
-        );
+        let order = Order::new(OrderType::MarketBuy, String::from("ABC"), 100.0, None);
+        let order1 = Order::new(OrderType::MarketSell, String::from("ABC"), 100.0, None);
         let (mut orderbook, _quote) = setup();
         orderbook.insert_order(&order);
         orderbook.insert_order(&order1);
@@ -252,12 +212,7 @@ mod tests {
 
     #[test]
     fn test_that_orderbook_returns_order_failure_event_on_creating_bad_order() {
-        let order = Order::new(
-            OrderType::MarketBuy,
-            String::from("ABC"),
-            100.0,
-            None
-        );
+        let order = Order::new(OrderType::MarketBuy, String::from("ABC"), 100.0, None);
         let (mut orderbook, _quote) = setup();
         let res = orderbook.insert_order(&order);
         assert!(matches!(res, BrokerEvent::OrderFailure(..)));

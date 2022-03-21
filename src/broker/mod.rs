@@ -50,13 +50,13 @@ pub trait PriceQuote {
 }
 
 /* Returning trait object is needed to require some abstraction from
-   whatever data structure is used to represent portfolio holdings.
-   
-   Used to implement a Holdings enum within broker that fixed the
-   underlying datastructure, but it makes more sense to let clients
-   implement this. The only specification we need here is that we
-   can index the object for the number of units held.
- */
+  whatever data structure is used to represent portfolio holdings.
+
+  Used to implement a Holdings enum within broker that fixed the
+  underlying datastructure, but it makes more sense to let clients
+  implement this. The only specification we need here is that we
+  can index the object for the number of units held.
+*/
 pub trait ClientControlled {
     fn update_holdings(&mut self, symbol: &String, change: &f64);
     fn get_holdings(&self) -> &(dyn Index<&String, Output = f64>);
@@ -113,12 +113,12 @@ impl Order {
         self.order_type
     }
 
-    pub fn new(order_type: OrderType, symbol: String, shares: f64, price: Option<f64> ) -> Self {
+    pub fn new(order_type: OrderType, symbol: String, shares: f64, price: Option<f64>) -> Self {
         Order {
             order_type,
             symbol,
             shares,
-            price
+            price,
         }
     }
 }

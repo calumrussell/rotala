@@ -1,8 +1,8 @@
 mod common;
 
-use alator::sim::broker::SimulatedBroker;
 use alator::data::DataSource;
 use alator::perf::PortfolioPerformance;
+use alator::sim::broker::SimulatedBroker;
 use alator::sim::portfolio::SimPortfolio;
 use alator::simcontext::SimContext;
 use alator::universe::StaticUniverse;

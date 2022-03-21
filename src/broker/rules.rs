@@ -1,5 +1,5 @@
-use crate::broker::{Order, OrderType};
 use crate::broker::{BrokerEvent, CashManager, ClientControlled, Trade, TradeLedger};
+use crate::broker::{Order, OrderType};
 
 pub struct OrderExecutionRules;
 
