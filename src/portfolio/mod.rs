@@ -14,4 +14,5 @@ pub trait Portfolio {
 
 pub trait PortfolioStats {
     fn get_total_value(&self, universe: &StaticUniverse) -> f64;
+    fn get_position_value(&self, ticker: &String) -> Option<f64>;
 }

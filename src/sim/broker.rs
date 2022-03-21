@@ -3,7 +3,7 @@ use std::collections::HashMap;
 use std::ops::Index;
 
 use super::orderbook::SimOrderBook;
-use super::execution::OrderExecutionRules;
+use crate::broker::rules::OrderExecutionRules;
 use crate::broker::{Order, OrderExecutor, OrderType};
 use crate::broker::record::TradeRecord;
 use crate::broker::{

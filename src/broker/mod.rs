@@ -1,6 +1,7 @@
 use std::ops::Index;
 
 pub mod record;
+pub mod rules;
 
 #[derive(Clone, Debug)]
 pub struct Quote {

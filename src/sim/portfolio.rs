@@ -25,6 +25,10 @@ impl PortfolioStats for SimPortfolio {
         }
         value
     }
+
+    fn get_position_value(&self, symbol: &String) -> Option<f64> {
+        self.brkr.get_position_value(symbol)
+    }
 }
 
 impl SimPortfolio {
@@ -34,10 +38,6 @@ impl SimPortfolio {
 
     pub fn set_date(&mut self, new_date: &i64) {
         self.brkr.set_date(new_date);
-    }
-
-    fn get_position_value(&self, symbol: &String) -> Option<f64> {
-        self.brkr.get_position_value(symbol)
     }
 
     pub fn execute_orders(&mut self, orders: Vec<Order>) -> Vec<BrokerEvent> {
