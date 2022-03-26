@@ -69,7 +69,7 @@ impl PortfolioPerformance {
 
     pub fn new() -> Self {
         PortfolioPerformance {
-            portfolio_value: TimeSeries::new(None, Vec::new()),
+            portfolio_value: TimeSeries::new::<f64>(None, Vec::new()),
         }
     }
 }

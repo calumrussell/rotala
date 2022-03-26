@@ -10,7 +10,7 @@ impl TimeSeries {
         let mut res: Vec<f64> = Vec::new();
         let mut temp = &self.values[0];
         for i in self.values.iter().skip(1).into_iter() {
-            let pct_change = i / temp;
+            let pct_change = i.clone() / temp.clone();
             res.push(pct_change.log10());
             temp = i
         }
@@ -84,21 +84,36 @@ impl TimeSeries {
         }
     }
 
-    pub fn new(index: Option<Vec<f64>>, values: Vec<f64>) -> Self {
+    pub fn new<T: Into<f64>>(index: Option<Vec<T>>, values: Vec<T>) -> Self {
+        let mut val_converted: Vec<f64> = Vec::new();
+        for v in values {
+            let val = v.into();
+            val_converted.push(val);
+        }
+
         if index.is_some() {
+            let mut idx_converted: Vec<f64> = Vec::new();
+            for i in index.unwrap() {
+                let val = i.into();
+                idx_converted.push(val);
+            }
+
             TimeSeries {
-                index: index.unwrap(),
-                values,
+                index: idx_converted,
+                values: val_converted,
             }
         } else {
-            if values.len() == 0 {
+            if val_converted.len() == 0 {
                 TimeSeries {
                     index: Vec::new(),
-                    values,
+                    values: Vec::new(),
                 }
             } else {
-                let idx = (0..values.len() - 1).map(|v| v as f64).collect_vec();
-                TimeSeries { index: idx, values }
+                let idx = (0..val_converted.len() - 1).map(|v| v as f64).collect_vec();
+                TimeSeries {
+                    index: idx,
+                    values: val_converted,
+                }
             }
         }
     }
@@ -115,7 +130,7 @@ mod tests {
         fake_prices.push(120.0);
         fake_prices.push(80.0);
         fake_prices.push(90.0);
-        TimeSeries::new(None, fake_prices)
+        TimeSeries::new(Option::None, fake_prices)
     }
 
     #[test]
