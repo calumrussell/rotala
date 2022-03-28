@@ -1,4 +1,4 @@
-use std::ops::Index;
+use std::collections::HashMap;
 
 pub mod record;
 pub mod rules;
@@ -19,7 +19,6 @@ pub struct Trade {
 }
 
 #[derive(Clone)]
-
 pub enum BrokerEvent {
     TradeSuccess(Trade),
     TradeFailure(Order),
@@ -49,17 +48,10 @@ pub trait PriceQuote {
     fn get_quote(&self, symbol: &String) -> Option<Quote>;
 }
 
-/* Returning trait object is needed to require some abstraction from
-  whatever data structure is used to represent portfolio holdings.
-
-  Used to implement a Holdings enum within broker that fixed the
-  underlying datastructure, but it makes more sense to let clients
-  implement this. The only specification we need here is that we
-  can index the object for the number of units held.
-*/
 pub trait ClientControlled {
+    fn get_positions(&self) -> Vec<String>;
     fn update_holdings(&mut self, symbol: &String, change: &f64);
-    fn get_holdings(&self) -> &(dyn Index<&String, Output = f64>);
+    fn get_holdings(&self) -> HashMap<String, f64>;
     fn get(&self, symbol: &String) -> Option<&f64>;
 }
 

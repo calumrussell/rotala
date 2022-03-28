@@ -10,7 +10,6 @@ use alator::sim::broker::SimulatedBroker;
 use alator::sim::portfolio::SimPortfolio;
 use alator::simcontext::SimContext;
 use alator::strategy::staticweight::StaticWeightStrategyRulesMonthlyRebalancing;
-use alator::universe::StaticUniverse;
 
 use common::build_fake_quote_stream;
 
@@ -56,11 +55,10 @@ fn staticweight_integration_test() {
     let dates = raw_data.keys().map(|d| d.clone()).collect();
     let source = DataSource::from_hashmap(raw_data);
 
-    let universe = StaticUniverse::new(vec!["ABC", "BCD"]);
     let simbrkr = SimulatedBroker::new(source);
     let port = SimPortfolio::new(simbrkr);
 
-    let strat = StaticWeightStrategyRulesMonthlyRebalancing::new(port, universe, weights);
+    let strat = StaticWeightStrategyRulesMonthlyRebalancing::new(port, weights);
     let perf = PortfolioPerformance::new();
     let mut sim = SimContext::new(dates, initial_cash, &strat, perf);
     sim.run();

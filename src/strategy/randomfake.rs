@@ -36,12 +36,12 @@ impl Strategy for RandomStrategyRulesWithFakeDataSource {
                 initial += -weight
             }
 
-            let orders = self.portfolio.update_weights(&temp, &self.universe);
+            let orders = self.portfolio.update_weights(&temp);
             if orders.len() > 0 {
                 self.portfolio.execute_orders(orders);
             }
         }
-        self.portfolio.get_total_value(&self.universe)
+        self.portfolio.get_total_value()
     }
 }
 

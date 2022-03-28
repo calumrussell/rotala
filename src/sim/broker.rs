@@ -1,6 +1,5 @@
 use core::panic;
 use std::collections::HashMap;
-use std::ops::Index;
 
 use super::orderbook::SimOrderBook;
 use crate::broker::record::TradeRecord;
@@ -17,7 +16,7 @@ pub struct Holdings(pub HashMap<String, f64>);
 
 #[derive(Clone)]
 pub struct SimulatedBroker {
-    holdings: Holdings,
+    holdings: HashMap<String, f64>,
     simapi: BrokerSimAPI,
     orderbook: SimOrderBook,
     cash: f64,
@@ -78,7 +77,7 @@ impl PositionInfo for SimulatedBroker {
     }
 
     fn get_position_qty(&self, symbol: &String) -> Option<f64> {
-        let pos = self.holdings.0.get(symbol);
+        let pos = self.holdings.get(symbol);
         match pos {
             Some(p) => Some(p.clone()),
             _ => None,
@@ -164,16 +163,20 @@ impl PendingOrders for SimulatedBroker {
 }
 
 impl ClientControlled for SimulatedBroker {
-    fn get_holdings(&self) -> &(dyn Index<&String, Output = f64>) {
-        &self.holdings.0
+    fn get_positions(&self) -> Vec<String> {
+        self.holdings.keys().map(|x| x.clone()).collect()
+    }
+
+    fn get_holdings(&self) -> HashMap<String, f64> {
+        self.holdings.clone()
     }
 
     fn get(&self, symbol: &String) -> Option<&f64> {
-        self.holdings.0.get(symbol)
+        self.holdings.get(symbol)
     }
 
     fn update_holdings(&mut self, symbol: &String, change: &f64) {
-        self.holdings.0.insert(symbol.clone(), *change);
+        self.holdings.insert(symbol.clone(), *change);
     }
 }
 
@@ -227,8 +230,7 @@ impl SimulatedBroker {
     }
 
     pub fn new(raw_data: DataSource) -> SimulatedBroker {
-        let holdings_data: HashMap<String, f64> = HashMap::new();
-        let holdings = Holdings(holdings_data);
+        let holdings: HashMap<String, f64> = HashMap::new();
         let orderbook = SimOrderBook::new();
 
         let ledger = TradeRecord::new();
@@ -479,5 +481,20 @@ mod tests {
         brkr.set_date(&101);
         let profit = brkr.get_position_profit(&String::from("ABC")).unwrap();
         assert!(profit == 1485.00);
+    }
+    #[test]
+    fn test_that_order_for_non_existent_stock_returns_error() {
+        let (mut brkr, _) = setup();
+        brkr.deposit_cash(100_000.00);
+        brkr.set_date(&100);
+
+        //Ticker is not in the data
+        let order = Order::new(OrderType::MarketBuy, String::from("XYZ"), 495.0, None);
+        let res = brkr.execute_order(&order);
+        brkr.set_date(&101);
+
+        let cash = brkr.get_cash_balance();
+        assert!(cash == 100_000.00);
+        assert!(matches!(res, BrokerEvent::TradeFailure(..)));
     }
 }
