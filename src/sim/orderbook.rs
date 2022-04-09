@@ -4,6 +4,10 @@ use std::collections::HashMap;
 use crate::broker::{BrokerEvent, Quote};
 use crate::broker::{Order, OrderType};
 
+/*
+  Has dependency on implementation details of broker, so
+  needs to be in the sim folder as an implementation
+ */
 #[derive(Clone)]
 pub struct SimOrderBook {
     orderbook: HashMap<u8, Order>,
