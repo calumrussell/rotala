@@ -7,6 +7,8 @@ overall portfolio, and not aware of how the portfolio executes
 changes with the broker.
 */
 
+use crate::perf::PerfStruct;
+
 pub mod fixedweight;
 pub mod randomfake;
 pub mod staticweight;
@@ -15,4 +17,5 @@ pub trait Strategy {
     fn run(&mut self) -> f64;
     fn set_date(&mut self, date: &i64);
     fn init(&mut self, initial_cash: &f64);
+    fn get_perf(&self) -> PerfStruct;
 }

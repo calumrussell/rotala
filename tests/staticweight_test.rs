@@ -58,8 +58,8 @@ fn staticweight_integration_test() {
     let simbrkr = SimulatedBroker::new(source);
     let port = SimPortfolio::new(simbrkr);
 
-    let strat = StaticWeightStrategyRulesMonthlyRebalancing::new(port, weights);
-    let perf = PortfolioPerformance::new();
-    let mut sim = SimContext::new(dates, initial_cash, &strat, perf);
+    let perf = PortfolioPerformance::yearly();
+    let strat = StaticWeightStrategyRulesMonthlyRebalancing::new(port, perf, weights);
+    let mut sim = SimContext::new(dates, initial_cash, &strat);
     sim.run();
 }

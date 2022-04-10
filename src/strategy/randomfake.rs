@@ -2,6 +2,7 @@ use rand::{thread_rng, Rng};
 use rand_distr::Uniform;
 use std::collections::HashMap;
 
+use crate::perf::{PerfStruct, PortfolioPerformance};
 use crate::portfolio::{Portfolio, PortfolioStats};
 use crate::schedule::{LastBusinessDayTradingSchedule, TradingSchedule};
 use crate::sim::portfolio::SimPortfolio;
@@ -13,12 +14,18 @@ pub struct RandomStrategyRulesWithFakeDataSource {
     portfolio: SimPortfolio,
     date: i64,
     universe: StaticUniverse,
+    perf: PortfolioPerformance,
 }
 
 impl Strategy for RandomStrategyRulesWithFakeDataSource {
+    fn get_perf(&self) -> PerfStruct {
+        self.perf.get_output()
+    }
+
     fn set_date(&mut self, date: &i64) {
-        self.portfolio.set_date(date);
+        let state = self.portfolio.set_date(date);
         self.date = *date;
+        self.perf.update(&state)
     }
 
     fn init(&mut self, initital_cash: &f64) {
@@ -52,11 +59,16 @@ impl RandomStrategyRulesWithFakeDataSource {
         rng.sample(weight_dist)
     }
 
-    pub fn new(portfolio: SimPortfolio, universe: StaticUniverse) -> Self {
+    pub fn new(
+        portfolio: SimPortfolio,
+        perf: PortfolioPerformance,
+        universe: StaticUniverse,
+    ) -> Self {
         RandomStrategyRulesWithFakeDataSource {
             portfolio,
             date: -1,
             universe,
+            perf,
         }
     }
 }

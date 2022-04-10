@@ -1,5 +1,6 @@
 use std::collections::HashMap;
 
+use crate::perf::{PerfStruct, PortfolioPerformance};
 use crate::portfolio::{Portfolio, PortfolioStats};
 use crate::schedule::{LastBusinessDayTradingSchedule, TradingSchedule};
 use crate::sim::portfolio::SimPortfolio;
@@ -11,12 +12,18 @@ pub struct StaticWeightStrategyRulesMonthlyRebalancing {
     date: i64,
     target_weights: Vec<HashMap<String, f64>>,
     count: usize,
+    perf: PortfolioPerformance,
 }
 
 impl Strategy for StaticWeightStrategyRulesMonthlyRebalancing {
+    fn get_perf(&self) -> PerfStruct {
+        self.perf.get_output()
+    }
+
     fn set_date(&mut self, date: &i64) {
-        self.portfolio.set_date(date);
+        let state = self.portfolio.set_date(date);
         self.date = *date;
+        self.perf.update(&state)
     }
 
     fn init(&mut self, initital_cash: &f64) {
@@ -38,12 +45,17 @@ impl Strategy for StaticWeightStrategyRulesMonthlyRebalancing {
 }
 
 impl StaticWeightStrategyRulesMonthlyRebalancing {
-    pub fn new(portfolio: SimPortfolio, target_weights: Vec<HashMap<String, f64>>) -> Self {
+    pub fn new(
+        portfolio: SimPortfolio,
+        perf: PortfolioPerformance,
+        target_weights: Vec<HashMap<String, f64>>,
+    ) -> Self {
         StaticWeightStrategyRulesMonthlyRebalancing {
             portfolio,
             date: -1,
             target_weights,
             count: 0,
+            perf,
         }
     }
 }

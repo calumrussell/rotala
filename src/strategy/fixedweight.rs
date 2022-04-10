@@ -1,5 +1,6 @@
 use std::collections::HashMap;
 
+use crate::perf::{PerfStruct, PortfolioPerformance};
 use crate::portfolio::{Portfolio, PortfolioStats};
 use crate::schedule::{DefaultTradingSchedule, TradingSchedule};
 use crate::sim::portfolio::SimPortfolio;
@@ -10,12 +11,18 @@ pub struct FixedWeightStrategy {
     portfolio: SimPortfolio,
     date: i64,
     target_weights: HashMap<String, f64>,
+    perf: PortfolioPerformance,
 }
 
 impl Strategy for FixedWeightStrategy {
+    fn get_perf(&self) -> PerfStruct {
+        self.perf.get_output()
+    }
+
     fn set_date(&mut self, date: &i64) {
-        self.portfolio.set_date(date);
+        let state = self.portfolio.set_date(date);
         self.date = *date;
+        self.perf.update(&state)
     }
 
     fn init(&mut self, initital_cash: &f64) {
@@ -34,11 +41,16 @@ impl Strategy for FixedWeightStrategy {
 }
 
 impl FixedWeightStrategy {
-    pub fn new(portfolio: SimPortfolio, target_weights: HashMap<String, f64>) -> Self {
+    pub fn new(
+        portfolio: SimPortfolio,
+        perf: PortfolioPerformance,
+        target_weights: HashMap<String, f64>,
+    ) -> Self {
         FixedWeightStrategy {
             portfolio,
             date: -1,
             target_weights,
+            perf,
         }
     }
 }

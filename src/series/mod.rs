@@ -1,5 +1,6 @@
 use itertools::Itertools;
 
+#[derive(Clone)]
 pub struct TimeSeries {
     index: Vec<f64>,
     values: Vec<f64>,

@@ -5,7 +5,7 @@ use math::round;
 use super::broker::SimulatedBroker;
 use crate::broker::{BrokerEvent, CashManager, ClientControlled, PositionInfo, PriceQuote};
 use crate::broker::{Order, OrderExecutor, OrderType};
-use crate::portfolio::{Portfolio, PortfolioStats};
+use crate::portfolio::{Holdings, Portfolio, PortfolioState, PortfolioStats};
 
 #[derive(Clone)]
 pub struct SimPortfolio {
@@ -25,8 +25,29 @@ impl PortfolioStats for SimPortfolio {
         value
     }
 
+    fn get_holdings(&self) -> Holdings {
+        let mut holdings = Holdings::new();
+
+        let assets = self.brkr.get_positions();
+        for a in assets {
+            let value = self.brkr.get_position_value(&a);
+            if value.is_some() {
+                holdings.put(&a, &value.unwrap())
+            }
+        }
+        holdings
+    }
+
     fn get_position_value(&self, symbol: &String) -> Option<f64> {
         self.brkr.get_position_value(symbol)
+    }
+
+    fn get_current_state(&self) -> PortfolioState {
+        let holdings = self.get_holdings();
+        PortfolioState {
+            value: self.get_total_value(),
+            positions: holdings,
+        }
     }
 }
 
@@ -35,8 +56,9 @@ impl SimPortfolio {
         SimPortfolio { brkr }
     }
 
-    pub fn set_date(&mut self, new_date: &i64) {
+    pub fn set_date(&mut self, new_date: &i64) -> PortfolioState {
         self.brkr.set_date(new_date);
+        self.get_current_state()
     }
 
     pub fn execute_order(&mut self, order: &Order) -> BrokerEvent {

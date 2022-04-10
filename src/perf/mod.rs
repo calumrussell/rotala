@@ -1,5 +1,6 @@
-use crate::series::TimeSeries;
+use crate::{portfolio::PortfolioState, series::TimeSeries};
 
+#[derive(Clone)]
 enum DataFrequency {
     Daily,
     Monthly,
@@ -9,7 +10,7 @@ enum DataFrequency {
 pub struct PortfolioCalculator;
 
 impl PortfolioCalculator {
-    fn annualize_returns(ret: f64, trading_days: Option<i32>, frequency: DataFrequency) -> f64 {
+    fn annualize_returns(ret: f64, trading_days: Option<i32>, frequency: &DataFrequency) -> f64 {
         let mut days = 0.0;
         if trading_days.is_none() {
             days = 252.0;
@@ -23,7 +24,7 @@ impl PortfolioCalculator {
         }
     }
 
-    fn annualize_volatility(vol: f64, trading_days: Option<i32>, frequency: DataFrequency) -> f64 {
+    fn annualize_volatility(vol: f64, trading_days: Option<i32>, frequency: &DataFrequency) -> f64 {
         let mut days = 0.0;
         if trading_days.is_none() {
             days = 252.0;
@@ -38,40 +39,81 @@ impl PortfolioCalculator {
     }
 }
 
+#[derive(Clone)]
 pub struct PortfolioPerformance {
-    portfolio_value: TimeSeries,
+    values: TimeSeries,
+    states: Vec<PortfolioState>,
+    freq: DataFrequency,
+}
+
+pub struct PerfStruct {
+    pub ret: f64,
+    pub vol: f64,
+    pub mdd: f64,
+    pub sharpe: f64,
 }
 
 impl PortfolioPerformance {
-    pub fn get_portfolio_volatility(&mut self) -> f64 {
-        let rets = TimeSeries::new(None, self.portfolio_value.pct_change());
-        rets.vol()
+    pub fn get_output(&self) -> PerfStruct {
+        PerfStruct {
+            ret: self.get_ret(),
+            vol: self.get_vol(),
+            mdd: self.get_maxdd(),
+            sharpe: self.get_sharpe(),
+        }
     }
 
-    pub fn get_portfolio_sharpe_ratio(&mut self) -> f64 {
-        let vol = self.get_portfolio_volatility();
-        let ret = self.get_portfolio_return();
+    fn get_vol(&self) -> f64 {
+        let rets = TimeSeries::new(None, self.values.pct_change());
+        PortfolioCalculator::annualize_volatility(rets.vol(), None, &self.freq)
+    }
+
+    fn get_sharpe(&self) -> f64 {
+        let vol = self.get_vol();
+        let ret = self.get_ret();
         ret / vol
     }
 
-    pub fn get_portfolio_max_dd(&mut self) -> f64 {
-        self.portfolio_value.maxdd()
+    fn get_maxdd(&self) -> f64 {
+        self.values.maxdd()
     }
 
-    pub fn get_portfolio_return(&mut self) -> f64 {
-        let sum_log_rets = self.portfolio_value.pct_change_log().iter().sum();
-        (10_f64.powf(sum_log_rets) - 1.0) * 100.0
+    fn get_ret(&self) -> f64 {
+        let sum_log_rets = self.values.pct_change_log().iter().sum();
+        let int_ret = (10_f64.powf(sum_log_rets) - 1.0) * 100.0;
+        PortfolioCalculator::annualize_returns(int_ret, None, &self.freq)
     }
 
-    pub fn update(&mut self, value: f64) {
-        self.portfolio_value.append(None, value);
+    pub fn update(&mut self, state: &PortfolioState) {
+        self.values.append(None, state.value);
+        let copy_state = state.clone();
+        self.states.push(copy_state);
     }
 
-    pub fn new() -> Self {
+    pub fn yearly() -> Self {
         PortfolioPerformance {
-            portfolio_value: TimeSeries::new::<f64>(None, Vec::new()),
+            values: TimeSeries::new::<f64>(None, Vec::new()),
+            states: Vec::new(),
+            freq: DataFrequency::Yearly,
         }
     }
+
+    pub fn monthly() -> Self {
+        PortfolioPerformance {
+            values: TimeSeries::new::<f64>(None, Vec::new()),
+            states: Vec::new(),
+            freq: DataFrequency::Monthly,
+        }
+    }
+
+    pub fn daily() -> Self {
+        PortfolioPerformance {
+            values: TimeSeries::new::<f64>(None, Vec::new()),
+            states: Vec::new(),
+            freq: DataFrequency::Daily,
+        }
+    }
+
 }
 
 #[cfg(test)]
@@ -89,7 +131,6 @@ mod tests {
 
     use super::DataFrequency;
     use super::PortfolioCalculator;
-
 
     fn setup() -> SimulatedBroker {
         let mut raw_data: HashMap<i64, Vec<Quote>> = HashMap::new();
@@ -133,35 +174,35 @@ mod tests {
     #[test]
     fn test_that_annualizations_calculate_correctly() {
         assert_eq!(
-            PortfolioCalculator::annualize_returns(0.1, None, DataFrequency::Daily).round(),
+            PortfolioCalculator::annualize_returns(0.1, None, &DataFrequency::Daily).round(),
             29.0
         );
         assert_eq!(
-            PortfolioCalculator::annualize_returns(2.0, None, DataFrequency::Monthly).round(),
+            PortfolioCalculator::annualize_returns(2.0, None, &DataFrequency::Monthly).round(),
             27.0
         );
         assert_eq!(
-            PortfolioCalculator::annualize_returns(27.0, None, DataFrequency::Yearly).round(),
+            PortfolioCalculator::annualize_returns(27.0, None, &DataFrequency::Yearly).round(),
             27.0
         );
 
         assert_eq!(
-            PortfolioCalculator::annualize_volatility(1.0, None, DataFrequency::Daily).round(),
+            PortfolioCalculator::annualize_volatility(1.0, None, &DataFrequency::Daily).round(),
             16.0
         );
         assert_eq!(
-            PortfolioCalculator::annualize_volatility(5.0, None, DataFrequency::Monthly).round(),
+            PortfolioCalculator::annualize_volatility(5.0, None, &DataFrequency::Monthly).round(),
             17.0
         );
         assert_eq!(
-            PortfolioCalculator::annualize_volatility(27.0, None, DataFrequency::Yearly).round(),
+            PortfolioCalculator::annualize_volatility(27.0, None, &DataFrequency::Yearly).round(),
             27.0
         );
     }
 
     #[test]
     fn test_that_portfolio_calculates_performance_accurately() {
-        let mut perf = PortfolioPerformance::new();
+        let mut perf = PortfolioPerformance::yearly();
 
         let mut brkr = setup();
         brkr.deposit_cash(100_000.00);
@@ -175,17 +216,16 @@ mod tests {
         port.set_date(&100);
         let orders = port.update_weights(&target_weights);
         port.execute_orders(orders);
-        perf.update(port.get_total_value());
+        perf.update(&port.get_current_state());
 
         port.set_date(&101);
         let orders = port.update_weights(&target_weights);
         port.execute_orders(orders);
-        perf.update(port.get_total_value());
+        perf.update(&port.get_current_state());
 
-        let portfolio_return = perf.get_portfolio_return();
+        let portfolio_return = perf.get_output().ret;
         //We need to round up to cmp properly
         let to_comp = (portfolio_return * 100.0).round() as i64;
         assert!((to_comp as f64).eq(&69.0));
     }
-
 }
