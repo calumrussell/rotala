@@ -16,9 +16,9 @@ impl SimContext {
         }
     }
 
-    pub fn calculate_perf(&mut self) -> (f64, f64, f64, f64, Vec<f64>, Vec<f64>, Vec<i64>) {
+    pub fn calculate_perf(&mut self) -> (f64, f64, f64, f64, f64, Vec<f64>, Vec<f64>, Vec<i64>) {
         let perf = self.strat.get_perf();
-        (perf.ret, perf.vol, perf.mdd, perf.sharpe, perf.values, perf.returns, self.sim_dates.clone())
+        (perf.ret, perf.cagr, perf.vol, perf.mdd, perf.sharpe, perf.values, perf.returns, self.sim_dates.clone())
     }
 
     pub fn new<T: Into<Box<dyn Strategy>>>(

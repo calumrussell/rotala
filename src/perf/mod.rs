@@ -48,6 +48,7 @@ pub struct PortfolioPerformance {
 
 pub struct PerfStruct {
     pub ret: f64,
+    pub cagr: f64,
     pub vol: f64,
     pub mdd: f64,
     pub sharpe: f64,
@@ -59,6 +60,7 @@ impl PortfolioPerformance {
     pub fn get_output(&self) -> PerfStruct {
         PerfStruct {
             ret: self.get_ret(),
+            cagr: self.get_cagr(),
             vol: self.get_vol(),
             mdd: self.get_maxdd(),
             sharpe: self.get_sharpe(),
@@ -90,10 +92,14 @@ impl PortfolioPerformance {
         self.values.maxdd()
     }
 
+    fn get_cagr(&self) -> f64 {
+        let ret = self.get_ret();
+        PortfolioCalculator::annualize_returns(ret, None, &self.freq)
+    }
+
     fn get_ret(&self) -> f64 {
         let sum_log_rets = self.values.pct_change_log().iter().sum();
-        let int_ret = (10_f64.powf(sum_log_rets) - 1.0) * 100.0;
-        PortfolioCalculator::annualize_returns(int_ret, None, &self.freq)
+        (10_f64.powf(sum_log_rets) - 1.0) * 100.0
     }
 
     pub fn update(&mut self, state: &PortfolioState) {
