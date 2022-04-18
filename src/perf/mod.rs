@@ -51,6 +51,8 @@ pub struct PerfStruct {
     pub vol: f64,
     pub mdd: f64,
     pub sharpe: f64,
+    pub values: Vec<f64>,
+    pub returns: Vec<f64>,
 }
 
 impl PortfolioPerformance {
@@ -60,7 +62,17 @@ impl PortfolioPerformance {
             vol: self.get_vol(),
             mdd: self.get_maxdd(),
             sharpe: self.get_sharpe(),
+            values: self.get_values(),
+            returns: self.get_returns(),
         }
+    }
+
+    fn get_values(&self) -> Vec<f64> {
+        self.values.get_values()
+    }
+
+    fn get_returns(&self) -> Vec<f64> {
+        self.values.pct_change()
     }
 
     fn get_vol(&self) -> f64 {
