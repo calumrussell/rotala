@@ -18,8 +18,8 @@ impl PortfolioCalculator {
             days = trading_days.unwrap() as f64;
         }
         match frequency {
-            DataFrequency::Daily => ((1.0 + (ret / 100.0)).powf(days) - 1.0) * 100.0,
-            DataFrequency::Monthly => ((1.0 + (ret / 100.0)).powf(12.0) - 1.0) * 100.0,
+            DataFrequency::Daily => ((1.0 + ret).powf(days)) - 1.0,
+            DataFrequency::Monthly => ((1.0 + ret).powf(12.0)) - 1.0,
             DataFrequency::Yearly => ret,
         }
     }
@@ -32,8 +32,8 @@ impl PortfolioCalculator {
             days = trading_days.unwrap() as f64;
         }
         match frequency {
-            DataFrequency::Daily => ((vol / 100.0) * days.sqrt()) * 100.0,
-            DataFrequency::Monthly => ((vol / 100.0) * (12_f64).sqrt()) * 100.0,
+            DataFrequency::Daily => (vol) * days.sqrt(),
+            DataFrequency::Monthly => (vol) * (12_f64).sqrt(),
             DataFrequency::Yearly => vol,
         }
     }
@@ -79,7 +79,8 @@ impl PortfolioPerformance {
 
     fn get_vol(&self) -> f64 {
         let rets = TimeSeries::new(None, self.values.pct_change());
-        PortfolioCalculator::annualize_volatility(rets.vol(), None, &self.freq)
+        let days = self.values.count() as i32;
+        PortfolioCalculator::annualize_volatility(rets.vol(), Some(days), &self.freq)
     }
 
     fn get_sharpe(&self) -> f64 {
@@ -94,12 +95,13 @@ impl PortfolioPerformance {
 
     fn get_cagr(&self) -> f64 {
         let ret = self.get_ret();
-        PortfolioCalculator::annualize_returns(ret, None, &self.freq)
+        let days = self.values.count() as i32;
+        PortfolioCalculator::annualize_returns(ret, Some(days), &self.freq)
     }
 
     fn get_ret(&self) -> f64 {
         let sum_log_rets = self.values.pct_change_log().iter().sum();
-        (10_f64.powf(sum_log_rets) - 1.0) * 100.0
+        (10_f64.powf(sum_log_rets) - 1.0)
     }
 
     pub fn update(&mut self, state: &PortfolioState) {
@@ -192,28 +194,32 @@ mod tests {
     #[test]
     fn test_that_annualizations_calculate_correctly() {
         assert_eq!(
-            PortfolioCalculator::annualize_returns(0.1, None, &DataFrequency::Daily).round(),
+            (PortfolioCalculator::annualize_returns(0.001, None, &DataFrequency::Daily) * 100.0).round(),
             29.0
         );
         assert_eq!(
-            PortfolioCalculator::annualize_returns(2.0, None, &DataFrequency::Monthly).round(),
+            (PortfolioCalculator::annualize_returns(0.02, None, &DataFrequency::Monthly) * 100.0).round(),
             27.0
         );
         assert_eq!(
-            PortfolioCalculator::annualize_returns(27.0, None, &DataFrequency::Yearly).round(),
+            (PortfolioCalculator::annualize_returns(0.27, None, &DataFrequency::Yearly) * 100.0).round(),
             27.0
+        );
+        assert_eq!(
+            (PortfolioCalculator::annualize_returns(0.001, Some(126), &DataFrequency::Daily) * 100.0).round(),
+            13.0
         );
 
         assert_eq!(
-            PortfolioCalculator::annualize_volatility(1.0, None, &DataFrequency::Daily).round(),
+            (PortfolioCalculator::annualize_volatility(0.01, None, &DataFrequency::Daily) * 100.0).round(),
             16.0
         );
         assert_eq!(
-            PortfolioCalculator::annualize_volatility(5.0, None, &DataFrequency::Monthly).round(),
+            (PortfolioCalculator::annualize_volatility(0.05, None, &DataFrequency::Monthly) * 100.0).round(),
             17.0
         );
         assert_eq!(
-            PortfolioCalculator::annualize_volatility(27.0, None, &DataFrequency::Yearly).round(),
+            (PortfolioCalculator::annualize_volatility(0.27, None, &DataFrequency::Yearly) * 100.0).round(),
             27.0
         );
     }
@@ -241,9 +247,11 @@ mod tests {
         port.execute_orders(orders);
         perf.update(&port.get_current_state());
 
-        let portfolio_return = perf.get_output().ret;
+        let output = perf.get_output();
+
+        let portfolio_return = output.ret;
         //We need to round up to cmp properly
-        let to_comp = (portfolio_return * 100.0).round() as i64;
-        assert!((to_comp as f64).eq(&69.0));
+        let to_comp = (portfolio_return * 1000.0).round() as i64;
+        assert!((to_comp as f64).eq(&7.0));
     }
 }
