@@ -7,6 +7,10 @@ pub struct TimeSeries {
 }
 
 impl TimeSeries {
+    pub fn get_values(&self) -> Vec<f64> {
+        self.values.clone()
+    }
+
     pub fn pct_change_log(&self) -> Vec<f64> {
         let mut res: Vec<f64> = Vec::new();
         let mut temp = &self.values[0];
