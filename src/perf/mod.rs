@@ -10,29 +10,20 @@ enum DataFrequency {
 pub struct PortfolioCalculator;
 
 impl PortfolioCalculator {
-    fn annualize_returns(ret: f64, trading_days: Option<i32>, frequency: &DataFrequency) -> f64 {
-        let mut days = 0.0;
-        if trading_days.is_none() {
-            days = 252.0;
-        } else {
-            days = trading_days.unwrap() as f64;
-        }
+    fn annualize_returns(ret: f64, periods: i32, frequency: &DataFrequency) -> f64 {
+        //Need to work out whether we are always using cumulative returns here
+        //The confusion about the maths has come from using formulas that are daily average
+        //returns...I think we are always using cum returns.
         match frequency {
-            DataFrequency::Daily => ((1.0 + ret).powf(days)) - 1.0,
-            DataFrequency::Monthly => ((1.0 + ret).powf(12.0)) - 1.0,
-            DataFrequency::Yearly => ret,
+            DataFrequency::Daily => ((1.0 + ret).powf(252_f64 / periods as f64)) - 1.0,
+            DataFrequency::Monthly => ((1.0 + ret).powf(1.0 / (periods as f64 / 12_f64))) - 1.0,
+            DataFrequency::Yearly => ((1.0 + ret).powf(1.0 / (periods as f64 / 1.0))) - 1.0,
         }
     }
 
-    fn annualize_volatility(vol: f64, trading_days: Option<i32>, frequency: &DataFrequency) -> f64 {
-        let mut days = 0.0;
-        if trading_days.is_none() {
-            days = 252.0;
-        } else {
-            days = trading_days.unwrap() as f64;
-        }
+    fn annualize_volatility(vol: f64, frequency: &DataFrequency) -> f64 {
         match frequency {
-            DataFrequency::Daily => (vol) * days.sqrt(),
+            DataFrequency::Daily => (vol) * (252_f64).sqrt(),
             DataFrequency::Monthly => (vol) * (12_f64).sqrt(),
             DataFrequency::Yearly => vol,
         }
@@ -79,8 +70,7 @@ impl PortfolioPerformance {
 
     fn get_vol(&self) -> f64 {
         let rets = TimeSeries::new(None, self.values.pct_change());
-        let days = self.values.count() as i32;
-        PortfolioCalculator::annualize_volatility(rets.vol(), Some(days), &self.freq)
+        PortfolioCalculator::annualize_volatility(rets.vol(), &self.freq)
     }
 
     fn get_sharpe(&self) -> f64 {
@@ -96,12 +86,12 @@ impl PortfolioPerformance {
     fn get_cagr(&self) -> f64 {
         let ret = self.get_ret();
         let days = self.values.count() as i32;
-        PortfolioCalculator::annualize_returns(ret, Some(days), &self.freq)
+        PortfolioCalculator::annualize_returns(ret, days, &self.freq)
     }
 
     fn get_ret(&self) -> f64 {
         let sum_log_rets = self.values.pct_change_log().iter().sum();
-        (10_f64.powf(sum_log_rets) - 1.0)
+        10_f64.powf(sum_log_rets) - 1.0
     }
 
     pub fn update(&mut self, state: &PortfolioState) {
@@ -133,7 +123,6 @@ impl PortfolioPerformance {
             freq: DataFrequency::Daily,
         }
     }
-
 }
 
 #[cfg(test)]
@@ -194,32 +183,39 @@ mod tests {
     #[test]
     fn test_that_annualizations_calculate_correctly() {
         assert_eq!(
-            (PortfolioCalculator::annualize_returns(0.001, None, &DataFrequency::Daily) * 100.0).round(),
+            (PortfolioCalculator::annualize_returns(0.29, 252, &DataFrequency::Daily) * 100.0)
+                .round(),
             29.0
         );
         assert_eq!(
-            (PortfolioCalculator::annualize_returns(0.02, None, &DataFrequency::Monthly) * 100.0).round(),
-            27.0
+            (PortfolioCalculator::annualize_returns(0.10, 4, &DataFrequency::Monthly) * 100.0)
+                .round(),
+            33.0
         );
         assert_eq!(
-            (PortfolioCalculator::annualize_returns(0.27, None, &DataFrequency::Yearly) * 100.0).round(),
-            27.0
+            (PortfolioCalculator::annualize_returns(0.30, 3, &DataFrequency::Yearly) * 100.0)
+                .round(),
+            9.0
         );
         assert_eq!(
-            (PortfolioCalculator::annualize_returns(0.001, Some(126), &DataFrequency::Daily) * 100.0).round(),
-            13.0
+            (PortfolioCalculator::annualize_returns(0.05, 126, &DataFrequency::Daily) * 100.0)
+                .round(),
+            10.0
         );
 
         assert_eq!(
-            (PortfolioCalculator::annualize_volatility(0.01, None, &DataFrequency::Daily) * 100.0).round(),
+            (PortfolioCalculator::annualize_volatility(0.01, &DataFrequency::Daily) * 100.0)
+                .round(),
             16.0
         );
         assert_eq!(
-            (PortfolioCalculator::annualize_volatility(0.05, None, &DataFrequency::Monthly) * 100.0).round(),
+            (PortfolioCalculator::annualize_volatility(0.05, &DataFrequency::Monthly) * 100.0)
+                .round(),
             17.0
         );
         assert_eq!(
-            (PortfolioCalculator::annualize_volatility(0.27, None, &DataFrequency::Yearly) * 100.0).round(),
+            (PortfolioCalculator::annualize_volatility(0.27, &DataFrequency::Yearly) * 100.0)
+                .round(),
             27.0
         );
     }
