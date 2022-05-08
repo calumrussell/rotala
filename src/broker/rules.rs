@@ -8,14 +8,14 @@ impl OrderExecutionRules {
         order: &Order,
         price: &f64,
         brkr: &impl CashManager,
-    ) -> Result<bool, f64> {
+    ) -> Result<bool, u64> {
         match order.get_order_type() {
             OrderType::MarketBuy => {
                 let value = price * order.get_shares() as f64;
-                if brkr.get_cash_balance() >= value {
+                if brkr.get_cash_balance() as f64 >= value {
                     return Ok(true);
                 }
-                Err(value)
+                Err(value as u64)
             }
             _ => Ok(true),
         }
@@ -38,8 +38,8 @@ impl OrderExecutionRules {
 
         //Update cash
         match order.get_order_type() {
-            OrderType::MarketBuy => brkr.debit(value),
-            OrderType::MarketSell => brkr.credit(value),
+            OrderType::MarketBuy => brkr.debit(value as u64),
+            OrderType::MarketSell => brkr.credit(value as u64),
             _ => panic!("Cannot call trade_logic with a non-market order"),
         };
 

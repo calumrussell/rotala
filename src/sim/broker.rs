@@ -19,12 +19,12 @@ pub struct SimulatedBroker {
     holdings: HashMap<String, f64>,
     simapi: BrokerSimAPI,
     orderbook: SimOrderBook,
-    cash: f64,
+    cash: u64,
     ledger: TradeRecord,
 }
 
 impl CashManager for SimulatedBroker {
-    fn withdraw_cash(&mut self, cash: f64) -> BrokerEvent {
+    fn withdraw_cash(&mut self, cash: u64) -> BrokerEvent {
         if cash > self.cash {
             return BrokerEvent::InsufficientCash(cash);
         }
@@ -32,17 +32,17 @@ impl CashManager for SimulatedBroker {
         BrokerEvent::SuccessfulWithdraw(cash)
     }
 
-    fn deposit_cash(&mut self, cash: f64) -> BrokerEvent {
+    fn deposit_cash(&mut self, cash: u64) -> BrokerEvent {
         self.cash += cash.clone();
         BrokerEvent::SuccessfulWithdraw(cash)
     }
 
-    fn credit(&mut self, value: f64) -> BrokerEvent {
+    fn credit(&mut self, value: u64) -> BrokerEvent {
         self.cash += value;
         BrokerEvent::CashTransactionSuccess(value)
     }
 
-    fn debit(&mut self, value: f64) -> BrokerEvent {
+    fn debit(&mut self, value: u64) -> BrokerEvent {
         if value > self.cash {
             return BrokerEvent::InsufficientCash(value);
         }
@@ -50,7 +50,7 @@ impl CashManager for SimulatedBroker {
         BrokerEvent::CashTransactionSuccess(value)
     }
 
-    fn get_cash_balance(&self) -> f64 {
+    fn get_cash_balance(&self) -> u64 {
         self.cash
     }
 }
@@ -240,7 +240,7 @@ impl SimulatedBroker {
             simapi,
             holdings,
             orderbook,
-            cash: 0.0,
+            cash: 0_u64,
             ledger,
         }
     }
@@ -356,34 +356,34 @@ mod tests {
     #[test]
     fn test_that_successful_market_buy_order_reduces_cash() {
         let (mut brkr, _) = setup();
-        brkr.deposit_cash(100_000.00);
+        brkr.deposit_cash(100_000_u64);
         brkr.set_date(&100);
 
         let order = Order::new(OrderType::MarketBuy, String::from("ABC"), 495.00, None);
         let _res = brkr.execute_order(&order);
 
         let cash = brkr.get_cash_balance();
-        assert!(cash == 50_005.00);
+        assert!(cash == 50_005_u64);
     }
 
     #[test]
     fn test_that_order_fails_without_cash_bubbling_correct_error() {
         let (mut brkr, _) = setup();
-        brkr.deposit_cash(100.00);
+        brkr.deposit_cash(100_u64);
         brkr.set_date(&100);
 
         let order = Order::new(OrderType::MarketBuy, String::from("ABC"), 495.00, None);
         let res = brkr.execute_order(&order);
 
         let cash = brkr.get_cash_balance();
-        assert!(cash == 100.00);
+        assert!(cash == 100_u64);
         assert!(matches!(res, BrokerEvent::InsufficientCash(..)));
     }
 
     #[test]
     fn test_that_market_buy_increases_holdings() {
         let (mut brkr, _) = setup();
-        brkr.deposit_cash(100_000.00);
+        brkr.deposit_cash(100_000_u64);
         brkr.set_date(&100);
 
         let order = Order::new(OrderType::MarketBuy, String::from("ABC"), 495.00, None);
@@ -396,7 +396,7 @@ mod tests {
     #[test]
     fn test_that_market_sell_decreases_holdings() {
         let (mut brkr, _) = setup();
-        brkr.deposit_cash(100_000.00);
+        brkr.deposit_cash(100_000_u64);
         brkr.set_date(&100);
 
         let order = Order::new(OrderType::MarketBuy, String::from("ABC"), 495.00, None);
@@ -416,7 +416,7 @@ mod tests {
         //order
 
         let (mut brkr, _) = setup();
-        brkr.deposit_cash(100_000.00);
+        brkr.deposit_cash(100_000_u64);
         brkr.set_date(&100);
 
         let order = Order::new(
@@ -438,7 +438,7 @@ mod tests {
     #[test]
     fn test_that_stop_order_decreases_holdings_when_price_hits() {
         let (mut brkr, _) = setup();
-        brkr.deposit_cash(100_000.00);
+        brkr.deposit_cash(100_000_u64);
         brkr.set_date(&100);
 
         let entry_order = Order::new(OrderType::MarketBuy, String::from("ABC"), 500.0, None);
@@ -457,7 +457,7 @@ mod tests {
     #[test]
     fn test_that_valuation_updates_in_next_period() {
         let (mut brkr, _) = setup();
-        brkr.deposit_cash(100_000.00);
+        brkr.deposit_cash(100_000_u64);
         brkr.set_date(&100);
 
         let order = Order::new(OrderType::MarketBuy, String::from("ABC"), 495.0, None);
@@ -472,7 +472,7 @@ mod tests {
     #[test]
     fn test_that_profit_calculation_is_accurate() {
         let (mut brkr, _) = setup();
-        brkr.deposit_cash(100_000.00);
+        brkr.deposit_cash(100_000_u64);
         brkr.set_date(&100);
 
         let order = Order::new(OrderType::MarketBuy, String::from("ABC"), 495.0, None);
@@ -485,7 +485,7 @@ mod tests {
     #[test]
     fn test_that_order_for_non_existent_stock_returns_error() {
         let (mut brkr, _) = setup();
-        brkr.deposit_cash(100_000.00);
+        brkr.deposit_cash(100_000_u64);
         brkr.set_date(&100);
 
         //Ticker is not in the data
@@ -494,7 +494,7 @@ mod tests {
         brkr.set_date(&101);
 
         let cash = brkr.get_cash_balance();
-        assert!(cash == 100_000.00);
+        assert!(cash == 100_000_u64);
         assert!(matches!(res, BrokerEvent::TradeFailure(..)));
     }
 }

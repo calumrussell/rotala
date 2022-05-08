@@ -3,7 +3,8 @@ use std::collections::HashMap;
 use crate::broker::Order;
 
 pub trait Portfolio {
-    fn deposit_cash(&mut self, cash: &f64);
+    fn deposit_cash(&mut self, cash: &u64);
+    fn withdraw_cash(&mut self, cash: &u64);
     fn update_weights(&self, target_weights: &HashMap<String, f64>) -> Vec<Order>;
 }
 
@@ -38,4 +39,5 @@ impl Holdings {
 pub struct PortfolioState {
     pub value: f64,
     pub positions: Holdings,
+    pub net_cash_flow: f64,
 }
