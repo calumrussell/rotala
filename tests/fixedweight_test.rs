@@ -16,7 +16,7 @@ use common::build_fake_quote_stream;
 
 #[test]
 fn fixedweight_integration_test() {
-    let initial_cash = 1e6;
+    let initial_cash = 1e6 as u64;
 
     let mut weights: HashMap<String, f64> = HashMap::new();
     weights.insert(String::from("ABC"), 0.5);

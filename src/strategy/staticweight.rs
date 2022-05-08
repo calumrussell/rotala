@@ -26,7 +26,7 @@ impl Strategy for StaticWeightStrategyRulesMonthlyRebalancing {
         self.perf.update(&state)
     }
 
-    fn init(&mut self, initital_cash: &f64) {
+    fn init(&mut self, initital_cash: &u64) {
         self.portfolio.deposit_cash(initital_cash);
     }
 

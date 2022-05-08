@@ -15,7 +15,7 @@ use common::build_fake_quote_stream;
 
 #[test]
 fn staticweight_integration_test() {
-    let initial_cash = 1e6;
+    let initial_cash = 1e6 as u64;
 
     let price_dist = Uniform::new(1.0, 100.0);
     let vol_dist = Uniform::new(0.1, 0.2);

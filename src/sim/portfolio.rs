@@ -10,12 +10,13 @@ use crate::portfolio::{Holdings, Portfolio, PortfolioState, PortfolioStats};
 #[derive(Clone)]
 pub struct SimPortfolio {
     brkr: SimulatedBroker,
+    net_cash_flow: f64,
 }
 
 impl PortfolioStats for SimPortfolio {
     fn get_total_value(&self) -> f64 {
         let assets = self.brkr.get_positions();
-        let mut value = self.brkr.get_cash_balance();
+        let mut value = self.brkr.get_cash_balance() as f64;
         for a in assets {
             let symbol_value = self.brkr.get_position_value(&a);
             if symbol_value.is_some() {
@@ -47,13 +48,17 @@ impl PortfolioStats for SimPortfolio {
         PortfolioState {
             value: self.get_total_value(),
             positions: holdings,
+            net_cash_flow: self.net_cash_flow,
         }
     }
 }
 
 impl SimPortfolio {
     pub fn new(brkr: SimulatedBroker) -> SimPortfolio {
-        SimPortfolio { brkr }
+        SimPortfolio {
+            brkr,
+            net_cash_flow: 0_f64,
+        }
     }
 
     pub fn set_date(&mut self, new_date: &i64) -> PortfolioState {
@@ -82,8 +87,14 @@ impl SimPortfolio {
 }
 
 impl Portfolio for SimPortfolio {
-    fn deposit_cash(&mut self, cash: &f64) {
+    fn deposit_cash(&mut self, cash: &u64) {
         self.brkr.deposit_cash(*cash);
+        self.net_cash_flow += *cash as f64;
+    }
+
+    fn withdraw_cash(&mut self, cash: &u64) {
+        self.brkr.withdraw_cash(*cash);
+        self.net_cash_flow -= *cash as f64;
     }
 
     //This function is named erroneously, we aren't mutating the state of the portfolio
@@ -208,7 +219,7 @@ mod tests {
     fn test_that_portfolio_with_bad_target_weights_throws_panic() {
         let simbrkr = setup();
         let mut port = SimPortfolio::new(simbrkr);
-        port.deposit_cash(&100_000.00);
+        port.deposit_cash(&100_000_u64);
         port.set_date(&101);
 
         //Update weights with non-existent target weight
@@ -222,7 +233,7 @@ mod tests {
     fn test_that_diff_is_calculated_correctly() {
         let simbrkr = setup();
         let mut port = SimPortfolio::new(simbrkr);
-        port.deposit_cash(&100_000.00);
+        port.deposit_cash(&100_000_u64);
         port.set_date(&101);
 
         let mut target: HashMap<String, f64> = HashMap::new();
@@ -241,7 +252,7 @@ mod tests {
         let simbrkr = setup();
 
         let mut port = SimPortfolio::new(simbrkr);
-        port.deposit_cash(&100_000.00);
+        port.deposit_cash(&100_000_u64);
         port.set_date(&101);
 
         let mut target: HashMap<String, f64> = HashMap::new();
@@ -270,7 +281,7 @@ mod tests {
     fn test_that_orders_created_with_valid_input() {
         let simbrkr = setup();
         let mut port = SimPortfolio::new(simbrkr);
-        port.deposit_cash(&100_000.00);
+        port.deposit_cash(&100_000_u64);
         port.set_date(&101);
 
         let mut target: HashMap<String, f64> = HashMap::new();
@@ -289,7 +300,7 @@ mod tests {
         //issue orders for zero shares
         let simbrkr = setup();
         let mut port = SimPortfolio::new(simbrkr);
-        port.deposit_cash(&0.00);
+        port.deposit_cash(&0_u64);
         port.set_date(&101);
 
         let mut target: HashMap<String, f64> = HashMap::new();
@@ -310,7 +321,7 @@ mod tests {
         //before buys
         let simbrkr = setup();
         let mut port = SimPortfolio::new(simbrkr);
-        port.deposit_cash(&100_000.00);
+        port.deposit_cash(&100_000_u64);
         port.set_date(&101);
 
         let mut target: HashMap<String, f64> = HashMap::new();

@@ -74,6 +74,10 @@ impl TimeSeries {
         self.var().sqrt()
     }
 
+    pub fn get(&self, idx: usize) -> Option<&f64> {
+        self.values.get(idx)
+    }
+
     pub fn append(&mut self, idx: Option<f64>, value: f64) {
         if idx.is_some() {
             self.index.push(idx.unwrap());

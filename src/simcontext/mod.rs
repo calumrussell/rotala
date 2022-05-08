@@ -2,7 +2,7 @@ use crate::strategy::Strategy;
 
 pub struct SimContext {
     sim_dates: Vec<i64>,
-    initial_cash: f64,
+    initial_cash: u64,
     strat: Box<dyn Strategy>,
 }
 
@@ -32,7 +32,7 @@ impl SimContext {
 
     pub fn new<T: Into<Box<dyn Strategy>>>(
         sim_dates: Vec<i64>,
-        initial_cash: f64,
+        initial_cash: u64,
         strat: T,
     ) -> SimContext {
         let boxed: Box<dyn Strategy> = strat.into();

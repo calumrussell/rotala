@@ -24,17 +24,17 @@ pub enum BrokerEvent {
     TradeFailure(Order),
     OrderCreated(Order),
     OrderFailure(Order),
-    SuccessfulWithdraw(f64),
-    CashTransactionSuccess(f64),
-    InsufficientCash(f64),
+    SuccessfulWithdraw(u64),
+    CashTransactionSuccess(u64),
+    InsufficientCash(u64),
 }
 
 pub trait CashManager {
-    fn withdraw_cash(&mut self, cash: f64) -> BrokerEvent;
-    fn deposit_cash(&mut self, cash: f64) -> BrokerEvent;
-    fn debit(&mut self, value: f64) -> BrokerEvent;
-    fn credit(&mut self, value: f64) -> BrokerEvent;
-    fn get_cash_balance(&self) -> f64;
+    fn withdraw_cash(&mut self, cash: u64) -> BrokerEvent;
+    fn deposit_cash(&mut self, cash: u64) -> BrokerEvent;
+    fn debit(&mut self, value: u64) -> BrokerEvent;
+    fn credit(&mut self, value: u64) -> BrokerEvent;
+    fn get_cash_balance(&self) -> u64;
 }
 
 pub trait PositionInfo {
