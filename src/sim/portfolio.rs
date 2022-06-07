@@ -3,18 +3,22 @@ use std::collections::HashMap;
 use math::round;
 
 use super::broker::SimulatedBroker;
-use crate::broker::{BrokerEvent, CashManager, ClientControlled, PositionInfo, PriceQuote};
-use crate::broker::{Order, OrderExecutor, OrderType};
+use crate::broker::{
+    BrokerEvent, CashManager, ClientControlled, Order, OrderExecutor, OrderType, PositionInfo,
+    PriceQuote, Quote, TradeCosts,
+};
 use crate::portfolio::{Holdings, Portfolio, PortfolioState, PortfolioStats};
 
 #[derive(Clone)]
 pub struct SimPortfolio {
     brkr: SimulatedBroker,
+    //Needed for calculation of portfolio performance inc. deposit/withdrawal
     net_cash_flow: f64,
 }
 
 impl PortfolioStats for SimPortfolio {
     fn get_total_value(&self) -> f64 {
+        //TODO: this should only use methods on the portfolio
         let assets = self.brkr.get_positions();
         let mut value = self.brkr.get_cash_balance() as f64;
         for a in assets {
@@ -24,6 +28,21 @@ impl PortfolioStats for SimPortfolio {
             }
         }
         value
+    }
+
+    fn get_liquidation_value(&self) -> f64 {
+        //TODO: this should only use methods on the portfolio
+        let mut value = self.brkr.get_cash_balance();
+        for asset in self.brkr.get_positions() {
+            if let Some(asset_value) = self.brkr.get_position_liquidation_value(&asset) {
+                value += asset_value as u64
+            }
+        }
+        value as f64
+    }
+
+    fn get_cash_value(&self) -> u64 {
+        self.brkr.get_cash_balance()
     }
 
     fn get_holdings(&self) -> Holdings {
@@ -39,8 +58,16 @@ impl PortfolioStats for SimPortfolio {
         holdings
     }
 
+    fn get_position_qty(&self, symbol: &String) -> Option<f64> {
+        self.brkr.get_position_qty(symbol)
+    }
+
     fn get_position_value(&self, symbol: &String) -> Option<f64> {
         self.brkr.get_position_value(symbol)
+    }
+
+    fn get_position_liquidation_value(&self, symbol: &String) -> Option<f64> {
+        self.brkr.get_position_liquidation_value(symbol)
     }
 
     fn get_current_state(&self) -> PortfolioState {
@@ -73,68 +100,135 @@ impl SimPortfolio {
     pub fn execute_orders(&mut self, orders: Vec<Order>) -> Vec<BrokerEvent> {
         self.brkr.execute_orders(orders)
     }
-
-    fn get_position_diff(
-        &self,
-        symbol: &String,
-        target_weights: &HashMap<String, f64>,
-        total_value: f64,
-    ) -> f64 {
-        let target_value = target_weights.get(symbol).unwrap() * total_value;
-        let curr_value = self.get_position_value(symbol).unwrap_or(0.0);
-        target_value - curr_value
-    }
 }
 
 impl Portfolio for SimPortfolio {
-    fn deposit_cash(&mut self, cash: &u64) {
+    fn deposit_cash(&mut self, cash: &u64) -> bool {
         self.brkr.deposit_cash(*cash);
         self.net_cash_flow += *cash as f64;
+        true
     }
 
-    fn withdraw_cash(&mut self, cash: &u64) {
-        self.brkr.withdraw_cash(*cash);
-        self.net_cash_flow -= *cash as f64;
+    fn withdraw_cash(&mut self, cash: &u64) -> bool {
+        let event = self.brkr.withdraw_cash(*cash);
+        match event {
+            BrokerEvent::WithdrawSuccess(_val) => {
+                self.net_cash_flow -= *cash as f64;
+                true
+            }
+            BrokerEvent::WithdrawFailure(_val) => false,
+            _ => false,
+        }
+    }
+
+    fn withdraw_cash_with_liquidation(&mut self, cash: &u64) -> bool {
+        let value = self.get_liquidation_value() as u64;
+        if cash > &value {
+            false
+        } else {
+            //This holds how much we have left to generate from the portfolio
+            let mut total_sold = *cash as f64;
+
+            let positions = self.brkr.get_positions();
+            let mut sell_orders: Vec<Order> = Vec::new();
+            for ticker in positions {
+                //TODO: need to incorporate trading costs into portfolio liquidation
+                let position_value = self.brkr.get_position_value(&ticker).unwrap_or(0.0);
+                //Position won't generate enough cash to fulfill total order
+                //Create orders for selling 100% of position, continue
+                //to next position to see if we can generate enough cash
+                //Sell 100% of position
+                if position_value <= total_sold {
+                    //Cannot be called without qty existing
+                    let qty = self.brkr.get_position_qty(&ticker).unwrap();
+                    let order = Order::new(OrderType::MarketSell, ticker, qty, None);
+                    sell_orders.push(order);
+                    total_sold -= position_value;
+                } else {
+                    //Position can generate all the cash we need
+                    //Create orders to sell 100% of position, don't continue to next
+                    //stock
+                    //
+                    //Cannot be called without quote existing
+                    let price = self.brkr.get_quote(&ticker).unwrap().bid;
+                    let shares_req = round::ceil(total_sold / price, 0);
+                    let order = Order::new(OrderType::MarketSell, ticker, shares_req, None);
+                    sell_orders.push(order);
+                    total_sold = 0.0;
+                    break;
+                }
+            }
+            if total_sold == 0.0 {
+                //The portfolio can provide enough cash so we can execute the sell orders
+                //We leave the portfolio in the wrong state for the client to deal with
+                self.execute_orders(sell_orders);
+                self.net_cash_flow -= *cash as f64;
+                return true;
+            } else {
+                //The portfolio doesn't have the cash, don't execute any orders and return to
+                //client to deal with the result
+                return false;
+            }
+        }
     }
 
     //This function is named erroneously, we aren't mutating the state of the portfolio
     //but calculating a diff and set of orders needed to close a diff
     //Returns orders so calling client has control when orders are executed
     fn update_weights(&self, target_weights: &HashMap<String, f64>) -> Vec<Order> {
-        let total_value = self.get_total_value();
+        //Need liquidation value so we definitely have enough money to make all transactions after
+        //costs
+        let total_value = self.get_liquidation_value();
         let mut orders: Vec<Order> = Vec::new();
 
         let mut buy_orders: Vec<Order> = Vec::new();
         let mut sell_orders: Vec<Order> = Vec::new();
 
-        for symbol in target_weights.keys() {
-            let diff_val = self.get_position_diff(symbol, target_weights, total_value);
-            let quote = self.brkr.get_quote(symbol);
-            match quote {
-                Some(q) => {
-                    if diff_val > 0.0 {
-                        let target_shares = round::floor(diff_val / q.ask, 0);
-                        let order =
-                            Order::new(OrderType::MarketBuy, symbol.clone(), target_shares, None);
-                        buy_orders.push(order);
-                    } else {
-                        let target_shares = round::floor(diff_val / q.bid, 0);
-                        if target_shares == 0.00 {
-                            //Covers case when diff_val is zero
-                            break;
-                        }
+        let calc_required_shares_with_costs = |diff_val: &f64, quote: &Quote| -> f64 {
+            let abs_val = diff_val.abs();
+            let trade_price: f64;
+            let (net_budget, net_price): (f64, f64);
+            //Maximise the number of shares we can acquire/sell net of costs.
+            if *diff_val > 0.0 {
+                trade_price = quote.ask;
+                (net_budget, net_price) = self.brkr.calc_trade_impact(&abs_val, &trade_price, true);
+            } else {
+                trade_price = quote.bid;
+                (net_budget, net_price) =
+                    self.brkr.calc_trade_impact(&abs_val, &trade_price, false);
+            }
+            round::floor(net_budget / net_price, 0)
+        };
 
-                        let order = Order::new(
-                            OrderType::MarketSell,
-                            symbol.clone(),
-                            target_shares * -1.0,
-                            None,
-                        );
-                        sell_orders.push(order);
-                    }
-                }
-                //This is implementation detail, for a simulation we prefer immediate panic
-                None => panic!("Can't find price for symbol"),
+        for symbol in target_weights.keys() {
+            let curr_val = self.get_position_value(symbol).unwrap_or(0.0);
+            //Iterating over target_weights so will always find value
+            let target_val = total_value * target_weights.get(symbol).unwrap();
+            let diff_val = target_val - curr_val;
+            if diff_val == 0.0 {
+                break;
+            }
+
+            //This is implementation detail, for a simulation we prefer immediate panic
+            let quote = self
+                .brkr
+                .get_quote(symbol)
+                .expect("Can't find quote for symbol");
+            let net_target_shares = calc_required_shares_with_costs(&diff_val, &quote);
+            if diff_val > 0.0 {
+                buy_orders.push(Order::new(
+                    OrderType::MarketBuy,
+                    symbol.clone(),
+                    net_target_shares,
+                    None,
+                ));
+            } else {
+                sell_orders.push(Order::new(
+                    OrderType::MarketSell,
+                    symbol.clone(),
+                    net_target_shares,
+                    None,
+                ));
             }
         }
         //Sell orders have to be executed before buy orders
@@ -148,15 +242,16 @@ impl Portfolio for SimPortfolio {
 mod tests {
 
     use super::SimPortfolio;
-    use crate::broker::{BrokerEvent, Quote};
+    use crate::broker::{BrokerEvent, Dividend, Quote};
     use crate::data::DataSource;
-    use crate::portfolio::Portfolio;
+    use crate::portfolio::{Portfolio, PortfolioStats};
     use crate::sim::broker::SimulatedBroker;
 
     use std::collections::HashMap;
 
     fn setup() -> SimulatedBroker {
         let mut prices: HashMap<i64, Vec<Quote>> = HashMap::new();
+        let dividends: HashMap<i64, Vec<Dividend>> = HashMap::new();
 
         let mut price_row: Vec<Quote> = Vec::new();
         let mut price_row1: Vec<Quote> = Vec::new();
@@ -209,7 +304,7 @@ mod tests {
         prices.insert(101, price_row1);
         prices.insert(102, price_row2);
 
-        let source = DataSource::from_hashmap(prices);
+        let source = DataSource::from_hashmap(prices, dividends);
         let brkr = SimulatedBroker::new(source);
         brkr
     }
@@ -230,7 +325,7 @@ mod tests {
     }
 
     #[test]
-    fn test_that_diff_is_calculated_correctly() {
+    fn test_that_diff_creates_new_order() {
         let simbrkr = setup();
         let mut port = SimPortfolio::new(simbrkr);
         port.deposit_cash(&100_000_u64);
@@ -240,7 +335,7 @@ mod tests {
         target.insert(String::from("ABC"), 1.0);
 
         let orders = port.update_weights(&target);
-        assert!(orders.get(0).unwrap().get_shares() == 952.0);
+        assert!(orders.len() > 0);
     }
 
     #[test]
@@ -313,11 +408,11 @@ mod tests {
     #[test]
     fn test_that_orders_will_be_ordered_correctly() {
         //Sell orders should be executed before buy orders so that we have cash
-        //from sell orders to create new buy orders. Need to that orders complete
+        //from sell orders to create new buy orders.
         //Order should always complete if we have sell order for N then a buy order
         //for N + Y, as long as liquidation value is > N+Y.
 
-        //The sequence of trades is impossible to execute without ordering sells
+        //Sequence of trades is impossible to execute without ordering sells
         //before buys
         let simbrkr = setup();
         let mut port = SimPortfolio::new(simbrkr);
@@ -333,11 +428,70 @@ mod tests {
         let mut target1: HashMap<String, f64> = HashMap::new();
         target1.insert(String::from("ABC"), 0.1);
         target1.insert(String::from("BCD"), 0.9);
-
         let orders1 = port.update_weights(&target1);
+
         let res = port.execute_orders(orders1);
+        //Failing here because the sell is being calculated off the totalvalue
+        //So the buy order thinks the portfolio is worth X but it is actually worth
+        //X - costs, when the sell goes through there isn't enough cash to fulfill
+        //the buy order that was calculated using the values
+        //Need to work out total portfolio value net of costs
         assert!(res.len() == 2);
         assert!(matches!(res.get(0).unwrap(), BrokerEvent::TradeSuccess(..)));
         assert!(matches!(res.get(1).unwrap(), BrokerEvent::TradeSuccess(..)));
+    }
+
+    #[test]
+    fn test_that_withdraw_returns_correct_result_with_transaction_ordering() {
+        let simbrkr = setup();
+        let mut port = SimPortfolio::new(simbrkr);
+
+        port.deposit_cash(&100_u64);
+        assert!(port.withdraw_cash(&50_u64) == true);
+        assert!(port.withdraw_cash(&200_u64) == false);
+    }
+
+    #[test]
+    fn test_that_withdraw_liquidation_will_sell_positions_to_generate_cash() {
+        let simbrkr = setup();
+        let mut port = SimPortfolio::new(simbrkr);
+
+        port.deposit_cash(&100_000_u64);
+        port.set_date(&101);
+
+        let mut target: HashMap<String, f64> = HashMap::new();
+        target.insert(String::from("ABC"), 1.0);
+
+        let orders = port.update_weights(&target);
+        port.execute_orders(orders);
+
+        port.set_date(&102);
+        port.withdraw_cash_with_liquidation(&50_000_u64);
+    }
+
+    #[test]
+    fn test_that_withdraw_liquidation_can_liquidate_total_portfolio() {
+        //Full liquidations can fail once costs are added
+        //We need to attempt to liquidate the full value without costs
+        //and check that will fail
+        //Then check that we can liquidate the liquidation value which
+        //includes costs
+        let simbrkr = setup();
+        let mut port = SimPortfolio::new(simbrkr);
+
+        port.deposit_cash(&100_000_u64);
+        port.set_date(&101);
+
+        let mut target: HashMap<String, f64> = HashMap::new();
+        target.insert(String::from("ABC"), 1.0);
+
+        let orders = port.update_weights(&target);
+        port.execute_orders(orders);
+
+        port.set_date(&102);
+        let total_value = port.get_total_value() as u64;
+        let liquidation_value = port.get_liquidation_value() as u64;
+        assert!(port.withdraw_cash_with_liquidation(&total_value) == false);
+        assert!(port.withdraw_cash_with_liquidation(&liquidation_value));
     }
 }

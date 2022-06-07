@@ -3,16 +3,21 @@ use std::collections::HashMap;
 use crate::broker::Order;
 
 pub trait Portfolio {
-    fn deposit_cash(&mut self, cash: &u64);
-    fn withdraw_cash(&mut self, cash: &u64);
+    fn deposit_cash(&mut self, cash: &u64) -> bool;
+    fn withdraw_cash(&mut self, cash: &u64) -> bool;
+    fn withdraw_cash_with_liquidation(&mut self, cash: &u64) -> bool;
     fn update_weights(&self, target_weights: &HashMap<String, f64>) -> Vec<Order>;
 }
 
 pub trait PortfolioStats {
     fn get_total_value(&self) -> f64;
+    fn get_liquidation_value(&self) -> f64;
     fn get_position_value(&self, ticker: &String) -> Option<f64>;
+    fn get_position_liquidation_value(&self, symbol: &String) -> Option<f64>;
+    fn get_position_qty(&self, ticker: &String) -> Option<f64>;
     fn get_current_state(&self) -> PortfolioState;
     fn get_holdings(&self) -> Holdings;
+    fn get_cash_value(&self) -> u64;
 }
 
 #[derive(Clone)]

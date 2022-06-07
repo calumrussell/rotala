@@ -3,7 +3,7 @@ mod common;
 use rand::distributions::Uniform;
 use std::collections::HashMap;
 
-use alator::broker::Quote;
+use alator::broker::{Dividend, Quote};
 use alator::data::DataSource;
 use alator::perf::PortfolioPerformance;
 use alator::sim::broker::SimulatedBroker;
@@ -41,11 +41,12 @@ fn datasource_integration_test() {
         Some(seconds_in_day as usize),
     );
     let mut raw_data: HashMap<i64, Vec<Quote>> = HashMap::new();
+    let dividends: HashMap<i64, Vec<Dividend>> = HashMap::new();
     for (_a, b) in abc_quotes.iter().zip(bcd_quotes.iter()).enumerate() {
         raw_data.insert(b.0.date.clone(), vec![b.0.clone(), b.1.clone()]);
     }
     let dates = raw_data.keys().map(|d| d.clone()).collect();
-    let source = DataSource::from_hashmap(raw_data);
+    let source = DataSource::from_hashmap(raw_data, dividends);
 
     let universe = StaticUniverse::new(vec!["ABC", "BCD"]);
     let simbrkr = SimulatedBroker::new(source);

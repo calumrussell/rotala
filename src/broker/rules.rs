@@ -1,4 +1,4 @@
-use crate::broker::{BrokerEvent, CashManager, ClientControlled, Trade, TradeLedger};
+use crate::broker::{BrokerEvent, CashManager, ClientControlled, HasTime, Trade, TradeCosts};
 use crate::broker::{Order, OrderType};
 
 pub struct OrderExecutionRules;
@@ -7,24 +7,26 @@ impl OrderExecutionRules {
     pub fn client_has_sufficient_cash(
         order: &Order,
         price: &f64,
-        brkr: &impl CashManager,
+        brkr: &(impl CashManager + TradeCosts),
     ) -> Result<bool, u64> {
+        let shares = order.get_shares();
+        let value = price * shares;
         match order.get_order_type() {
             OrderType::MarketBuy => {
-                let value = price * order.get_shares() as f64;
-                if brkr.get_cash_balance() as f64 >= value {
+                if brkr.get_cash_balance() as f64 > value {
                     return Ok(true);
                 }
                 Err(value as u64)
             }
-            _ => Ok(true),
+            OrderType::MarketSell => Ok(true),
+            _ => unreachable!("Shouldn't hit unless something has gone wrong"),
         }
     }
 
     pub fn trade_logic(
         order: &Order,
         price: &f64,
-        brkr: &mut (impl CashManager + ClientControlled + TradeLedger),
+        brkr: &mut (impl CashManager + ClientControlled + HasTime + TradeCosts),
     ) -> Trade {
         let value = price * order.get_shares();
         //Update holdings
@@ -47,25 +49,24 @@ impl OrderExecutionRules {
             symbol: order.get_symbol().clone(),
             value,
             quantity: order.get_shares().clone() as f64,
+            date: brkr.now(),
         };
 
-        //Update trade ledger
-        brkr.record(&t);
+        let costs = brkr.get_trade_costs(&t);
+        brkr.debit(costs as u64);
         t
     }
 
     pub fn run_all<'a>(
-        order: &'a Order,
-        price: &'a f64,
-        brkr: &'a mut (impl CashManager + ClientControlled + TradeLedger),
-    ) -> Result<impl FnOnce() -> Trade + 'a, BrokerEvent> {
+        order: &Order,
+        price: &f64,
+        brkr: &'a mut (impl CashManager + ClientControlled + TradeCosts + HasTime),
+    ) -> Result<Trade, BrokerEvent> {
         let has_cash = OrderExecutionRules::client_has_sufficient_cash(order, price, brkr);
         if has_cash.is_err() {
-            return Err(BrokerEvent::InsufficientCash(has_cash.unwrap_err()));
+            return Err(BrokerEvent::TradeFailure(order.clone()));
         }
-        let trade = move || OrderExecutionRules::trade_logic(order, price, brkr);
-        //We return a function so that the caller has a chance to stop the trade
-        //or control when it is executed
+        let trade = OrderExecutionRules::trade_logic(order, price, brkr);
         Ok(trade)
     }
 }

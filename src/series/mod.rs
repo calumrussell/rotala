@@ -36,7 +36,7 @@ impl TimeSeries {
         let mut maxdd = 0.0;
         let mut peak = 0.0;
         let mut trough = 0.0;
-        let mut t2 = 0.0;
+        let mut t2;
 
         for t1 in &self.values {
             if t1 > &peak {
@@ -83,13 +83,12 @@ impl TimeSeries {
             self.index.push(idx.unwrap());
             self.values.push(value);
         } else {
-            let idx_last = self.index.last();
-            if idx_last.is_none() {
-                self.index.push(0.0);
-            } else {
-                self.index.push(idx_last.unwrap() + 1.0);
+            let mut last = 0.0;
+            if let Some(idx_last) = self.index.last() {
+                last = idx_last.clone();
             }
-            self.values.push(value)
+            self.index.push(last);
+            self.values.push(value);
         }
     }
 

@@ -168,8 +168,7 @@ impl PortfolioPerformance {
 mod tests {
     use std::collections::HashMap;
 
-    use crate::broker::CashManager;
-    use crate::broker::Quote;
+    use crate::broker::{Dividend, Quote};
     use crate::data::DataSource;
     use crate::perf::PortfolioPerformance;
     use crate::portfolio::Portfolio;
@@ -182,6 +181,7 @@ mod tests {
 
     fn setup() -> SimulatedBroker {
         let mut raw_data: HashMap<i64, Vec<Quote>> = HashMap::new();
+        let dividends: HashMap<i64, Vec<Dividend>> = HashMap::new();
 
         let quote_a1 = Quote {
             symbol: String::from("ABC"),
@@ -244,7 +244,7 @@ mod tests {
         raw_data.insert(102, vec![quote_a3, quote_b3]);
         raw_data.insert(103, vec![quote_a4, quote_b4]);
 
-        let source = DataSource::from_hashmap(raw_data);
+        let source = DataSource::from_hashmap(raw_data, dividends);
         let sb = SimulatedBroker::new(source);
         sb
     }
@@ -343,7 +343,7 @@ mod tests {
         perf.update(&port.get_current_state());
 
         port.set_date(&102);
-        port.withdraw_cash(&20_000_u64);
+        port.withdraw_cash_with_liquidation(&20_000_u64);
         let orders = port.update_weights(&target_weights);
         port.execute_orders(orders);
         perf.update(&port.get_current_state());
