@@ -2,11 +2,11 @@ use core::panic;
 use std::collections::HashMap;
 
 use super::orderbook::SimOrderBook;
-use crate::broker::record::TradeRecord;
+use crate::broker::record::BrokerLog;
 use crate::broker::rules::OrderExecutionRules;
 use crate::broker::{
-    BrokerEvent, CashManager, ClientControlled, PendingOrders, PositionInfo, PriceAPI, PriceQuote,
-    Quote, Trade, TradeLedger,
+    BrokerCost, BrokerEvent, CashManager, ClientControlled, HasTime, PaysDividends, PendingOrders,
+    PositionInfo, PriceQuote, Quote, Trade, TradeCosts,
 };
 use crate::broker::{Order, OrderExecutor, OrderType};
 use crate::data::{DataSource, SimSource};
@@ -16,38 +16,44 @@ pub struct Holdings(pub HashMap<String, f64>);
 
 #[derive(Clone)]
 pub struct SimulatedBroker {
+    raw_data: DataSource,
+    date: i64,
     holdings: HashMap<String, f64>,
-    simapi: BrokerSimAPI,
     orderbook: SimOrderBook,
     cash: u64,
-    ledger: TradeRecord,
+    log: BrokerLog,
+    trade_costs: Vec<BrokerCost>,
 }
 
 impl CashManager for SimulatedBroker {
     fn withdraw_cash(&mut self, cash: u64) -> BrokerEvent {
         if cash > self.cash {
-            return BrokerEvent::InsufficientCash(cash);
+            return BrokerEvent::WithdrawFailure(cash);
         }
         self.cash -= cash;
-        BrokerEvent::SuccessfulWithdraw(cash)
+        BrokerEvent::WithdrawSuccess(cash)
     }
 
     fn deposit_cash(&mut self, cash: u64) -> BrokerEvent {
         self.cash += cash.clone();
-        BrokerEvent::SuccessfulWithdraw(cash)
+        BrokerEvent::DepositSuccess(cash)
     }
 
+    //Identical to deposit_cash but is seperated to distinguish internal cash
+    //transactions from external with no value returned to client
     fn credit(&mut self, value: u64) -> BrokerEvent {
         self.cash += value;
-        BrokerEvent::CashTransactionSuccess(value)
+        BrokerEvent::TransactionSuccess
     }
 
+    //Looks similar to withdraw_cash but distinguished because it represents
+    //failure of an internal transaction with no value returned to clients
     fn debit(&mut self, value: u64) -> BrokerEvent {
         if value > self.cash {
-            return BrokerEvent::InsufficientCash(value);
+            return BrokerEvent::TransactionFailure;
         }
         self.cash -= value;
-        BrokerEvent::CashTransactionSuccess(value)
+        BrokerEvent::TransactionSuccess
     }
 
     fn get_cash_balance(&self) -> u64 {
@@ -57,11 +63,11 @@ impl CashManager for SimulatedBroker {
 
 impl PositionInfo for SimulatedBroker {
     fn get_position_cost(&self, symbol: &String) -> Option<f64> {
-        self.ledger.cost_basis(symbol)
+        self.log.cost_basis(symbol)
     }
 
     fn get_position_profit(&self, symbol: &String) -> Option<f64> {
-        let cost = self.ledger.cost_basis(symbol);
+        let cost = self.log.cost_basis(symbol);
         let price = self.get_quote(symbol);
         if cost.is_some() && price.is_some() {
             let qty = self.get_position_qty(symbol).unwrap();
@@ -84,18 +90,29 @@ impl PositionInfo for SimulatedBroker {
         }
     }
 
-    fn get_position_value(&self, symbol: &String) -> Option<f64> {
-        let quote = self.get_quote(symbol);
+    fn get_position_liquidation_value(&self, symbol: &String) -> Option<f64> {
         //TODO: we need to introduce some kind of distinction between short and long
         //      positions.
-
-        if quote.is_some() {
-            let price = quote.unwrap().ask;
-            let qty = self.get_position_qty(symbol);
-            if qty.is_some() {
-                return Some(price * qty.unwrap() as f64);
+        if let Some(quote) = self.get_quote(symbol) {
+            let price = quote.bid;
+            if let Some(qty) = self.get_position_qty(symbol) {
+                let position_value = price * qty;
+                let (value_after_costs, _price_after_costs) =
+                    self.calc_trade_impact(&position_value, &price, false);
+                return Some(value_after_costs);
             }
-            return None;
+        }
+        None
+    }
+
+    fn get_position_value(&self, symbol: &String) -> Option<f64> {
+        //TODO: we need to introduce some kind of distinction between short and long
+        //      positions.
+        if let Some(quote) = self.get_quote(symbol) {
+            let price = quote.bid;
+            if let Some(qty) = self.get_position_qty(symbol) {
+                return Some(price * qty);
+            }
         }
         None
     }
@@ -103,7 +120,11 @@ impl PositionInfo for SimulatedBroker {
 
 impl PriceQuote for SimulatedBroker {
     fn get_quote(&self, symbol: &String) -> Option<Quote> {
-        self.simapi.get_prices(symbol)
+        self.raw_data.get_quote_by_date_symbol(&self.date, symbol)
+    }
+
+    fn get_quotes(&self) -> Option<Vec<Quote>> {
+        self.raw_data.get_quotes_by_date(&self.date)
     }
 }
 
@@ -128,13 +149,10 @@ impl OrderExecutor for SimulatedBroker {
             _ => unreachable!("Can only get here with market orders"),
         };
 
-        //OrderExecutionRules returns a closure with the execution logic over the
-        //result, precaution as the actual execution logic should be run from here
-        let res = OrderExecutionRules::run_all(order, &price, self);
-        match res {
-            Ok(trade_func) => {
-                let t = trade_func();
-                return BrokerEvent::TradeSuccess(t);
+        match OrderExecutionRules::run_all(order, &price, self) {
+            Ok(trade) => {
+                self.log.record(&trade);
+                BrokerEvent::TradeSuccess(trade.clone())
             }
             Err(e) => {
                 return e;
@@ -180,107 +198,107 @@ impl ClientControlled for SimulatedBroker {
     }
 }
 
-impl TradeLedger for SimulatedBroker {
-    fn record(&mut self, trade: &Trade) {
-        self.ledger.record(trade);
+impl TradeCosts for SimulatedBroker {
+    fn get_trade_costs(&self, trade: &Trade) -> f64 {
+        let mut cost = 0.0;
+        for trade_cost in &self.trade_costs {
+            cost += trade_cost.calc(trade);
+        }
+        cost
     }
 
-    fn cost_basis(&self, symbol: &String) -> Option<f64> {
-        self.ledger.cost_basis(symbol)
+    fn calc_trade_impact(&self, budget: &f64, price: &f64, is_buy: bool) -> (f64, f64) {
+        BrokerCost::trade_impact_total(&self.trade_costs, budget, price, is_buy)
+    }
+}
+
+impl PaysDividends for SimulatedBroker {
+    fn pay_dividends(&mut self) {
+        if let Some(dividends) = self.raw_data.get_dividends_by_date(&self.date) {
+            for dividend in &dividends {
+                //Our dataset can include dividends for stocks we don't own so we need to check
+                //that we own the stock, not performant but can be changed later
+                if let Some(qty) = self.get_position_qty(&dividend.symbol) {
+                    let cash_value = qty * dividend.value;
+                    self.credit(cash_value as u64);
+                    self.log.record(dividend);
+                }
+            }
+        }
+    }
+}
+
+impl HasTime for SimulatedBroker {
+    fn now(&self) -> i64 {
+        self.date
     }
 }
 
 impl SimulatedBroker {
+    pub fn cost_basis(&self, symbol: &String) -> Option<f64> {
+        self.log.cost_basis(symbol)
+    }
+
     fn check_orderbook(&mut self) {
         //Should always return because we are running after we set a new date
-        let quotes = self.simapi.get_all_prices();
-        for quote in quotes {
-            let pending_orders = self.orderbook.check_orders_by_symbol(&quote);
-            if pending_orders.is_some() {
-                let active_orders = pending_orders.unwrap();
-                for (order_id, order) in active_orders {
-                    let order = match order.get_order_type() {
-                        OrderType::LimitBuy | OrderType::StopBuy => Order::new(
-                            OrderType::MarketBuy,
-                            quote.symbol.clone(),
-                            order.get_shares(),
-                            None,
-                        ),
-                        OrderType::LimitSell | OrderType::StopSell => Order::new(
-                            OrderType::MarketSell,
-                            quote.symbol.clone(),
-                            order.get_shares(),
-                            None,
-                        ),
-                        _ => panic!("Orderbook should have only non-market orders"),
-                    };
-                    let order_result = self.execute_order(&order);
-                    //TODO: orders fail silently if the market order can't be executed
-                    if let BrokerEvent::TradeSuccess(_t) = order_result {
-                        self.orderbook.delete_order(&order_id);
+        if let Some(quotes) = self.get_quotes() {
+            for quote in quotes {
+                let pending_orders = self.orderbook.check_orders_by_symbol(&quote);
+                if pending_orders.is_some() {
+                    let active_orders = pending_orders.unwrap();
+                    for (order_id, order) in active_orders {
+                        let order = match order.get_order_type() {
+                            OrderType::LimitBuy | OrderType::StopBuy => Order::new(
+                                OrderType::MarketBuy,
+                                quote.symbol.clone(),
+                                order.get_shares(),
+                                None,
+                            ),
+                            OrderType::LimitSell | OrderType::StopSell => Order::new(
+                                OrderType::MarketSell,
+                                quote.symbol.clone(),
+                                order.get_shares(),
+                                None,
+                            ),
+                            _ => panic!("Orderbook should have only non-market orders"),
+                        };
+                        let order_result = self.execute_order(&order);
+                        //TODO: orders fail silently if the market order can't be executed
+                        if let BrokerEvent::TradeSuccess(_t) = order_result {
+                            self.orderbook.delete_order(&order_id);
+                        }
                     }
                 }
             }
         }
     }
 
+    //Contains tasks that should be run on every iteration of the simulation irregardless of the
+    //state on the client.
+    //Right now, this largely consists of actions that the broker needs to perform i.e. checking if
+    //an order has been triggered.
     pub fn set_date(&mut self, new_date: &i64) {
-        self.simapi.set_date(new_date);
+        self.date = new_date.clone();
         self.check_orderbook();
+        self.pay_dividends();
     }
 
     pub fn new(raw_data: DataSource) -> SimulatedBroker {
         let holdings: HashMap<String, f64> = HashMap::new();
         let orderbook = SimOrderBook::new();
-
-        let ledger = TradeRecord::new();
-        let simapi = BrokerSimAPI::new(raw_data);
+        let log = BrokerLog::new();
+        let trade_costs = vec![BrokerCost::PctOfValue(0.001)];
 
         SimulatedBroker {
-            simapi,
+            raw_data,
+            //Intialised as invalid so errors throw if client tries to run before init
+            date: -1,
             holdings,
             orderbook,
             cash: 0_u64,
-            ledger,
+            log,
+            trade_costs,
         }
-    }
-}
-
-#[derive(Clone)]
-struct BrokerSimAPI {
-    raw_data: DataSource,
-    date: i64,
-}
-
-impl PriceAPI for BrokerSimAPI {
-    fn get_prices(&self, symbol: &String) -> Option<Quote> {
-        let quote = self.raw_data.get_date_symbol(&self.date, symbol);
-        match quote {
-            Ok(q) => Some(q),
-            _ => None,
-        }
-    }
-
-    //Returns a copy so that we don't need a mutable reference to the underlying data
-    fn get_all_prices(&self) -> Vec<Quote> {
-        let mut res: Vec<Quote> = Vec::new();
-        let prices = self.raw_data.get_date(&self.date);
-        if prices.is_some() {
-            for price in prices.unwrap() {
-                res.push(price.clone());
-            }
-        }
-        res
-    }
-}
-
-impl BrokerSimAPI {
-    pub fn set_date(&mut self, date: &i64) {
-        self.date = date.clone();
-    }
-
-    pub fn new(raw_data: DataSource) -> Self {
-        BrokerSimAPI { raw_data, date: -1 }
     }
 }
 
@@ -288,7 +306,7 @@ impl BrokerSimAPI {
 mod tests {
 
     use super::{PendingOrders, SimulatedBroker};
-    use crate::broker::{BrokerEvent, CashManager, PositionInfo, Quote, TradeLedger};
+    use crate::broker::{BrokerEvent, CashManager, Dividend, PositionInfo, Quote};
     use crate::broker::{Order, OrderExecutor, OrderType};
     use crate::data::DataSource;
 
@@ -296,6 +314,7 @@ mod tests {
 
     fn setup() -> (SimulatedBroker, i64) {
         let mut prices: HashMap<i64, Vec<Quote>> = HashMap::new();
+        let mut dividends: HashMap<i64, Vec<Dividend>> = HashMap::new();
 
         let mut price_row: Vec<Quote> = Vec::new();
         let mut price_row1: Vec<Quote> = Vec::new();
@@ -348,9 +367,54 @@ mod tests {
         prices.insert(101, price_row1);
         prices.insert(102, price_row2);
 
-        let source = DataSource::from_hashmap(prices);
+        let mut dividend_row: Vec<Dividend> = Vec::new();
+        let divi1 = Dividend {
+            value: 5.0,
+            symbol: String::from("ABC"),
+            date: 101,
+        };
+        dividend_row.push(divi1);
+
+        dividends.insert(101, dividend_row);
+
+        let source = DataSource::from_hashmap(prices, dividends);
         let brkr = SimulatedBroker::new(source);
         (brkr, 10)
+    }
+
+    #[test]
+    fn test_cash_deposit_withdraw() {
+        let (mut brkr, _) = setup();
+        brkr.deposit_cash(100_u64);
+        brkr.set_date(&100);
+
+        //Test cash
+        assert!(matches!(
+            brkr.withdraw_cash(50_u64),
+            BrokerEvent::WithdrawSuccess(..)
+        ));
+        assert!(matches!(
+            brkr.withdraw_cash(51_u64),
+            BrokerEvent::WithdrawFailure(..)
+        ));
+        assert!(matches!(
+            brkr.deposit_cash(50_u64),
+            BrokerEvent::DepositSuccess(..)
+        ));
+
+        //Test transactions
+        assert!(matches!(
+            brkr.debit(50_u64),
+            BrokerEvent::TransactionSuccess
+        ));
+        assert!(matches!(
+            brkr.debit(51_u64),
+            BrokerEvent::TransactionFailure
+        ));
+        assert!(matches!(
+            brkr.credit(50_u64),
+            BrokerEvent::TransactionSuccess
+        ));
     }
 
     #[test]
@@ -363,7 +427,7 @@ mod tests {
         let _res = brkr.execute_order(&order);
 
         let cash = brkr.get_cash_balance();
-        assert!(cash == 50_005_u64);
+        assert!(cash < 100_000_u64);
     }
 
     #[test]
@@ -377,7 +441,7 @@ mod tests {
 
         let cash = brkr.get_cash_balance();
         assert!(cash == 100_u64);
-        assert!(matches!(res, BrokerEvent::InsufficientCash(..)));
+        assert!(matches!(res, BrokerEvent::TradeFailure(..)));
     }
 
     #[test]
@@ -482,6 +546,7 @@ mod tests {
         let profit = brkr.get_position_profit(&String::from("ABC")).unwrap();
         assert!(profit == 1485.00);
     }
+
     #[test]
     fn test_that_order_for_non_existent_stock_returns_error() {
         let (mut brkr, _) = setup();
@@ -496,5 +561,20 @@ mod tests {
         let cash = brkr.get_cash_balance();
         assert!(cash == 100_000_u64);
         assert!(matches!(res, BrokerEvent::TradeFailure(..)));
+    }
+
+    #[test]
+    fn test_that_dividends_are_paid() {
+        let (mut brkr, _) = setup();
+        brkr.deposit_cash(100_000_u64);
+        brkr.set_date(&100);
+
+        let order = Order::new(OrderType::MarketBuy, String::from("ABC"), 100.0, None);
+        brkr.execute_order(&order);
+
+        let cash_before_dividend = brkr.get_cash_balance();
+        brkr.set_date(&101);
+        let cash_after_dividend = brkr.get_cash_balance();
+        assert!(cash_before_dividend != cash_after_dividend);
     }
 }

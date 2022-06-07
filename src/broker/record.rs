@@ -1,32 +1,55 @@
-use super::{Trade, TradeLedger};
+use itertools::Itertools;
 
-/* Records all events executed by the broker.
+use super::{BrokerRecordedEvents, Trade};
 
-   Should be available to clients, but is also need internally
-   to calculate the cost basis of positions.
-*/
-
+//Records events executed by the broker.
+//
+//Should be available to clients, but is also need internally
+//to calculate the cost basis of positions.
 #[derive(Clone)]
-pub struct TradeRecord {
-    history: Vec<Trade>,
+pub struct BrokerLog {
+    log: Vec<BrokerRecordedEvents>,
 }
 
-impl TradeLedger for TradeRecord {
-    fn record(&mut self, trade: &Trade) {
-        self.history.push(trade.clone());
+impl BrokerLog {
+    pub fn record<E: Into<BrokerRecordedEvents>>(&mut self, event: E) {
+        let brokerevent: BrokerRecordedEvents = event.into();
+        self.log.push(brokerevent);
     }
 
-    fn cost_basis(&self, symbol: &String) -> Option<f64> {
+    pub fn trades(&self) -> Vec<Trade> {
+        let mut trades = Vec::new();
+        for event in &self.log {
+            match event {
+                BrokerRecordedEvents::TradeCompleted(trade) => trades.push(trade.clone()),
+                _ => (),
+            }
+        }
+        trades
+    }
+
+    pub fn trades_between(&self, start: &i64, stop: &i64) -> Vec<Trade> {
+        let trades = self.trades();
+        trades
+            .iter()
+            .filter(|v| v.date >= *start && v.date <= *stop)
+            .map(|v| v.clone())
+            .collect_vec()
+    }
+
+    pub fn cost_basis(&self, symbol: &String) -> Option<f64> {
         let mut cum_qty = 0.0;
         let mut cum_val = 0.0;
-        for h in &self.history {
-            if h.symbol.eq(symbol) {
-                cum_qty += h.quantity;
-                cum_val += h.value;
+        for event in &self.log {
+            if let BrokerRecordedEvents::TradeCompleted(trade) = event {
+                if trade.symbol.eq(symbol) {
+                    cum_qty += trade.quantity;
+                    cum_val += trade.value;
 
-                //reset the value if we are back to zero
-                if cum_qty == 0.0 {
-                    cum_val = 0.0;
+                    //reset the value if we are back to zero
+                    if cum_qty == 0.0 {
+                        cum_val = 0.0;
+                    }
                 }
             }
         }
@@ -37,45 +60,50 @@ impl TradeLedger for TradeRecord {
     }
 }
 
-impl TradeRecord {
+impl BrokerLog {
     pub fn new() -> Self {
-        let history = Vec::new();
-        TradeRecord { history }
+        BrokerLog { log: Vec::new() }
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use super::TradeLedger;
+    use super::BrokerLog;
 
-    #[test]
-    fn test_that_ledger_calculates_the_cost_basis_correctly() {
-        let mut rec = super::TradeRecord::new();
+    use crate::broker::Trade;
 
-        let t1 = super::Trade {
+    fn setup() -> BrokerLog {
+        let mut rec = BrokerLog::new();
+
+        let t1 = Trade {
             symbol: String::from("ABC"),
             quantity: 10.00,
             value: 100.0,
+            date: 100,
         };
-        let t2 = super::Trade {
+        let t2 = Trade {
             symbol: String::from("ABC"),
             quantity: 90.00,
             value: 500.0,
+            date: 101,
         };
-        let t3 = super::Trade {
+        let t3 = Trade {
             symbol: String::from("BCD"),
             quantity: 100.00,
             value: 100.0,
+            date: 102,
         };
-        let t4 = super::Trade {
+        let t4 = Trade {
             symbol: String::from("BCD"),
             quantity: -100.00,
             value: -500.0,
+            date: 103,
         };
-        let t5 = super::Trade {
+        let t5 = Trade {
             symbol: String::from("BCD"),
             quantity: 50.00,
             value: 50.0,
+            date: 104,
         };
 
         rec.record(&t1);
@@ -83,9 +111,21 @@ mod tests {
         rec.record(&t3);
         rec.record(&t4);
         rec.record(&t5);
+        rec
+    }
 
-        let abc_cost = rec.cost_basis(&String::from("ABC")).unwrap();
-        let bcd_cost = rec.cost_basis(&String::from("BCD")).unwrap();
+    #[test]
+    fn test_that_log_filters_trades_between_dates() {
+        let log = setup();
+        let between = log.trades_between(&102, &104);
+        assert!(between.len() == 3);
+    }
+
+    #[test]
+    fn test_that_log_calculates_the_cost_basis() {
+        let log = setup();
+        let abc_cost = log.cost_basis(&String::from("ABC")).unwrap();
+        let bcd_cost = log.cost_basis(&String::from("BCD")).unwrap();
 
         assert_eq!(abc_cost, 6.0);
         assert_eq!(bcd_cost, 1.0);
