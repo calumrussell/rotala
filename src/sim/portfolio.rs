@@ -242,7 +242,7 @@ impl Portfolio for SimPortfolio {
 mod tests {
 
     use super::SimPortfolio;
-    use crate::broker::{BrokerEvent, Dividend, Quote};
+    use crate::broker::{BrokerCost, BrokerEvent, Dividend, Quote};
     use crate::data::DataSource;
     use crate::portfolio::{Portfolio, PortfolioStats};
     use crate::sim::broker::SimulatedBroker;
@@ -305,7 +305,7 @@ mod tests {
         prices.insert(102, price_row2);
 
         let source = DataSource::from_hashmap(prices, dividends);
-        let brkr = SimulatedBroker::new(source);
+        let brkr = SimulatedBroker::new(source, vec![BrokerCost::PctOfValue(0.001)]);
         brkr
     }
 

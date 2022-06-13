@@ -168,7 +168,7 @@ impl PortfolioPerformance {
 mod tests {
     use std::collections::HashMap;
 
-    use crate::broker::{Dividend, Quote};
+    use crate::broker::{BrokerCost, Dividend, Quote};
     use crate::data::DataSource;
     use crate::perf::PortfolioPerformance;
     use crate::portfolio::Portfolio;
@@ -245,7 +245,7 @@ mod tests {
         raw_data.insert(103, vec![quote_a4, quote_b4]);
 
         let source = DataSource::from_hashmap(raw_data, dividends);
-        let sb = SimulatedBroker::new(source);
+        let sb = SimulatedBroker::new(source, vec![BrokerCost::Flat(1.0)]);
         sb
     }
 

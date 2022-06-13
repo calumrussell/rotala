@@ -283,11 +283,10 @@ impl SimulatedBroker {
         self.pay_dividends();
     }
 
-    pub fn new(raw_data: DataSource) -> SimulatedBroker {
+    pub fn new(raw_data: DataSource, trade_costs: Vec<BrokerCost>) -> SimulatedBroker {
         let holdings: HashMap<String, f64> = HashMap::new();
         let orderbook = SimOrderBook::new();
         let log = BrokerLog::new();
-        let trade_costs = vec![BrokerCost::PctOfValue(0.001)];
 
         SimulatedBroker {
             raw_data,
@@ -306,7 +305,7 @@ impl SimulatedBroker {
 mod tests {
 
     use super::{PendingOrders, SimulatedBroker};
-    use crate::broker::{BrokerEvent, CashManager, Dividend, PositionInfo, Quote};
+    use crate::broker::{BrokerCost, BrokerEvent, CashManager, Dividend, PositionInfo, Quote};
     use crate::broker::{Order, OrderExecutor, OrderType};
     use crate::data::DataSource;
 
@@ -378,7 +377,7 @@ mod tests {
         dividends.insert(101, dividend_row);
 
         let source = DataSource::from_hashmap(prices, dividends);
-        let brkr = SimulatedBroker::new(source);
+        let brkr = SimulatedBroker::new(source, vec![BrokerCost::Flat(1.0)]);
         (brkr, 10)
     }
 

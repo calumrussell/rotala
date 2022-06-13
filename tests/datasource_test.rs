@@ -3,7 +3,7 @@ mod common;
 use rand::distributions::Uniform;
 use std::collections::HashMap;
 
-use alator::broker::{Dividend, Quote};
+use alator::broker::{BrokerCost, Dividend, Quote};
 use alator::data::DataSource;
 use alator::perf::PortfolioPerformance;
 use alator::sim::broker::SimulatedBroker;
@@ -49,7 +49,8 @@ fn datasource_integration_test() {
     let source = DataSource::from_hashmap(raw_data, dividends);
 
     let universe = StaticUniverse::new(vec!["ABC", "BCD"]);
-    let simbrkr = SimulatedBroker::new(source);
+    let simbrkr = SimulatedBroker::new(source, vec![BrokerCost::Flat(1.0)]);
+
     let port = SimPortfolio::new(simbrkr);
 
     let perf = PortfolioPerformance::yearly();

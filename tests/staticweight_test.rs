@@ -3,7 +3,7 @@ mod common;
 use rand::distributions::Uniform;
 use std::collections::HashMap;
 
-use alator::broker::{Dividend, Quote};
+use alator::broker::{BrokerCost, Dividend, Quote};
 use alator::data::DataSource;
 use alator::perf::PortfolioPerformance;
 use alator::sim::broker::SimulatedBroker;
@@ -55,8 +55,8 @@ fn staticweight_integration_test() {
 
     let dates = raw_data.keys().map(|d| d.clone()).collect();
     let source = DataSource::from_hashmap(raw_data, dividends);
+    let simbrkr = SimulatedBroker::new(source, vec![BrokerCost::Flat(1.0)]);
 
-    let simbrkr = SimulatedBroker::new(source);
     let port = SimPortfolio::new(simbrkr);
 
     let perf = PortfolioPerformance::yearly();
