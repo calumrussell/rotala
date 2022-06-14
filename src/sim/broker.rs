@@ -5,8 +5,8 @@ use super::orderbook::SimOrderBook;
 use crate::broker::record::BrokerLog;
 use crate::broker::rules::OrderExecutionRules;
 use crate::broker::{
-    BrokerCost, BrokerEvent, CashManager, ClientControlled, FindTrades, HasTime, PaysDividends, PendingOrders,
-    PositionInfo, PriceQuote, Quote, Trade, TradeCosts,
+    BrokerCost, BrokerEvent, CashManager, ClientControlled, FindTrades, HasTime, PaysDividends,
+    PendingOrders, PositionInfo, PriceQuote, Quote, Trade, TradeCosts,
 };
 use crate::broker::{Order, OrderExecutor, OrderType};
 use crate::data::{DataSource, SimSource};
