@@ -5,7 +5,7 @@ use super::orderbook::SimOrderBook;
 use crate::broker::record::BrokerLog;
 use crate::broker::rules::OrderExecutionRules;
 use crate::broker::{
-    BrokerCost, BrokerEvent, CashManager, ClientControlled, HasTime, PaysDividends, PendingOrders,
+    BrokerCost, BrokerEvent, CashManager, ClientControlled, FindTrades, HasTime, PaysDividends, PendingOrders,
     PositionInfo, PriceQuote, Quote, Trade, TradeCosts,
 };
 use crate::broker::{Order, OrderExecutor, OrderType};
@@ -231,6 +231,12 @@ impl PaysDividends for SimulatedBroker {
 impl HasTime for SimulatedBroker {
     fn now(&self) -> i64 {
         self.date
+    }
+}
+
+impl FindTrades for SimulatedBroker {
+    fn trades_between(&self, start: &i64, end: &i64) -> Vec<Trade> {
+        self.log.trades_between(start, end)
     }
 }
 

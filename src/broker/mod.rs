@@ -218,6 +218,10 @@ pub trait HasTime {
     fn now(&self) -> i64;
 }
 
+pub trait FindTrades {
+    fn trades_between(&self, start: &i64, end: &i64) -> Vec<Trade>;
+}
+
 #[cfg(test)]
 mod tests {
 
