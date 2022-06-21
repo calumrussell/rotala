@@ -1,4 +1,6 @@
-use crate::broker::{BrokerEvent, CashManager, ClientControlled, HasTime, Trade, TradeCosts};
+use crate::broker::{
+    BrokerEvent, CashManager, ClientControlled, HasTime, Trade, TradeCosts, TradeType,
+};
 use crate::broker::{Order, OrderType};
 
 pub struct OrderExecutionRules;
@@ -42,7 +44,13 @@ impl OrderExecutionRules {
         match order.get_order_type() {
             OrderType::MarketBuy => brkr.debit(value as u64),
             OrderType::MarketSell => brkr.credit(value as u64),
-            _ => panic!("Cannot call trade_logic with a non-market order"),
+            _ => unreachable!("Will throw earlier with other ordertype"),
+        };
+
+        let trade_type = match order.get_order_type() {
+            OrderType::MarketBuy => TradeType::Buy,
+            OrderType::MarketSell => TradeType::Sell,
+            _ => unreachable!("Will throw earlier with other ordertype"),
         };
 
         let t = Trade {
@@ -50,6 +58,7 @@ impl OrderExecutionRules {
             value,
             quantity: order.get_shares().clone() as f64,
             date: brkr.now(),
+            typ: trade_type,
         };
 
         let costs = brkr.get_trade_costs(&t);

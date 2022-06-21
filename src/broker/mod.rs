@@ -19,11 +19,18 @@ pub struct Dividend {
 }
 
 #[derive(Clone, Debug)]
+pub enum TradeType {
+    Buy,
+    Sell,
+}
+
+#[derive(Clone, Debug)]
 pub struct Trade {
     pub symbol: String,
     pub value: f64,
     pub quantity: f64,
     pub date: i64,
+    pub typ: TradeType,
 }
 
 #[derive(Clone, Debug)]

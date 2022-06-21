@@ -1,6 +1,6 @@
 use itertools::Itertools;
 
-use super::{BrokerRecordedEvents, Trade};
+use super::{BrokerRecordedEvents, Trade, TradeType};
 
 //Records events executed by the broker.
 //
@@ -43,9 +43,16 @@ impl BrokerLog {
         for event in &self.log {
             if let BrokerRecordedEvents::TradeCompleted(trade) = event {
                 if trade.symbol.eq(symbol) {
-                    cum_qty += trade.quantity;
-                    cum_val += trade.value;
-
+                    match trade.typ {
+                        TradeType::Buy => {
+                            cum_qty += trade.quantity;
+                            cum_val += trade.value;
+                        }
+                        TradeType::Sell => {
+                            cum_qty -= trade.quantity;
+                            cum_val -= trade.value;
+                        }
+                    }
                     //reset the value if we are back to zero
                     if cum_qty == 0.0 {
                         cum_val = 0.0;
@@ -70,7 +77,7 @@ impl BrokerLog {
 mod tests {
     use super::BrokerLog;
 
-    use crate::broker::Trade;
+    use crate::broker::{Trade, TradeType};
 
     fn setup() -> BrokerLog {
         let mut rec = BrokerLog::new();
@@ -80,30 +87,35 @@ mod tests {
             quantity: 10.00,
             value: 100.0,
             date: 100,
+            typ: TradeType::Buy,
         };
         let t2 = Trade {
             symbol: String::from("ABC"),
             quantity: 90.00,
             value: 500.0,
             date: 101,
+            typ: TradeType::Buy,
         };
         let t3 = Trade {
             symbol: String::from("BCD"),
             quantity: 100.00,
             value: 100.0,
             date: 102,
+            typ: TradeType::Buy,
         };
         let t4 = Trade {
             symbol: String::from("BCD"),
-            quantity: -100.00,
-            value: -500.0,
+            quantity: 100.00,
+            value: 500.0,
             date: 103,
+            typ: TradeType::Sell,
         };
         let t5 = Trade {
             symbol: String::from("BCD"),
             quantity: 50.00,
             value: 50.0,
             date: 104,
+            typ: TradeType::Buy,
         };
 
         rec.record(&t1);
