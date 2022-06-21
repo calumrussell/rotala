@@ -4,7 +4,7 @@ use math::round;
 
 use super::broker::SimulatedBroker;
 use crate::broker::{
-    BrokerEvent, CashManager, ClientControlled, FindTrades, Order, OrderExecutor, OrderType,
+    BrokerEvent, CashManager, ClientControlled, HasLog, Order, OrderExecutor, OrderType,
     PositionInfo, PriceQuote, Quote, Trade, TradeCosts,
 };
 use crate::portfolio::{Holdings, Portfolio, PortfolioState, PortfolioStats};

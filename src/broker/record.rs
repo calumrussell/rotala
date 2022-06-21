@@ -1,6 +1,6 @@
 use itertools::Itertools;
 
-use super::{BrokerRecordedEvents, Trade, TradeType};
+use super::{BrokerRecordedEvents, Dividend, Trade, TradeType};
 
 //Records events executed by the broker.
 //
@@ -26,6 +26,26 @@ impl BrokerLog {
             }
         }
         trades
+    }
+
+    pub fn dividends(&self) -> Vec<Dividend> {
+        let mut dividends = Vec::new();
+        for event in &self.log {
+            match event {
+                BrokerRecordedEvents::DividendPaid(dividend) => dividends.push(dividend.clone()),
+                _ => (),
+            }
+        }
+        dividends
+    }
+
+    pub fn dividends_between(&self, start: &i64, stop: &i64) -> Vec<Dividend> {
+        let dividends = self.dividends();
+        dividends
+            .iter()
+            .filter(|v| v.date >= *start && v.date <= *stop)
+            .map(|v| v.clone())
+            .collect_vec()
     }
 
     pub fn trades_between(&self, start: &i64, stop: &i64) -> Vec<Trade> {

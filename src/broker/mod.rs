@@ -225,8 +225,9 @@ pub trait HasTime {
     fn now(&self) -> i64;
 }
 
-pub trait FindTrades {
+pub trait HasLog {
     fn trades_between(&self, start: &i64, end: &i64) -> Vec<Trade>;
+    fn dividends_between(&self, start: &i64, end: &i64) -> Vec<Dividend>;
 }
 
 #[cfg(test)]
