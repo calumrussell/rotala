@@ -4,7 +4,7 @@ use math::round;
 
 use super::broker::SimulatedBroker;
 use crate::broker::{
-    BrokerEvent, CashManager, ClientControlled, HasLog, Order, OrderExecutor, OrderType,
+    BrokerEvent, CashManager, ClientControlled, Dividend, HasLog, Order, OrderExecutor, OrderType,
     PositionInfo, PriceQuote, Quote, Trade, TradeCosts,
 };
 use crate::portfolio::{Holdings, Portfolio, PortfolioState, PortfolioStats};
@@ -90,6 +90,10 @@ impl SimPortfolio {
 
     pub fn trades_between(&self, start: &i64, end: &i64) -> Vec<Trade> {
         self.brkr.trades_between(start, end)
+    }
+
+    pub fn dividends_between(&self, start: &i64, end: &i64) -> Vec<Dividend> {
+        self.brkr.dividends_between(start, end)
     }
 
     pub fn set_date(&mut self, new_date: &i64) -> PortfolioState {
