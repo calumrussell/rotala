@@ -1,7 +1,7 @@
 use itertools::Itertools;
 
 use super::{BrokerRecordedEvents, Dividend, Trade, TradeType};
-use crate::data::{CashValue, DateTime, Price};
+use crate::data::{CashValue, DateTime, Price, PortfolioQty};
 
 //Records events executed by the broker.
 //
@@ -57,7 +57,7 @@ impl BrokerLog {
     }
 
     pub fn cost_basis(&self, symbol: &str) -> Option<Price> {
-        let mut cum_qty = 0.0;
+        let mut cum_qty = PortfolioQty::default();
         let mut cum_val = CashValue::default();
         for event in &self.log {
             if let BrokerRecordedEvents::TradeCompleted(trade) = event {
@@ -82,7 +82,7 @@ impl BrokerLog {
         if cum_qty == 0.0 {
             return None;
         }
-        Some(Price::from(f64::from(cum_val) / cum_qty))
+        Some(cum_val / cum_qty)
     }
 }
 

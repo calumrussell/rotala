@@ -1,7 +1,7 @@
 use itertools::Itertools;
 use std::{
     collections::HashMap,
-    ops::{AddAssign, Div, Mul, MulAssign, Sub, SubAssign},
+    ops::{Add, AddAssign, Div, Mul, MulAssign, Sub, SubAssign},
 };
 
 use crate::broker::{Dividend, Quote};
@@ -83,6 +83,16 @@ impl DataSource {
 #[derive(Clone, Copy, Debug, PartialOrd, PartialEq)]
 pub struct CashValue(f64);
 
+impl CashValue {
+    pub fn abs(&self) -> Self {
+        if self.0 > 0.0 {
+            return Self(self.0)
+        } else {
+            return Self(self.0 * -1.0)
+        }
+    }
+}
+
 impl Default for CashValue {
     fn default() -> Self {
         Self(0.0)
@@ -117,7 +127,7 @@ impl Mul for CashValue {
     type Output = Self;
 
     fn mul(self, rhs: Self) -> Self {
-        CashValue(self.0 * rhs.0)
+        Self(self.0 * rhs.0)
     }
 }
 
@@ -125,7 +135,23 @@ impl Div for CashValue {
     type Output = Self;
 
     fn div(self, rhs: Self) -> Self {
-        CashValue(self.0 / rhs.0)
+        Self(self.0 / rhs.0)
+    }
+}
+
+impl Div<Price> for CashValue {
+    type Output = PortfolioQty;
+
+    fn div(self, rhs: Price) -> Self::Output {
+        PortfolioQty(self.0 / rhs.0)
+    }
+}
+
+impl Div<PortfolioQty> for CashValue {
+    type Output = Price;
+
+    fn div(self, rhs: PortfolioQty) -> Self::Output {
+        Price(self.0 / rhs.0)
     }
 }
 
@@ -133,7 +159,15 @@ impl Mul<PortfolioWeight> for CashValue {
     type Output = Self;
 
     fn mul(self, rhs: PortfolioWeight) -> Self {
-        CashValue(self.0 * rhs.0)
+        Self(self.0 * rhs.0)
+    }
+}
+
+impl Add for CashValue {
+    type Output = Self;
+
+    fn add(self, rhs: Self) -> Self {
+        Self(self.0 + rhs.0)
     }
 }
 
@@ -141,7 +175,7 @@ impl Sub for CashValue {
     type Output = Self;
 
     fn sub(self, rhs: Self) -> Self {
-        CashValue(self.0 - rhs.0)
+        Self(self.0 - rhs.0)
     }
 }
 
@@ -202,6 +236,85 @@ impl From<f64> for PortfolioWeight {
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, PartialOrd)]
+pub struct PortfolioQty(f64);
+
+impl PortfolioQty {
+    pub fn ceil(&self) -> Self {
+        Self(f64::ceil(self.0))
+    }
+
+    pub fn floor(&self) -> Self {
+        Self(f64::floor(self.0))
+    }
+}
+
+impl From<f64> for PortfolioQty {
+    fn from(v: f64) -> Self {
+        Self(v)
+    }
+}
+
+impl Mul<Price> for PortfolioQty {
+    type Output = CashValue;
+
+    fn mul(self, rhs: Price) -> Self::Output {
+        CashValue(self.0 * rhs.0)
+    }
+}
+
+impl Add for PortfolioQty {
+    type Output = Self;
+
+    fn add(self, rhs: Self) -> Self {
+        Self(self.0 + rhs.0)
+    }
+}
+
+impl Sub for PortfolioQty {
+    type Output = Self;
+
+    fn sub(self, rhs: Self) -> Self {
+        Self(self.0 - rhs.0)
+    }
+}
+
+impl AddAssign for PortfolioQty {
+    fn add_assign(&mut self, rhs: Self) {
+        self.0 += rhs.0
+    }
+}
+
+impl SubAssign for PortfolioQty {
+    fn sub_assign(&mut self, rhs: Self) {
+        self.0 -= rhs.0
+    }
+}
+
+impl PartialEq<f64> for PortfolioQty {
+    fn eq(&self, other: &f64) -> bool {
+        self.0 == *other
+    }
+}
+
+impl PartialOrd<f64> for PortfolioQty {
+    fn partial_cmp(&self, other: &f64) -> Option<std::cmp::Ordering> {
+        self.0.partial_cmp(other)
+    }
+}
+
+impl Default for PortfolioQty {
+    fn default() -> Self {
+        Self(0.0)
+    }
+}
+
+impl Default for &PortfolioQty {
+    fn default() -> Self {
+        &PortfolioQty(0.0)
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, PartialOrd)]
 pub struct Price(f64);
 
 impl Default for Price {
@@ -254,6 +367,14 @@ impl Mul for Price {
     }
 }
 
+impl Mul<PortfolioQty> for Price {
+    type Output = CashValue;
+
+    fn mul(self, rhs: PortfolioQty) -> Self::Output {
+        CashValue(self.0 * rhs.0)
+    }
+}
+
 impl Sub for Price {
     type Output = Self;
 
@@ -263,10 +384,10 @@ impl Sub for Price {
 }
 
 #[derive(Clone, Debug)]
-pub struct PortfolioHoldings(pub HashMap<String, f64>);
+pub struct PortfolioHoldings(pub HashMap<String, PortfolioQty>);
 
 impl PortfolioHoldings {
-    pub fn get(&self, ticker: &str) -> Option<&f64> {
+    pub fn get(&self, ticker: &str) -> Option<&PortfolioQty> {
         self.0.get(ticker)
     }
 
@@ -274,12 +395,12 @@ impl PortfolioHoldings {
         self.0.keys().cloned().collect_vec()
     }
 
-    pub fn insert(&mut self, ticker: &str, value: &f64) {
+    pub fn insert(&mut self, ticker: &str, value: &PortfolioQty) {
         self.0.insert(ticker.to_string(), *value);
     }
 
     pub fn new() -> Self {
-        let map: HashMap<String, f64> = HashMap::new();
+        let map: HashMap<String, PortfolioQty> = HashMap::new();
         Self(map)
     }
 }

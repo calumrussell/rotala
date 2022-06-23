@@ -1,11 +1,9 @@
-use math::round;
-
 use super::broker::SimulatedBroker;
 use crate::broker::{
     BrokerEvent, CashManager, ClientControlled, Dividend, HasLog, Order, OrderExecutor, OrderType,
     PositionInfo, PriceQuote, Quote, Trade, TradeCosts,
 };
-use crate::data::{CashValue, DateTime, PortfolioAllocation, Price};
+use crate::data::{CashValue, DateTime, PortfolioAllocation, Price, PortfolioQty};
 use crate::portfolio::{Portfolio, PortfolioState, PortfolioStats, PortfolioValues};
 
 #[derive(Clone)]
@@ -57,7 +55,7 @@ impl PortfolioStats for SimPortfolio {
         holdings
     }
 
-    fn get_position_qty(&self, symbol: &str) -> Option<f64> {
+    fn get_position_qty(&self, symbol: &str) -> Option<&PortfolioQty> {
         self.brkr.get_position_qty(symbol)
     }
 
@@ -147,7 +145,7 @@ impl Portfolio for SimPortfolio {
                 //Sell 100% of position
                 if position_value <= total_sold {
                     //Cannot be called without qty existing
-                    let qty = self.brkr.get_position_qty(&ticker).unwrap();
+                    let qty = *self.brkr.get_position_qty(&ticker).unwrap();
                     let order = Order::new(OrderType::MarketSell, ticker, qty, None);
                     sell_orders.push(order);
                     total_sold -= position_value;
@@ -158,7 +156,7 @@ impl Portfolio for SimPortfolio {
                     //
                     //Cannot be called without quote existing
                     let price = self.brkr.get_quote(&ticker).unwrap().bid;
-                    let shares_req = round::ceil(f64::from(total_sold) / f64::from(price), 0);
+                    let shares_req = (total_sold / price).ceil();
                     let order = Order::new(OrderType::MarketSell, ticker, shares_req, None);
                     sell_orders.push(order);
                     total_sold = CashValue::default();
@@ -191,11 +189,8 @@ impl Portfolio for SimPortfolio {
         let mut buy_orders: Vec<Order> = Vec::new();
         let mut sell_orders: Vec<Order> = Vec::new();
 
-        let calc_required_shares_with_costs = |diff_val: &CashValue, quote: &Quote| -> f64 {
-            let mut abs_val = *diff_val;
-            if *diff_val < 0.0 {
-                abs_val = CashValue::from(f64::from(*diff_val) * -1.0);
-            }
+        let calc_required_shares_with_costs = |diff_val: &CashValue, quote: &Quote| -> PortfolioQty {
+            let abs_val = diff_val.abs();
             let trade_price: Price;
             let (net_budget, net_price): (CashValue, Price);
             //Maximise the number of shares we can acquire/sell net of costs.
@@ -207,7 +202,7 @@ impl Portfolio for SimPortfolio {
                 (net_budget, net_price) =
                     self.brkr.calc_trade_impact(&abs_val, &trade_price, false);
             }
-            round::floor(f64::from(net_budget) / f64::from(net_price), 0)
+            (net_budget / net_price).floor()
         };
 
         for symbol in target_weights.keys() {

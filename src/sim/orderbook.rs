@@ -106,13 +106,13 @@ mod tests {
         let order = Order::new(
             OrderType::LimitBuy,
             String::from("ABC"),
-            100.0,
+            100.0.into(),
             Some(100.0.into()),
         );
         let order1 = Order::new(
             OrderType::LimitBuy,
             String::from("ABC"),
-            100.0,
+            100.0.into(),
             Some(105.0.into()),
         );
         let (mut orderbook, quote) = setup();
@@ -128,13 +128,13 @@ mod tests {
         let order = Order::new(
             OrderType::LimitSell,
             String::from("ABC"),
-            100.0,
+            100.0.into(),
             Some(100.0.into()),
         );
         let order1 = Order::new(
             OrderType::LimitSell,
             String::from("ABC"),
-            100.0,
+            100.0.into(),
             Some(105.0.into()),
         );
 
@@ -154,13 +154,13 @@ mod tests {
         let order = Order::new(
             OrderType::StopBuy,
             String::from("ABC"),
-            100.0,
+            100.0.into(),
             Some(100.0.into()),
         );
         let order1 = Order::new(
             OrderType::StopBuy,
             String::from("ABC"),
-            100.0,
+            100.0.into(),
             Some(105.0.into()),
         );
 
@@ -179,13 +179,13 @@ mod tests {
         let order = Order::new(
             OrderType::StopSell,
             String::from("ABC"),
-            100.0,
+            100.0.into(),
             Some(100.0.into()),
         );
         let order1 = Order::new(
             OrderType::StopSell,
             String::from("ABC"),
-            100.0,
+            100.0.into(),
             Some(105.0.into()),
         );
         let (mut orderbook, quote) = setup();
@@ -198,8 +198,8 @@ mod tests {
 
     #[test]
     fn test_that_orderbook_doesnt_load_market_orders() {
-        let order = Order::new(OrderType::MarketBuy, String::from("ABC"), 100.0, None);
-        let order1 = Order::new(OrderType::MarketSell, String::from("ABC"), 100.0, None);
+        let order = Order::new(OrderType::MarketBuy, String::from("ABC"), 100.0.into(), None);
+        let order1 = Order::new(OrderType::MarketSell, String::from("ABC"), 100.0.into(), None);
         let (mut orderbook, _quote) = setup();
         orderbook.insert_order(&order);
         orderbook.insert_order(&order1);
@@ -213,13 +213,13 @@ mod tests {
         let order = Order::new(
             OrderType::LimitBuy,
             String::from("ABC"),
-            100.0,
+            100.0.into(),
             Some(101.00.into()),
         );
         let order1 = Order::new(
             OrderType::LimitBuy,
             String::from("ABC"),
-            100.0,
+            100.0.into(),
             Some(105.00.into()),
         );
         let (mut orderbook, _quote) = setup();
@@ -236,7 +236,7 @@ mod tests {
         let order = Order::new(
             OrderType::LimitBuy,
             String::from("ABC"),
-            100.0,
+            100.0.into(),
             Some(101.00.into()),
         );
         let (mut orderbook, _quote) = setup();
@@ -246,7 +246,7 @@ mod tests {
 
     #[test]
     fn test_that_orderbook_returns_order_failure_event_on_creating_bad_order() {
-        let order = Order::new(OrderType::MarketBuy, String::from("ABC"), 100.0, None);
+        let order = Order::new(OrderType::MarketBuy, String::from("ABC"), 100.0.into(), None);
         let (mut orderbook, _quote) = setup();
         let res = orderbook.insert_order(&order);
         assert!(matches!(res, BrokerEvent::OrderFailure(..)));

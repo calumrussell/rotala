@@ -8,7 +8,7 @@ use crate::broker::{
     PaysDividends, PendingOrders, PositionInfo, PriceQuote, Quote, Trade, TradeCosts,
 };
 use crate::broker::{Order, OrderExecutor, OrderType};
-use crate::data::{CashValue, DataSource, DateTime, PortfolioHoldings, Price, SimSource};
+use crate::data::{CashValue, DataSource, DateTime, PortfolioHoldings, Price, SimSource, PortfolioQty};
 
 #[derive(Clone)]
 pub struct SimulatedBroker {
@@ -65,22 +65,23 @@ impl PositionInfo for SimulatedBroker {
     fn get_position_profit(&self, symbol: &str) -> Option<CashValue> {
         if let Some(cost) = self.log.cost_basis(symbol) {
             if let Some(price) = self.get_quote(symbol) {
-                let qty = self.get_position_qty(symbol).unwrap();
+                //Once we get to this point we can unwrap safely
+                let qty = *self.get_position_qty(symbol).unwrap();
+                let profit: Price;
                 if qty > 0.0 {
-                    let profit = price.bid - cost;
-                    return Some(CashValue::from(f64::from(profit) * qty));
+                    profit = price.bid - cost;
                 } else {
-                    let profit = price.ask - cost;
-                    return Some(CashValue::from(f64::from(profit) * qty));
+                    profit = price.ask - cost;
                 }
+                //Profit in CashValue
+                return Some(profit * qty);
             }
         }
         None
     }
 
-    fn get_position_qty(&self, symbol: &str) -> Option<f64> {
-        let pos = self.holdings.get(symbol);
-        pos.copied()
+    fn get_position_qty(&self, symbol: &str) -> Option<&PortfolioQty> {
+        self.holdings.get(symbol)
     }
 
     fn get_position_liquidation_value(&self, symbol: &str) -> Option<CashValue> {
@@ -91,7 +92,7 @@ impl PositionInfo for SimulatedBroker {
             if let Some(qty) = self.get_position_qty(symbol) {
                 //TODO: When we fix qty off primitive, this should be a special operation that
                 //produces CashValue
-                let position_value = CashValue::from(f64::from(price) * qty);
+                let position_value = price * *qty;
                 let (value_after_costs, _price_after_costs) =
                     self.calc_trade_impact(&position_value, &price, false);
                 return Some(value_after_costs);
@@ -106,7 +107,7 @@ impl PositionInfo for SimulatedBroker {
         if let Some(quote) = self.get_quote(symbol) {
             let price = quote.bid;
             if let Some(qty) = self.get_position_qty(symbol) {
-                return Some(CashValue::from(f64::from(price) * qty));
+                return Some(price * *qty);
             }
         }
         None
@@ -182,11 +183,11 @@ impl ClientControlled for SimulatedBroker {
         self.holdings.clone()
     }
 
-    fn get(&self, symbol: &str) -> Option<&f64> {
+    fn get(&self, symbol: &str) -> Option<&PortfolioQty> {
         self.holdings.get(symbol)
     }
 
-    fn update_holdings(&mut self, symbol: &str, change: &f64) {
+    fn update_holdings(&mut self, symbol: &str, change: &PortfolioQty) {
         self.holdings.insert(symbol, &*change);
     }
 }
@@ -217,7 +218,7 @@ impl PaysDividends for SimulatedBroker {
                 //Our dataset can include dividends for stocks we don't own so we need to check
                 //that we own the stock, not performant but can be changed later
                 if let Some(qty) = self.get_position_qty(&dividend.symbol) {
-                    let cash_value = CashValue::from(qty * f64::from(dividend.value));
+                    let cash_value = *qty * dividend.value;
                     self.credit(cash_value);
                     self.log.record(dividend);
                 }
@@ -428,7 +429,7 @@ mod tests {
         brkr.deposit_cash(100_000.0.into());
         brkr.set_date(&100.into());
 
-        let order = Order::new(OrderType::MarketBuy, String::from("ABC"), 495.00, None);
+        let order = Order::new(OrderType::MarketBuy, String::from("ABC"), 495.00.into(), None);
         let _res = brkr.execute_order(&order);
 
         let cash = brkr.get_cash_balance();
@@ -441,7 +442,7 @@ mod tests {
         brkr.deposit_cash(100.0.into());
         brkr.set_date(&100.into());
 
-        let order = Order::new(OrderType::MarketBuy, String::from("ABC"), 495.00, None);
+        let order = Order::new(OrderType::MarketBuy, String::from("ABC"), 495.00.into(), None);
         let res = brkr.execute_order(&order);
 
         let cash = brkr.get_cash_balance();
@@ -456,10 +457,10 @@ mod tests {
         brkr.deposit_cash(100_000.0.into());
         brkr.set_date(&100.into());
 
-        let order = Order::new(OrderType::MarketBuy, String::from("ABC"), 495.00, None);
+        let order = Order::new(OrderType::MarketBuy, String::from("ABC"), 495.00.into(), None);
         let _res = brkr.execute_order(&order);
 
-        let qty = brkr.get_position_qty(&String::from("ABC")).unwrap();
+        let qty = *brkr.get_position_qty(&String::from("ABC")).unwrap();
         assert!(qty == 495.00);
     }
 
@@ -469,13 +470,13 @@ mod tests {
         brkr.deposit_cash(100_000.0.into());
         brkr.set_date(&100.into());
 
-        let order = Order::new(OrderType::MarketBuy, String::from("ABC"), 495.00, None);
+        let order = Order::new(OrderType::MarketBuy, String::from("ABC"), 495.00.into(), None);
         let _res = brkr.execute_order(&order);
 
-        let order1 = Order::new(OrderType::MarketSell, String::from("ABC"), 295.00, None);
+        let order1 = Order::new(OrderType::MarketSell, String::from("ABC"), 295.00.into(), None);
         let _res1 = brkr.execute_order(&order1);
 
-        let qty = brkr.get_position_qty(&String::from("ABC")).unwrap();
+        let qty = *brkr.get_position_qty(&String::from("ABC")).unwrap();
         assert!(qty == 200.00);
     }
 
@@ -492,14 +493,14 @@ mod tests {
         let order = Order::new(
             OrderType::LimitBuy,
             String::from("ABC"),
-            495.00,
+            495.00.into(),
             Some(102.00.into()),
         );
         let _res = brkr.insert_order(&order);
 
         brkr.set_date(&101.into());
 
-        let qty = brkr.get_position_qty(&String::from("ABC")).unwrap();
+        let qty = *brkr.get_position_qty(&String::from("ABC")).unwrap();
         let cost = brkr.cost_basis(&String::from("ABC")).unwrap();
         assert!(qty == 495.00);
         assert!(cost == 105.00);
@@ -511,13 +512,13 @@ mod tests {
         brkr.deposit_cash(100_000.0.into());
         brkr.set_date(&100.into());
 
-        let entry_order = Order::new(OrderType::MarketBuy, String::from("ABC"), 500.0, None);
+        let entry_order = Order::new(OrderType::MarketBuy, String::from("ABC"), 500.0.into(), None);
         let _res = brkr.execute_order(&entry_order);
 
         let stop_order = Order::new(
             OrderType::StopSell,
             String::from("ABC"),
-            500.0,
+            500.0.into(),
             Some(98.0.into()),
         );
         let _res1 = brkr.insert_order(&stop_order);
@@ -525,7 +526,7 @@ mod tests {
         brkr.set_date(&102.into());
         brkr.set_date(&103.into());
 
-        let qty = brkr.get_position_qty(&String::from("ABC")).unwrap();
+        let qty = *brkr.get_position_qty(&String::from("ABC")).unwrap();
         assert!(qty == 0.0);
     }
 
@@ -535,7 +536,7 @@ mod tests {
         brkr.deposit_cash(100_000.0.into());
         brkr.set_date(&100.into());
 
-        let order = Order::new(OrderType::MarketBuy, String::from("ABC"), 495.0, None);
+        let order = Order::new(OrderType::MarketBuy, String::from("ABC"), 495.0.into(), None);
         let _res = brkr.execute_order(&order);
 
         let val = brkr.get_position_value(&String::from("ABC")).unwrap();
@@ -550,7 +551,7 @@ mod tests {
         brkr.deposit_cash(100_000.0.into());
         brkr.set_date(&100.into());
 
-        let order = Order::new(OrderType::MarketBuy, String::from("ABC"), 495.0, None);
+        let order = Order::new(OrderType::MarketBuy, String::from("ABC"), 495.0.into(), None);
         let _res = brkr.execute_order(&order);
 
         brkr.set_date(&101.into());
@@ -565,7 +566,7 @@ mod tests {
         brkr.set_date(&100.into());
 
         //Ticker is not in the data
-        let order = Order::new(OrderType::MarketBuy, String::from("XYZ"), 495.0, None);
+        let order = Order::new(OrderType::MarketBuy, String::from("XYZ"), 495.0.into(), None);
         let res = brkr.execute_order(&order);
         brkr.set_date(&101.into());
 
@@ -580,7 +581,7 @@ mod tests {
         brkr.deposit_cash(100_000.0.into());
         brkr.set_date(&100.into());
 
-        let order = Order::new(OrderType::MarketBuy, String::from("ABC"), 100.0, None);
+        let order = Order::new(OrderType::MarketBuy, String::from("ABC"), 100.0.into(), None);
         brkr.execute_order(&order);
 
         let cash_before_dividend = brkr.get_cash_balance();

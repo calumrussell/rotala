@@ -2,7 +2,7 @@ use crate::broker::{
     BrokerEvent, CashManager, ClientControlled, HasTime, Trade, TradeCosts, TradeType,
 };
 use crate::broker::{Order, OrderType};
-use crate::data::{CashValue, Price};
+use crate::data::Price;
 
 pub struct OrderExecutionRules;
 
@@ -13,7 +13,7 @@ impl OrderExecutionRules {
         brkr: &(impl CashManager + TradeCosts),
     ) -> Result<bool, f64> {
         let shares = order.get_shares();
-        let value = CashValue::from(f64::from(*price) * shares);
+        let value = shares * *price;
         match order.get_order_type() {
             OrderType::MarketBuy => {
                 if brkr.get_cash_balance() > value {
@@ -31,12 +31,12 @@ impl OrderExecutionRules {
         price: &Price,
         brkr: &mut (impl CashManager + ClientControlled + HasTime + TradeCosts),
     ) -> Trade {
-        let value = CashValue::from(f64::from(*price) * order.get_shares());
+        let value = *price * order.get_shares();
         //Update holdings
-        let curr = brkr.get(&order.get_symbol()).unwrap_or(&0.0);
+        let curr = brkr.get(&order.get_symbol()).unwrap_or_default();
         let updated = match order.get_order_type() {
-            OrderType::MarketBuy => curr + order.get_shares(),
-            OrderType::MarketSell => curr - order.get_shares(),
+            OrderType::MarketBuy => *curr + order.get_shares(),
+            OrderType::MarketSell => *curr - order.get_shares(),
             _ => panic!("Cannot call trade_logic with a non-market order"),
         };
         brkr.update_holdings(&order.get_symbol(), &updated);

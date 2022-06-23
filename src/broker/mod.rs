@@ -1,4 +1,4 @@
-use crate::data::{CashValue, DateTime, PortfolioHoldings, Price};
+use crate::data::{CashValue, DateTime, PortfolioHoldings, Price, PortfolioQty};
 
 pub mod record;
 pub mod rules;
@@ -29,7 +29,7 @@ pub enum TradeType {
 pub struct Trade {
     pub symbol: String,
     pub value: CashValue,
-    pub quantity: f64,
+    pub quantity: PortfolioQty,
     pub date: DateTime,
     pub typ: TradeType,
 }
@@ -93,7 +93,8 @@ pub enum OrderType {
 pub struct Order {
     order_type: OrderType,
     symbol: String,
-    shares: f64,
+    //TODO: change this to qty
+    shares: PortfolioQty,
     price: Option<Price>,
 }
 
@@ -102,7 +103,7 @@ impl Order {
         self.symbol.clone()
     }
 
-    pub fn get_shares(&self) -> f64 {
+    pub fn get_shares(&self) -> PortfolioQty {
         self.shares
     }
 
@@ -114,7 +115,7 @@ impl Order {
         self.order_type
     }
 
-    pub fn new(order_type: OrderType, symbol: String, shares: f64, price: Option<Price>) -> Self {
+    pub fn new(order_type: OrderType, symbol: String, shares: PortfolioQty, price: Option<Price>) -> Self {
         Order {
             order_type,
             symbol,
@@ -134,7 +135,7 @@ pub enum BrokerCost {
 impl BrokerCost {
     pub fn calc(&self, trade: &Trade) -> CashValue {
         match self {
-            BrokerCost::PerShare(cost) => CashValue::from(trade.quantity * f64::from(*cost)),
+            BrokerCost::PerShare(cost) => trade.quantity * *cost,
             BrokerCost::PctOfValue(pct) => CashValue::from(f64::from(trade.value) * pct),
             BrokerCost::Flat(val) => *val,
         }
@@ -189,7 +190,7 @@ pub trait CashManager {
 }
 
 pub trait PositionInfo {
-    fn get_position_qty(&self, symbol: &str) -> Option<f64>;
+    fn get_position_qty(&self, symbol: &str) -> Option<&PortfolioQty>;
     fn get_position_value(&self, symbol: &str) -> Option<CashValue>;
     fn get_position_cost(&self, symbol: &str) -> Option<Price>;
     fn get_position_liquidation_value(&self, symbol: &str) -> Option<CashValue>;
@@ -203,10 +204,10 @@ pub trait PriceQuote {
 
 pub trait ClientControlled {
     fn get_positions(&self) -> Vec<String>;
-    fn update_holdings(&mut self, symbol: &str, change: &f64);
+    fn update_holdings(&mut self, symbol: &str, change: &PortfolioQty);
     fn get_holdings(&self) -> PortfolioHoldings;
-    //TODO: horrible naming, think this gets the position qty but don't know
-    fn get(&self, symbol: &str) -> Option<&f64>;
+    //TODO: horrible naming, this is the position qty
+    fn get(&self, symbol: &str) -> Option<&PortfolioQty>;
 }
 
 pub trait PendingOrders {
