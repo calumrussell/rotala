@@ -14,8 +14,8 @@ impl TimeSeries {
     pub fn pct_change_log(&self) -> Vec<f64> {
         let mut res: Vec<f64> = Vec::new();
         let mut temp = &self.values[0];
-        for i in self.values.iter().skip(1).into_iter() {
-            let pct_change = i.clone() / temp.clone();
+        for i in self.values.iter().skip(1) {
+            let pct_change = *i / *temp;
             res.push(pct_change.log10());
             temp = i
         }
@@ -25,9 +25,9 @@ impl TimeSeries {
     pub fn pct_change(&self) -> Vec<f64> {
         let mut res: Vec<f64> = Vec::new();
         let mut temp = &self.values[0];
-        for i in self.values.iter().skip(1).into_iter() {
+        for i in self.values.iter().skip(1) {
             res.push((i / temp) - 1.0);
-            temp = &i;
+            temp = i;
         }
         res
     }
@@ -40,10 +40,10 @@ impl TimeSeries {
 
         for t1 in &self.values {
             if t1 > &peak {
-                peak = t1.clone();
+                peak = *t1;
                 trough = peak;
             } else if t1 < &trough {
-                trough = t1.clone();
+                trough = *t1;
                 t2 = (trough / peak) - 1.0;
                 if t2 < maxdd {
                     maxdd = t2
@@ -79,13 +79,13 @@ impl TimeSeries {
     }
 
     pub fn append(&mut self, idx: Option<f64>, value: f64) {
-        if idx.is_some() {
-            self.index.push(idx.unwrap());
+        if let Some(idx_val) = idx {
+            self.index.push(idx_val);
             self.values.push(value);
         } else {
             let mut last = 0.0;
             if let Some(idx_last) = self.index.last() {
-                last = idx_last.clone();
+                last = *idx_last;
             }
             self.index.push(last);
             self.values.push(value);
@@ -99,9 +99,9 @@ impl TimeSeries {
             val_converted.push(val);
         }
 
-        if index.is_some() {
+        if let Some(index_val) = index {
             let mut idx_converted: Vec<f64> = Vec::new();
-            for i in index.unwrap() {
+            for i in index_val {
                 let val = i.into();
                 idx_converted.push(val);
             }
@@ -110,18 +110,16 @@ impl TimeSeries {
                 index: idx_converted,
                 values: val_converted,
             }
+        } else if val_converted.is_empty() {
+            TimeSeries {
+                index: Vec::new(),
+                values: Vec::new(),
+            }
         } else {
-            if val_converted.len() == 0 {
-                TimeSeries {
-                    index: Vec::new(),
-                    values: Vec::new(),
-                }
-            } else {
-                let idx = (0..val_converted.len() - 1).map(|v| v as f64).collect_vec();
-                TimeSeries {
-                    index: idx,
-                    values: val_converted,
-                }
+            let idx = (0..val_converted.len() - 1).map(|v| v as f64).collect_vec();
+            TimeSeries {
+                index: idx,
+                values: val_converted,
             }
         }
     }

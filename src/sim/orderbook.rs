@@ -36,14 +36,14 @@ impl SimOrderBook {
         let mut res: HashMap<u8, Order> = HashMap::new();
 
         let symbol_ids = self.get_orders_by_symbol(&quote.symbol);
-        if symbol_ids.len() == 0 {
+        if symbol_ids.is_empty() {
             return None;
         }
 
         for id in symbol_ids {
             //Ids come from orderbook so will always have key
             let order = self.orderbook.get(&id).unwrap();
-            let should_order_trigger = SimOrderBook::check_order(&order, &quote);
+            let should_order_trigger = SimOrderBook::check_order(order, quote);
 
             if should_order_trigger {
                 res.insert(id, order.clone());
@@ -56,7 +56,7 @@ impl SimOrderBook {
         self.orderbook
             .iter()
             .filter(|(_id, order)| order.get_symbol().eq(symbol))
-            .map(|(id, _order)| id.clone())
+            .map(|(id, _order)| *id)
             .collect_vec()
     }
 
@@ -92,9 +92,9 @@ mod tests {
 
     fn setup() -> (SimOrderBook, Quote) {
         let quote = Quote {
-            bid: 101.00,
-            ask: 102.00,
-            date: 100,
+            bid: 101.00.into(),
+            ask: 102.00.into(),
+            date: 100.into(),
             symbol: String::from("ABC"),
         };
 
@@ -103,8 +103,18 @@ mod tests {
 
     #[test]
     fn test_that_orderbook_with_buy_limit_triggers_correctly() {
-        let order = Order::new(OrderType::LimitBuy, String::from("ABC"), 100.0, Some(100.0));
-        let order1 = Order::new(OrderType::LimitBuy, String::from("ABC"), 100.0, Some(105.0));
+        let order = Order::new(
+            OrderType::LimitBuy,
+            String::from("ABC"),
+            100.0,
+            Some(100.0.into()),
+        );
+        let order1 = Order::new(
+            OrderType::LimitBuy,
+            String::from("ABC"),
+            100.0,
+            Some(105.0.into()),
+        );
         let (mut orderbook, quote) = setup();
         orderbook.insert_order(&order);
         orderbook.insert_order(&order1);
@@ -119,13 +129,13 @@ mod tests {
             OrderType::LimitSell,
             String::from("ABC"),
             100.0,
-            Some(100.0),
+            Some(100.0.into()),
         );
         let order1 = Order::new(
             OrderType::LimitSell,
             String::from("ABC"),
             100.0,
-            Some(105.0),
+            Some(105.0.into()),
         );
 
         let (mut orderbook, quote) = setup();
@@ -141,8 +151,18 @@ mod tests {
         //We are short from 90, and we put a StopBuy of 100 & 105 to take
         //off the position. If we are quoted 101/102 then our 100 order
         //should be executed.
-        let order = Order::new(OrderType::StopBuy, String::from("ABC"), 100.0, Some(100.0));
-        let order1 = Order::new(OrderType::StopBuy, String::from("ABC"), 100.0, Some(105.0));
+        let order = Order::new(
+            OrderType::StopBuy,
+            String::from("ABC"),
+            100.0,
+            Some(100.0.into()),
+        );
+        let order1 = Order::new(
+            OrderType::StopBuy,
+            String::from("ABC"),
+            100.0,
+            Some(105.0.into()),
+        );
 
         let (mut orderbook, quote) = setup();
         orderbook.insert_order(&order);
@@ -156,8 +176,18 @@ mod tests {
     fn test_that_orderbook_with_sell_stop_triggers_correctly() {
         //Long from 110, we place orders to exit at 100 and 105.
         //If we are quoted 101/102 then our 105 StopSell is executed.
-        let order = Order::new(OrderType::StopSell, String::from("ABC"), 100.0, Some(100.0));
-        let order1 = Order::new(OrderType::StopSell, String::from("ABC"), 100.0, Some(105.0));
+        let order = Order::new(
+            OrderType::StopSell,
+            String::from("ABC"),
+            100.0,
+            Some(100.0.into()),
+        );
+        let order1 = Order::new(
+            OrderType::StopSell,
+            String::from("ABC"),
+            100.0,
+            Some(105.0.into()),
+        );
         let (mut orderbook, quote) = setup();
         orderbook.insert_order(&order);
         orderbook.insert_order(&order1);
@@ -184,13 +214,13 @@ mod tests {
             OrderType::LimitBuy,
             String::from("ABC"),
             100.0,
-            Some(101.00),
+            Some(101.00.into()),
         );
         let order1 = Order::new(
             OrderType::LimitBuy,
             String::from("ABC"),
             100.0,
-            Some(105.00),
+            Some(105.00.into()),
         );
         let (mut orderbook, _quote) = setup();
         orderbook.insert_order(&order);
@@ -207,7 +237,7 @@ mod tests {
             OrderType::LimitBuy,
             String::from("ABC"),
             100.0,
-            Some(101.00),
+            Some(101.00.into()),
         );
         let (mut orderbook, _quote) = setup();
         let res = orderbook.insert_order(&order);

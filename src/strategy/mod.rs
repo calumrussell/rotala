@@ -7,15 +7,18 @@ overall portfolio, and not aware of how the portfolio executes
 changes with the broker.
 */
 
-use crate::perf::PerfStruct;
+use crate::{
+    data::{CashValue, DateTime},
+    perf::PerfStruct,
+};
 
 pub mod fixedweight;
 pub mod randomfake;
 pub mod staticweight;
 
 pub trait Strategy {
-    fn run(&mut self) -> f64;
-    fn set_date(&mut self, date: &i64);
-    fn init(&mut self, initial_cash: &u64);
+    fn run(&mut self) -> CashValue;
+    fn set_date(&mut self, date: &DateTime);
+    fn init(&mut self, initial_cash: &CashValue);
     fn get_perf(&self) -> PerfStruct;
 }

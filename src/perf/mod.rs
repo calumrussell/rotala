@@ -1,4 +1,4 @@
-use crate::{portfolio::PortfolioState, series::TimeSeries};
+use crate::{data::CashValue, portfolio::PortfolioState, series::TimeSeries};
 
 #[derive(Clone)]
 enum DataFrequency {
@@ -32,7 +32,7 @@ pub struct PortfolioPerformance {
     values: TimeSeries,
     states: Vec<PortfolioState>,
     freq: DataFrequency,
-    cash_flow: Vec<f64>,
+    cash_flow: Vec<CashValue>,
 }
 
 pub struct PerfStruct {
@@ -75,8 +75,8 @@ impl PortfolioPerformance {
 
                 let cash_flow = cash_flows.get(i).unwrap();
 
-                let gain = end - start - cash_flow;
-                let avg_capital = start + cash_flow;
+                let gain = end - start - f64::from(*cash_flow);
+                let avg_capital = start + f64::from(*cash_flow);
                 let ret = gain / avg_capital;
                 if is_log.is_some() && is_log.unwrap() {
                     rets.push((ret + 1_f64).log10());
@@ -116,14 +116,14 @@ impl PortfolioPerformance {
     }
 
     pub fn update(&mut self, state: &PortfolioState) {
-        let mut last_net_cash_flow = 0_f64;
-        if self.states.len() > 0 {
+        let mut last_net_cash_flow = CashValue::default();
+        if !self.states.is_empty() {
             let prev: &PortfolioState = self.states.last().unwrap();
             last_net_cash_flow += prev.net_cash_flow;
         }
 
         //Adding portfolio value
-        self.values.append(None, state.value);
+        self.values.append(None, f64::from(state.value));
 
         //Copying whole portfolio state
         let copy_state = state.clone();
@@ -169,7 +169,7 @@ mod tests {
     use std::collections::HashMap;
 
     use crate::broker::{BrokerCost, Dividend, Quote};
-    use crate::data::DataSource;
+    use crate::data::{DataSource, DateTime, PortfolioAllocation};
     use crate::perf::PortfolioPerformance;
     use crate::portfolio::Portfolio;
     use crate::portfolio::PortfolioStats;
@@ -180,72 +180,72 @@ mod tests {
     use super::PortfolioCalculator;
 
     fn setup() -> SimulatedBroker {
-        let mut raw_data: HashMap<i64, Vec<Quote>> = HashMap::new();
-        let dividends: HashMap<i64, Vec<Dividend>> = HashMap::new();
+        let mut raw_data: HashMap<DateTime, Vec<Quote>> = HashMap::new();
+        let dividends: HashMap<DateTime, Vec<Dividend>> = HashMap::new();
 
         let quote_a1 = Quote {
             symbol: String::from("ABC"),
-            date: 100,
-            bid: 101.0,
-            ask: 102.0,
+            date: 100.into(),
+            bid: 101.0.into(),
+            ask: 102.0.into(),
         };
 
         let quote_a2 = Quote {
             symbol: String::from("ABC"),
-            date: 101,
-            bid: 102.0,
-            ask: 103.0,
+            date: 101.into(),
+            bid: 102.0.into(),
+            ask: 103.0.into(),
         };
 
         let quote_a3 = Quote {
             symbol: String::from("ABC"),
-            date: 102,
-            bid: 97.0,
-            ask: 98.0,
+            date: 102.into(),
+            bid: 97.0.into(),
+            ask: 98.0.into(),
         };
 
         let quote_a4 = Quote {
             symbol: String::from("ABC"),
-            date: 103,
-            bid: 105.0,
-            ask: 106.0,
+            date: 103.into(),
+            bid: 105.0.into(),
+            ask: 106.0.into(),
         };
 
         let quote_b1 = Quote {
             symbol: String::from("BCD"),
-            date: 100,
-            bid: 501.0,
-            ask: 502.0,
+            date: 100.into(),
+            bid: 501.0.into(),
+            ask: 502.0.into(),
         };
 
         let quote_b2 = Quote {
             symbol: String::from("BCD"),
-            date: 101,
-            bid: 503.0,
-            ask: 504.0,
+            date: 101.into(),
+            bid: 503.0.into(),
+            ask: 504.0.into(),
         };
 
         let quote_b3 = Quote {
             symbol: String::from("BCD"),
-            date: 102,
-            bid: 498.0,
-            ask: 499.0,
+            date: 102.into(),
+            bid: 498.0.into(),
+            ask: 499.0.into(),
         };
 
         let quote_b4 = Quote {
             symbol: String::from("BCD"),
-            date: 103,
-            bid: 495.0,
-            ask: 496.0,
+            date: 103.into(),
+            bid: 495.0.into(),
+            ask: 496.0.into(),
         };
 
-        raw_data.insert(100, vec![quote_a1, quote_b1]);
-        raw_data.insert(101, vec![quote_a2, quote_b2]);
-        raw_data.insert(102, vec![quote_a3, quote_b3]);
-        raw_data.insert(103, vec![quote_a4, quote_b4]);
+        raw_data.insert(100.into(), vec![quote_a1, quote_b1]);
+        raw_data.insert(101.into(), vec![quote_a2, quote_b2]);
+        raw_data.insert(102.into(), vec![quote_a3, quote_b3]);
+        raw_data.insert(103.into(), vec![quote_a4, quote_b4]);
 
         let source = DataSource::from_hashmap(raw_data, dividends);
-        let sb = SimulatedBroker::new(source, vec![BrokerCost::Flat(1.0)]);
+        let sb = SimulatedBroker::new(source, vec![BrokerCost::Flat(1.0.into())]);
         sb
     }
 
@@ -294,19 +294,19 @@ mod tests {
         let mut perf = PortfolioPerformance::yearly();
 
         let brkr = setup();
-        let mut target_weights: HashMap<String, f64> = HashMap::new();
-        target_weights.insert(String::from("ABC"), 0.5);
-        target_weights.insert(String::from("BCD"), 0.5);
+        let mut target_weights = PortfolioAllocation::new();
+        target_weights.insert(&String::from("ABC"), &0.5.into());
+        target_weights.insert(&String::from("BCD"), &0.5.into());
 
         let mut port = SimPortfolio::new(brkr);
-        port.deposit_cash(&100_000_u64);
+        port.deposit_cash(&100_000.0.into());
 
-        port.set_date(&100);
+        port.set_date(&100.into());
         let orders = port.update_weights(&target_weights);
         port.execute_orders(orders);
         perf.update(&port.get_current_state());
 
-        port.set_date(&101);
+        port.set_date(&101.into());
         let orders = port.update_weights(&target_weights);
         port.execute_orders(orders);
         perf.update(&port.get_current_state());
@@ -315,8 +315,8 @@ mod tests {
 
         let portfolio_return = output.ret;
         //We need to round up to cmp properly
-        let to_comp = (portfolio_return * 1000.0).round() as i64;
-        assert!((to_comp as f64).eq(&7.0));
+        let to_comp = (portfolio_return * 1000.0).round();
+        assert!((to_comp).eq(&7.0));
     }
 
     #[test]
@@ -324,32 +324,32 @@ mod tests {
         let mut perf = PortfolioPerformance::yearly();
 
         let brkr = setup();
-        let mut target_weights: HashMap<String, f64> = HashMap::new();
-        target_weights.insert(String::from("ABC"), 0.5);
-        target_weights.insert(String::from("BCD"), 0.5);
+        let mut target_weights = PortfolioAllocation::new();
+        target_weights.insert(&String::from("ABC"), &0.5.into());
+        target_weights.insert(&String::from("BCD"), &0.5.into());
 
         let mut port = SimPortfolio::new(brkr);
-        port.deposit_cash(&100_000_u64);
+        port.deposit_cash(&100_000.0.into());
 
-        port.set_date(&100);
+        port.set_date(&100.into());
         let orders = port.update_weights(&target_weights);
         port.execute_orders(orders);
         perf.update(&port.get_current_state());
 
-        port.set_date(&101);
-        port.deposit_cash(&10_000_u64);
+        port.set_date(&101.into());
+        port.deposit_cash(&10_000.0.into());
         let orders = port.update_weights(&target_weights);
         port.execute_orders(orders);
         perf.update(&port.get_current_state());
 
-        port.set_date(&102);
-        port.withdraw_cash_with_liquidation(&20_000_u64);
+        port.set_date(&102.into());
+        port.withdraw_cash_with_liquidation(&20_000.0.into());
         let orders = port.update_weights(&target_weights);
         port.execute_orders(orders);
         perf.update(&port.get_current_state());
 
-        port.set_date(&103);
-        port.deposit_cash(&5_000_u64);
+        port.set_date(&103.into());
+        port.deposit_cash(&5_000.0.into());
         let orders = port.update_weights(&target_weights);
         port.execute_orders(orders);
         perf.update(&port.get_current_state());
@@ -367,32 +367,32 @@ mod tests {
         let mut perf = PortfolioPerformance::yearly();
 
         let brkr = setup();
-        let mut target_weights: HashMap<String, f64> = HashMap::new();
-        target_weights.insert(String::from("ABC"), 0.5);
-        target_weights.insert(String::from("BCD"), 0.5);
+        let mut target_weights = PortfolioAllocation::new();
+        target_weights.insert(&String::from("ABC"), &0.5.into());
+        target_weights.insert(&String::from("BCD"), &0.5.into());
 
         let mut port = SimPortfolio::new(brkr);
-        port.deposit_cash(&100_000_u64);
+        port.deposit_cash(&100_000.0.into());
 
-        port.set_date(&100);
+        port.set_date(&100.into());
         let orders = port.update_weights(&target_weights);
         port.execute_orders(orders);
         perf.update(&port.get_current_state());
 
-        port.set_date(&101);
-        port.deposit_cash(&10_000_u64);
+        port.set_date(&101.into());
+        port.deposit_cash(&10_000.0.into());
         let orders = port.update_weights(&target_weights);
         port.execute_orders(orders);
         perf.update(&port.get_current_state());
 
-        port.set_date(&102);
-        port.withdraw_cash(&20_000_u64);
+        port.set_date(&102.into());
+        port.withdraw_cash(&20_000.0.into());
         let orders = port.update_weights(&target_weights);
         port.execute_orders(orders);
         perf.update(&port.get_current_state());
 
-        port.set_date(&103);
-        port.deposit_cash(&5_000_u64);
+        port.set_date(&103.into());
+        port.deposit_cash(&5_000.0.into());
         let orders = port.update_weights(&target_weights);
         port.execute_orders(orders);
         perf.update(&port.get_current_state());
@@ -400,30 +400,30 @@ mod tests {
         let mut perf1 = PortfolioPerformance::yearly();
 
         let brkr1 = setup();
-        let mut target_weights1: HashMap<String, f64> = HashMap::new();
-        target_weights1.insert(String::from("ABC"), 0.5);
-        target_weights1.insert(String::from("BCD"), 0.5);
+        let mut target_weights1 = PortfolioAllocation::new();
+        target_weights1.insert(&String::from("ABC"), &0.5.into());
+        target_weights1.insert(&String::from("BCD"), &0.5.into());
 
         let mut port1 = SimPortfolio::new(brkr1);
-        port1.deposit_cash(&100_000_u64);
+        port1.deposit_cash(&100_000.0.into());
 
-        port1.set_date(&100);
+        port1.set_date(&100.into());
         let orders = port1.update_weights(&target_weights1);
         port1.execute_orders(orders);
         perf.update(&port1.get_current_state());
 
-        port1.set_date(&101);
+        port1.set_date(&101.into());
         let orders = port1.update_weights(&target_weights1);
         port1.execute_orders(orders);
         perf1.update(&port1.get_current_state());
 
-        port1.set_date(&102);
+        port1.set_date(&102.into());
         let orders = port1.update_weights(&target_weights1);
         port1.execute_orders(orders);
         perf1.update(&port1.get_current_state());
 
-        port1.set_date(&103);
-        port1.deposit_cash(&5_000_u64);
+        port1.set_date(&103.into());
+        port1.deposit_cash(&5_000.0.into());
         let orders = port1.update_weights(&target_weights1);
         port1.execute_orders(orders);
         perf1.update(&port1.get_current_state());

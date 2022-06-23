@@ -3,7 +3,7 @@ mod common;
 use std::collections::HashMap;
 
 use alator::broker::{BrokerCost, Dividend, Quote};
-use alator::data::DataSource;
+use alator::data::{DataSource, DateTime, PortfolioAllocation};
 use alator::perf::PortfolioPerformance;
 use alator::sim::broker::SimulatedBroker;
 use alator::sim::portfolio::SimPortfolio;
@@ -16,11 +16,11 @@ use common::build_fake_quote_stream;
 
 #[test]
 fn fixedweight_integration_test() {
-    let initial_cash = 1e6 as u64;
+    let initial_cash = 100_000.0.into();
 
-    let mut weights: HashMap<String, f64> = HashMap::new();
-    weights.insert(String::from("ABC"), 0.5);
-    weights.insert(String::from("BCD"), 0.5);
+    let mut weights = PortfolioAllocation::new();
+    weights.insert(&String::from("ABC"), &0.5.into());
+    weights.insert(&String::from("BCD"), &0.5.into());
 
     let price_dist = Uniform::new(1.0, 100.0);
     let vol_dist = Uniform::new(0.1, 0.2);
@@ -44,16 +44,16 @@ fn fixedweight_integration_test() {
         start_date..end_date,
         Some(seconds_in_day as usize),
     );
-    let mut raw_data: HashMap<i64, Vec<Quote>> = HashMap::new();
-    let dividends: HashMap<i64, Vec<Dividend>> = HashMap::new();
+    let mut raw_data: HashMap<DateTime, Vec<Quote>> = HashMap::new();
+    let dividends: HashMap<DateTime, Vec<Dividend>> = HashMap::new();
     for (_a, b) in abc_quotes.iter().zip(bcd_quotes.iter()).enumerate() {
-        raw_data.insert(b.0.date.clone(), vec![b.0.clone(), b.1.clone()]);
+        raw_data.insert(DateTime::from(b.0.date), vec![b.0.clone(), b.1.clone()]);
     }
 
     let dates = raw_data.keys().map(|d| d.clone()).collect();
     let source = DataSource::from_hashmap(raw_data, dividends);
 
-    let simbrkr = SimulatedBroker::new(source, vec![BrokerCost::Flat(1.0)]);
+    let simbrkr = SimulatedBroker::new(source, vec![BrokerCost::Flat(1.0.into())]);
     let port = SimPortfolio::new(simbrkr);
 
     let perf = PortfolioPerformance::yearly();

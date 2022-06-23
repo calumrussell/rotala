@@ -2,23 +2,24 @@ use crate::broker::{
     BrokerEvent, CashManager, ClientControlled, HasTime, Trade, TradeCosts, TradeType,
 };
 use crate::broker::{Order, OrderType};
+use crate::data::{CashValue, Price};
 
 pub struct OrderExecutionRules;
 
 impl OrderExecutionRules {
     pub fn client_has_sufficient_cash(
         order: &Order,
-        price: &f64,
+        price: &Price,
         brkr: &(impl CashManager + TradeCosts),
-    ) -> Result<bool, u64> {
+    ) -> Result<bool, f64> {
         let shares = order.get_shares();
-        let value = price * shares;
+        let value = CashValue::from(f64::from(*price) * shares);
         match order.get_order_type() {
             OrderType::MarketBuy => {
-                if brkr.get_cash_balance() as f64 > value {
+                if brkr.get_cash_balance() > value {
                     return Ok(true);
                 }
-                Err(value as u64)
+                Err(f64::from(value))
             }
             OrderType::MarketSell => Ok(true),
             _ => unreachable!("Shouldn't hit unless something has gone wrong"),
@@ -27,23 +28,23 @@ impl OrderExecutionRules {
 
     pub fn trade_logic(
         order: &Order,
-        price: &f64,
+        price: &Price,
         brkr: &mut (impl CashManager + ClientControlled + HasTime + TradeCosts),
     ) -> Trade {
-        let value = price * order.get_shares();
+        let value = CashValue::from(f64::from(*price) * order.get_shares());
         //Update holdings
         let curr = brkr.get(&order.get_symbol()).unwrap_or(&0.0);
         let updated = match order.get_order_type() {
-            OrderType::MarketBuy => curr + order.get_shares() as f64,
-            OrderType::MarketSell => curr - order.get_shares() as f64,
+            OrderType::MarketBuy => curr + order.get_shares(),
+            OrderType::MarketSell => curr - order.get_shares(),
             _ => panic!("Cannot call trade_logic with a non-market order"),
         };
         brkr.update_holdings(&order.get_symbol(), &updated);
 
         //Update cash
         match order.get_order_type() {
-            OrderType::MarketBuy => brkr.debit(value as u64),
-            OrderType::MarketSell => brkr.credit(value as u64),
+            OrderType::MarketBuy => brkr.debit(value),
+            OrderType::MarketSell => brkr.credit(value),
             _ => unreachable!("Will throw earlier with other ordertype"),
         };
 
@@ -54,21 +55,21 @@ impl OrderExecutionRules {
         };
 
         let t = Trade {
-            symbol: order.get_symbol().clone(),
+            symbol: order.get_symbol(),
             value,
-            quantity: order.get_shares().clone() as f64,
+            quantity: order.get_shares(),
             date: brkr.now(),
             typ: trade_type,
         };
 
         let costs = brkr.get_trade_costs(&t);
-        brkr.debit(costs as u64);
+        brkr.debit(costs);
         t
     }
 
     pub fn run_all<'a>(
         order: &Order,
-        price: &f64,
+        price: &Price,
         brkr: &'a mut (impl CashManager + ClientControlled + TradeCosts + HasTime),
     ) -> Result<Trade, BrokerEvent> {
         let has_cash = OrderExecutionRules::client_has_sufficient_cash(order, price, brkr);

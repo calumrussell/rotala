@@ -1,6 +1,7 @@
 use itertools::Itertools;
 
 use super::{BrokerRecordedEvents, Dividend, Trade, TradeType};
+use crate::data::{CashValue, DateTime, Price};
 
 //Records events executed by the broker.
 //
@@ -20,9 +21,8 @@ impl BrokerLog {
     pub fn trades(&self) -> Vec<Trade> {
         let mut trades = Vec::new();
         for event in &self.log {
-            match event {
-                BrokerRecordedEvents::TradeCompleted(trade) => trades.push(trade.clone()),
-                _ => (),
+            if let BrokerRecordedEvents::TradeCompleted(trade) = event {
+                trades.push(trade.clone());
             }
         }
         trades
@@ -31,35 +31,34 @@ impl BrokerLog {
     pub fn dividends(&self) -> Vec<Dividend> {
         let mut dividends = Vec::new();
         for event in &self.log {
-            match event {
-                BrokerRecordedEvents::DividendPaid(dividend) => dividends.push(dividend.clone()),
-                _ => (),
+            if let BrokerRecordedEvents::DividendPaid(dividend) = event {
+                dividends.push(dividend.clone());
             }
         }
         dividends
     }
 
-    pub fn dividends_between(&self, start: &i64, stop: &i64) -> Vec<Dividend> {
+    pub fn dividends_between(&self, start: &DateTime, stop: &DateTime) -> Vec<Dividend> {
         let dividends = self.dividends();
         dividends
             .iter()
             .filter(|v| v.date >= *start && v.date <= *stop)
-            .map(|v| v.clone())
+            .cloned()
             .collect_vec()
     }
 
-    pub fn trades_between(&self, start: &i64, stop: &i64) -> Vec<Trade> {
+    pub fn trades_between(&self, start: &DateTime, stop: &DateTime) -> Vec<Trade> {
         let trades = self.trades();
         trades
             .iter()
             .filter(|v| v.date >= *start && v.date <= *stop)
-            .map(|v| v.clone())
+            .cloned()
             .collect_vec()
     }
 
-    pub fn cost_basis(&self, symbol: &String) -> Option<f64> {
+    pub fn cost_basis(&self, symbol: &str) -> Option<Price> {
         let mut cum_qty = 0.0;
-        let mut cum_val = 0.0;
+        let mut cum_val = CashValue::default();
         for event in &self.log {
             if let BrokerRecordedEvents::TradeCompleted(trade) = event {
                 if trade.symbol.eq(symbol) {
@@ -75,7 +74,7 @@ impl BrokerLog {
                     }
                     //reset the value if we are back to zero
                     if cum_qty == 0.0 {
-                        cum_val = 0.0;
+                        cum_val = CashValue::default();
                     }
                 }
             }
@@ -83,13 +82,19 @@ impl BrokerLog {
         if cum_qty == 0.0 {
             return None;
         }
-        Some(cum_val / cum_qty)
+        Some(Price::from(f64::from(cum_val) / cum_qty))
     }
 }
 
 impl BrokerLog {
     pub fn new() -> Self {
         BrokerLog { log: Vec::new() }
+    }
+}
+
+impl Default for BrokerLog {
+    fn default() -> Self {
+        Self::new()
     }
 }
 
@@ -104,37 +109,37 @@ mod tests {
 
         let t1 = Trade {
             symbol: String::from("ABC"),
-            quantity: 10.00,
-            value: 100.0,
-            date: 100,
+            quantity: 10.00.into(),
+            value: 100.0.into(),
+            date: 100.into(),
             typ: TradeType::Buy,
         };
         let t2 = Trade {
             symbol: String::from("ABC"),
-            quantity: 90.00,
-            value: 500.0,
-            date: 101,
+            quantity: 90.00.into(),
+            value: 500.0.into(),
+            date: 101.into(),
             typ: TradeType::Buy,
         };
         let t3 = Trade {
             symbol: String::from("BCD"),
-            quantity: 100.00,
-            value: 100.0,
-            date: 102,
+            quantity: 100.00.into(),
+            value: 100.0.into(),
+            date: 102.into(),
             typ: TradeType::Buy,
         };
         let t4 = Trade {
             symbol: String::from("BCD"),
-            quantity: 100.00,
-            value: 500.0,
-            date: 103,
+            quantity: 100.00.into(),
+            value: 500.0.into(),
+            date: 103.into(),
             typ: TradeType::Sell,
         };
         let t5 = Trade {
             symbol: String::from("BCD"),
-            quantity: 50.00,
-            value: 50.0,
-            date: 104,
+            quantity: 50.00.into(),
+            value: 50.0.into(),
+            date: 104.into(),
             typ: TradeType::Buy,
         };
 
@@ -149,7 +154,7 @@ mod tests {
     #[test]
     fn test_that_log_filters_trades_between_dates() {
         let log = setup();
-        let between = log.trades_between(&102, &104);
+        let between = log.trades_between(&102.into(), &104.into());
         assert!(between.len() == 3);
     }
 

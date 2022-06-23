@@ -1,48 +1,48 @@
+use crate::broker::Order;
+use crate::data::{CashValue, PortfolioAllocation};
 use std::collections::HashMap;
 
-use crate::broker::Order;
+#[derive(Clone, Debug)]
+pub struct PortfolioValues(pub HashMap<String, CashValue>);
 
-pub trait Portfolio {
-    fn deposit_cash(&mut self, cash: &u64) -> bool;
-    fn withdraw_cash(&mut self, cash: &u64) -> bool;
-    fn withdraw_cash_with_liquidation(&mut self, cash: &u64) -> bool;
-    fn update_weights(&self, target_weights: &HashMap<String, f64>) -> Vec<Order>;
-}
-
-pub trait PortfolioStats {
-    fn get_total_value(&self) -> f64;
-    fn get_liquidation_value(&self) -> f64;
-    fn get_position_value(&self, ticker: &String) -> Option<f64>;
-    fn get_position_liquidation_value(&self, symbol: &String) -> Option<f64>;
-    fn get_position_qty(&self, ticker: &String) -> Option<f64>;
-    fn get_current_state(&self) -> PortfolioState;
-    fn get_holdings(&self) -> Holdings;
-    fn get_cash_value(&self) -> u64;
-}
-
-#[derive(Clone)]
-pub struct Holdings {
-    data: HashMap<String, f64>,
-}
-
-impl Holdings {
-    pub fn get_ticker(&self, ticker: &String) -> Option<&f64> {
-        self.data.get(ticker)
-    }
-
-    pub fn put(&mut self, ticker: &String, value: &f64) {
-        self.data.insert(ticker.clone(), value.clone());
+impl PortfolioValues {
+    pub fn insert(&mut self, ticker: &str, value: &CashValue) {
+        self.0.insert(ticker.to_string(), *value);
     }
 
     pub fn new() -> Self {
-        let data = HashMap::new();
-        Holdings { data }
+        let map: HashMap<String, CashValue> = HashMap::new();
+        Self(map)
     }
 }
 
-#[derive(Clone)]
+impl Default for PortfolioValues {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+pub trait Portfolio {
+    fn deposit_cash(&mut self, cash: &CashValue) -> bool;
+    fn withdraw_cash(&mut self, cash: &CashValue) -> bool;
+    fn withdraw_cash_with_liquidation(&mut self, cash: &CashValue) -> bool;
+    fn update_weights(&self, target_weights: &PortfolioAllocation) -> Vec<Order>;
+}
+
+pub trait PortfolioStats {
+    fn get_total_value(&self) -> CashValue;
+    fn get_liquidation_value(&self) -> CashValue;
+    fn get_position_value(&self, ticker: &str) -> Option<CashValue>;
+    fn get_position_liquidation_value(&self, symbol: &str) -> Option<CashValue>;
+    fn get_position_qty(&self, ticker: &str) -> Option<f64>;
+    fn get_current_state(&self) -> PortfolioState;
+    fn get_holdings(&self) -> PortfolioValues;
+    fn get_cash_value(&self) -> CashValue;
+}
+
+#[derive(Clone, Debug)]
 pub struct PortfolioState {
-    pub value: f64,
-    pub positions: Holdings,
-    pub net_cash_flow: f64,
+    pub value: CashValue,
+    pub positions: PortfolioValues,
+    pub net_cash_flow: CashValue,
 }

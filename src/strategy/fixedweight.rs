@@ -1,5 +1,4 @@
-use std::collections::HashMap;
-
+use crate::data::{CashValue, DateTime, PortfolioAllocation};
 use crate::perf::{PerfStruct, PortfolioPerformance};
 use crate::portfolio::{Portfolio, PortfolioStats};
 use crate::schedule::{DefaultTradingSchedule, TradingSchedule};
@@ -9,8 +8,8 @@ use crate::strategy::Strategy;
 #[derive(Clone)]
 pub struct FixedWeightStrategy {
     portfolio: SimPortfolio,
-    date: i64,
-    target_weights: HashMap<String, f64>,
+    date: DateTime,
+    target_weights: PortfolioAllocation,
     perf: PortfolioPerformance,
 }
 
@@ -19,20 +18,20 @@ impl Strategy for FixedWeightStrategy {
         self.perf.get_output()
     }
 
-    fn set_date(&mut self, date: &i64) {
+    fn set_date(&mut self, date: &DateTime) {
         let state = self.portfolio.set_date(date);
         self.date = *date;
         self.perf.update(&state)
     }
 
-    fn init(&mut self, initital_cash: &u64) {
+    fn init(&mut self, initital_cash: &CashValue) {
         self.portfolio.deposit_cash(initital_cash);
     }
 
-    fn run(&mut self) -> f64 {
+    fn run(&mut self) -> CashValue {
         if DefaultTradingSchedule::should_trade(&self.date) {
             let orders = self.portfolio.update_weights(&self.target_weights);
-            if orders.len() > 0 {
+            if !orders.is_empty() {
                 self.portfolio.execute_orders(orders);
             }
         }
@@ -44,11 +43,11 @@ impl FixedWeightStrategy {
     pub fn new(
         portfolio: SimPortfolio,
         perf: PortfolioPerformance,
-        target_weights: HashMap<String, f64>,
+        target_weights: PortfolioAllocation,
     ) -> Self {
         FixedWeightStrategy {
             portfolio,
-            date: -1,
+            date: DateTime::from(-1),
             target_weights,
             perf,
         }

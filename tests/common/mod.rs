@@ -29,9 +29,9 @@ pub fn build_fake_quote_stream(
 
         let q = Quote {
             symbol: stock.clone(),
-            date: date,
-            bid: new_price * 0.995,
-            ask: new_price,
+            date: date.into(),
+            bid: (new_price * 0.995).into(),
+            ask: new_price.into(),
         };
 
         quotes.push(q);

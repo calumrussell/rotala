@@ -1,10 +1,15 @@
-use crate::strategy::Strategy;
+use crate::{
+    data::{CashValue, DateTime},
+    strategy::Strategy,
+};
 
 pub struct SimContext {
-    sim_dates: Vec<i64>,
-    initial_cash: u64,
+    sim_dates: Vec<DateTime>,
+    initial_cash: CashValue,
     strat: Box<dyn Strategy>,
 }
+
+pub struct PerfResults(f64, f64, f64, f64, f64, Vec<f64>, Vec<f64>, Vec<DateTime>);
 
 impl SimContext {
     pub fn run(&mut self) {
@@ -16,9 +21,9 @@ impl SimContext {
         }
     }
 
-    pub fn calculate_perf(&mut self) -> (f64, f64, f64, f64, f64, Vec<f64>, Vec<f64>, Vec<i64>) {
+    pub fn calculate_perf(&mut self) -> PerfResults {
         let perf = self.strat.get_perf();
-        (
+        PerfResults(
             perf.ret,
             perf.cagr,
             perf.vol,
@@ -31,8 +36,8 @@ impl SimContext {
     }
 
     pub fn new<T: Into<Box<dyn Strategy>>>(
-        sim_dates: Vec<i64>,
-        initial_cash: u64,
+        sim_dates: Vec<DateTime>,
+        initial_cash: CashValue,
         strat: T,
     ) -> SimContext {
         let boxed: Box<dyn Strategy> = strat.into();

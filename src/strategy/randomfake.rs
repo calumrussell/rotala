@@ -1,7 +1,7 @@
 use rand::{thread_rng, Rng};
 use rand_distr::Uniform;
-use std::collections::HashMap;
 
+use crate::data::{CashValue, DateTime, PortfolioAllocation};
 use crate::perf::{PerfStruct, PortfolioPerformance};
 use crate::portfolio::{Portfolio, PortfolioStats};
 use crate::schedule::{LastBusinessDayTradingSchedule, TradingSchedule};
@@ -12,7 +12,7 @@ use crate::universe::{DefinedUniverse, StaticUniverse};
 #[derive(Clone)]
 pub struct RandomStrategyRulesWithFakeDataSource {
     portfolio: SimPortfolio,
-    date: i64,
+    date: DateTime,
     universe: StaticUniverse,
     perf: PortfolioPerformance,
 }
@@ -22,29 +22,29 @@ impl Strategy for RandomStrategyRulesWithFakeDataSource {
         self.perf.get_output()
     }
 
-    fn set_date(&mut self, date: &i64) {
+    fn set_date(&mut self, date: &DateTime) {
         let state = self.portfolio.set_date(date);
         self.date = *date;
         self.perf.update(&state)
     }
 
-    fn init(&mut self, initital_cash: &u64) {
+    fn init(&mut self, initital_cash: &CashValue) {
         self.portfolio.deposit_cash(initital_cash);
     }
 
-    fn run(&mut self) -> f64 {
+    fn run(&mut self) -> CashValue {
         if LastBusinessDayTradingSchedule::should_trade(&self.date) {
             let mut initial = 0.99;
 
-            let mut temp: HashMap<String, f64> = HashMap::new();
+            let mut temp = PortfolioAllocation::new();
             for asset in self.universe.get_assets() {
                 let weight = RandomStrategyRulesWithFakeDataSource::fake_data_source(&initial);
-                temp.insert(asset.to_owned(), weight.to_owned());
+                temp.insert(&asset.clone(), &weight.into());
                 initial += -weight
             }
 
             let orders = self.portfolio.update_weights(&temp);
-            if orders.len() > 0 {
+            if !orders.is_empty() {
                 self.portfolio.execute_orders(orders);
             }
         }
@@ -66,7 +66,7 @@ impl RandomStrategyRulesWithFakeDataSource {
     ) -> Self {
         RandomStrategyRulesWithFakeDataSource {
             portfolio,
-            date: -1,
+            date: DateTime::from(-1),
             universe,
             perf,
         }
