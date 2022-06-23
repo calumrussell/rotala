@@ -86,9 +86,9 @@ pub struct CashValue(f64);
 impl CashValue {
     pub fn abs(&self) -> Self {
         if self.0 > 0.0 {
-            return Self(self.0)
+            Self(self.0)
         } else {
-            return Self(self.0 * -1.0)
+            Self(self.0 * -1.0)
         }
     }
 }
@@ -217,21 +217,6 @@ impl From<i64> for DateTime {
 impl PartialEq<i64> for DateTime {
     fn eq(&self, other: &i64) -> bool {
         self.0 == *other
-    }
-}
-
-#[derive(Clone, Copy, Debug)]
-pub struct PortfolioWeight(f64);
-
-impl From<PortfolioWeight> for f64 {
-    fn from(v: PortfolioWeight) -> Self {
-        v.0
-    }
-}
-
-impl From<f64> for PortfolioWeight {
-    fn from(v: f64) -> Self {
-        PortfolioWeight(v)
     }
 }
 
@@ -411,10 +396,37 @@ impl Default for PortfolioHoldings {
     }
 }
 
-#[derive(Clone, Debug)]
-pub struct PortfolioAllocation(pub HashMap<String, PortfolioWeight>);
+pub trait Weight: Mul<CashValue, Output = CashValue> + Into<f64> {}
 
-impl PortfolioAllocation {
+#[derive(Clone, Copy, Debug)]
+pub struct PortfolioWeight(f64);
+
+impl Weight for PortfolioWeight {}
+
+impl From<PortfolioWeight> for f64 {
+    fn from(v: PortfolioWeight) -> Self {
+        v.0
+    }
+}
+
+impl From<f64> for PortfolioWeight {
+    fn from(v: f64) -> Self {
+        PortfolioWeight(v)
+    }
+}
+
+impl Mul<CashValue> for PortfolioWeight {
+    type Output = CashValue;
+
+    fn mul(self, rhs: CashValue) -> Self::Output {
+        CashValue(self.0 * rhs.0)
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct PortfolioAllocation<T: Weight>(pub HashMap<String, T>);
+
+impl PortfolioAllocation<PortfolioWeight> {
     pub fn get(&self, ticker: &str) -> Option<&PortfolioWeight> {
         self.0.get(ticker)
     }
@@ -433,7 +445,7 @@ impl PortfolioAllocation {
     }
 }
 
-impl Default for PortfolioAllocation {
+impl Default for PortfolioAllocation<PortfolioWeight> {
     fn default() -> Self {
         Self::new()
     }

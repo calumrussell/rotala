@@ -3,7 +3,7 @@ use crate::broker::{
     BrokerEvent, CashManager, ClientControlled, Dividend, HasLog, Order, OrderExecutor, OrderType,
     PositionInfo, PriceQuote, Quote, Trade, TradeCosts,
 };
-use crate::data::{CashValue, DateTime, PortfolioAllocation, Price, PortfolioQty};
+use crate::data::{CashValue, DateTime, PortfolioAllocation, PortfolioQty, PortfolioWeight, Price};
 use crate::portfolio::{Portfolio, PortfolioState, PortfolioStats, PortfolioValues};
 
 #[derive(Clone)]
@@ -180,7 +180,7 @@ impl Portfolio for SimPortfolio {
     //This function is named erroneously, we aren't mutating the state of the portfolio
     //but calculating a diff and set of orders needed to close a diff
     //Returns orders so calling client has control when orders are executed
-    fn update_weights(&self, target_weights: &PortfolioAllocation) -> Vec<Order> {
+    fn update_weights(&self, target_weights: &PortfolioAllocation<PortfolioWeight>) -> Vec<Order> {
         //Need liquidation value so we definitely have enough money to make all transactions after
         //costs
         let total_value = self.get_liquidation_value();
@@ -189,7 +189,9 @@ impl Portfolio for SimPortfolio {
         let mut buy_orders: Vec<Order> = Vec::new();
         let mut sell_orders: Vec<Order> = Vec::new();
 
-        let calc_required_shares_with_costs = |diff_val: &CashValue, quote: &Quote| -> PortfolioQty {
+        let calc_required_shares_with_costs = |diff_val: &CashValue,
+                                               quote: &Quote|
+         -> PortfolioQty {
             let abs_val = diff_val.abs();
             let trade_price: Price;
             let (net_budget, net_price): (CashValue, Price);

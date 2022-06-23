@@ -1,4 +1,4 @@
-use crate::data::{CashValue, DateTime, PortfolioAllocation};
+use crate::data::{CashValue, DateTime, PortfolioAllocation, PortfolioWeight};
 use crate::perf::{PerfStruct, PortfolioPerformance};
 use crate::portfolio::{Portfolio, PortfolioStats};
 use crate::schedule::{LastBusinessDayTradingSchedule, TradingSchedule};
@@ -9,7 +9,7 @@ use crate::strategy::Strategy;
 pub struct StaticWeightStrategyRulesMonthlyRebalancing {
     portfolio: SimPortfolio,
     date: DateTime,
-    target_weights: Vec<PortfolioAllocation>,
+    target_weights: Vec<PortfolioAllocation<PortfolioWeight>>,
     count: usize,
     perf: PortfolioPerformance,
 }
@@ -47,7 +47,7 @@ impl StaticWeightStrategyRulesMonthlyRebalancing {
     pub fn new(
         portfolio: SimPortfolio,
         perf: PortfolioPerformance,
-        target_weights: Vec<PortfolioAllocation>,
+        target_weights: Vec<PortfolioAllocation<PortfolioWeight>>,
     ) -> Self {
         StaticWeightStrategyRulesMonthlyRebalancing {
             portfolio,

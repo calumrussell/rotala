@@ -1,4 +1,4 @@
-use crate::data::{CashValue, DateTime, PortfolioHoldings, Price, PortfolioQty};
+use crate::data::{CashValue, DateTime, PortfolioHoldings, PortfolioQty, Price};
 
 pub mod record;
 pub mod rules;
@@ -115,7 +115,12 @@ impl Order {
         self.order_type
     }
 
-    pub fn new(order_type: OrderType, symbol: String, shares: PortfolioQty, price: Option<Price>) -> Self {
+    pub fn new(
+        order_type: OrderType,
+        symbol: String,
+        shares: PortfolioQty,
+        price: Option<Price>,
+    ) -> Self {
         Order {
             order_type,
             symbol,

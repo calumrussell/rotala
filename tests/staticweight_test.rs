@@ -4,7 +4,7 @@ use rand::distributions::Uniform;
 use std::collections::HashMap;
 
 use alator::broker::{BrokerCost, Dividend, Quote};
-use alator::data::{CashValue, DataSource, DateTime, PortfolioAllocation};
+use alator::data::{CashValue, DataSource, DateTime, PortfolioAllocation, PortfolioWeight};
 use alator::perf::PortfolioPerformance;
 use alator::sim::broker::SimulatedBroker;
 use alator::sim::portfolio::SimPortfolio;
@@ -45,7 +45,7 @@ fn staticweight_integration_test() {
         raw_data.insert(DateTime::from(b.0.date), vec![b.0.clone(), b.1.clone()]);
     }
 
-    let mut weights: Vec<PortfolioAllocation> = Vec::new();
+    let mut weights: Vec<PortfolioAllocation<PortfolioWeight>> = Vec::new();
     for _i in 0..length_in_days {
         let mut temp = PortfolioAllocation::new();
         temp.insert(&String::from("ABC"), &0.5.into());

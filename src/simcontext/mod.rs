@@ -1,7 +1,5 @@
-use crate::{
-    data::{CashValue, DateTime},
-    strategy::Strategy,
-};
+use crate::data::{CashValue, DateTime};
+use crate::strategy::Strategy;
 
 pub struct SimContext {
     sim_dates: Vec<DateTime>,

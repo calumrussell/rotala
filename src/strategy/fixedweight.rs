@@ -1,4 +1,4 @@
-use crate::data::{CashValue, DateTime, PortfolioAllocation};
+use crate::data::{CashValue, DateTime, PortfolioAllocation, PortfolioWeight};
 use crate::perf::{PerfStruct, PortfolioPerformance};
 use crate::portfolio::{Portfolio, PortfolioStats};
 use crate::schedule::{DefaultTradingSchedule, TradingSchedule};
@@ -9,7 +9,7 @@ use crate::strategy::Strategy;
 pub struct FixedWeightStrategy {
     portfolio: SimPortfolio,
     date: DateTime,
-    target_weights: PortfolioAllocation,
+    target_weights: PortfolioAllocation<PortfolioWeight>,
     perf: PortfolioPerformance,
 }
 
@@ -43,7 +43,7 @@ impl FixedWeightStrategy {
     pub fn new(
         portfolio: SimPortfolio,
         perf: PortfolioPerformance,
-        target_weights: PortfolioAllocation,
+        target_weights: PortfolioAllocation<PortfolioWeight>,
     ) -> Self {
         FixedWeightStrategy {
             portfolio,

@@ -198,8 +198,18 @@ mod tests {
 
     #[test]
     fn test_that_orderbook_doesnt_load_market_orders() {
-        let order = Order::new(OrderType::MarketBuy, String::from("ABC"), 100.0.into(), None);
-        let order1 = Order::new(OrderType::MarketSell, String::from("ABC"), 100.0.into(), None);
+        let order = Order::new(
+            OrderType::MarketBuy,
+            String::from("ABC"),
+            100.0.into(),
+            None,
+        );
+        let order1 = Order::new(
+            OrderType::MarketSell,
+            String::from("ABC"),
+            100.0.into(),
+            None,
+        );
         let (mut orderbook, _quote) = setup();
         orderbook.insert_order(&order);
         orderbook.insert_order(&order1);
@@ -246,7 +256,12 @@ mod tests {
 
     #[test]
     fn test_that_orderbook_returns_order_failure_event_on_creating_bad_order() {
-        let order = Order::new(OrderType::MarketBuy, String::from("ABC"), 100.0.into(), None);
+        let order = Order::new(
+            OrderType::MarketBuy,
+            String::from("ABC"),
+            100.0.into(),
+            None,
+        );
         let (mut orderbook, _quote) = setup();
         let res = orderbook.insert_order(&order);
         assert!(matches!(res, BrokerEvent::OrderFailure(..)));

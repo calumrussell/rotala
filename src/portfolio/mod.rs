@@ -1,5 +1,5 @@
 use crate::broker::Order;
-use crate::data::{CashValue, PortfolioAllocation, PortfolioQty};
+use crate::data::{CashValue, PortfolioAllocation, PortfolioQty, PortfolioWeight};
 use std::collections::HashMap;
 
 #[derive(Clone, Debug)]
@@ -26,7 +26,7 @@ pub trait Portfolio {
     fn deposit_cash(&mut self, cash: &CashValue) -> bool;
     fn withdraw_cash(&mut self, cash: &CashValue) -> bool;
     fn withdraw_cash_with_liquidation(&mut self, cash: &CashValue) -> bool;
-    fn update_weights(&self, target_weights: &PortfolioAllocation) -> Vec<Order>;
+    fn update_weights(&self, target_weights: &PortfolioAllocation<PortfolioWeight>) -> Vec<Order>;
 }
 
 pub trait PortfolioStats {

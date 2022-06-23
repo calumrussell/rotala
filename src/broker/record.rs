@@ -1,7 +1,7 @@
 use itertools::Itertools;
 
 use super::{BrokerRecordedEvents, Dividend, Trade, TradeType};
-use crate::data::{CashValue, DateTime, Price, PortfolioQty};
+use crate::data::{CashValue, DateTime, PortfolioQty, Price};
 
 //Records events executed by the broker.
 //
