@@ -1,8 +1,7 @@
 use itertools::Itertools;
-use std::{
-    collections::HashMap,
-    ops::{Add, AddAssign, Div, Mul, MulAssign, Sub, SubAssign},
-};
+use std::collections::HashMap;
+use std::ops::{Add, AddAssign, Div, DivAssign, Mul, MulAssign, Sub, SubAssign};
+use std::iter::Sum;
 
 use crate::broker::{Dividend, Quote};
 
@@ -84,6 +83,10 @@ impl DataSource {
 pub struct CashValue(f64);
 
 impl CashValue {
+    pub fn max() -> Self {
+        CashValue(f64::MAX)
+    }
+
     pub fn abs(&self) -> Self {
         if self.0 > 0.0 {
             Self(self.0)
@@ -131,11 +134,27 @@ impl Mul for CashValue {
     }
 }
 
+impl Mul<f64> for CashValue {
+    type Output = Self;
+
+    fn mul(self, rhs: f64) -> Self {
+        Self(self.0 * rhs)
+    }
+}
+
 impl Div for CashValue {
     type Output = Self;
 
     fn div(self, rhs: Self) -> Self {
         Self(self.0 / rhs.0)
+    }
+}
+
+impl Div<f64> for CashValue {
+    type Output = Self;
+
+    fn div(self, rhs: f64) -> Self {
+        Self(self.0 / rhs)
     }
 }
 
@@ -171,11 +190,27 @@ impl Add for CashValue {
     }
 }
 
+impl Add<f64> for CashValue {
+    type Output = Self;
+
+    fn add(self, rhs: f64) -> Self {
+        Self(self.0 + rhs)
+    }
+}
+
 impl Sub for CashValue {
     type Output = Self;
 
     fn sub(self, rhs: Self) -> Self {
         Self(self.0 - rhs.0)
+    }
+}
+
+impl Sub<f64> for CashValue {
+    type Output = Self;
+
+    fn sub(self, rhs: f64) -> Self {
+        Self(self.0 - rhs)
     }
 }
 
@@ -185,15 +220,55 @@ impl AddAssign for CashValue {
     }
 }
 
+impl AddAssign<f64> for CashValue {
+    fn add_assign(&mut self, rhs: f64) {
+        self.0 += rhs
+    }
+}
+
 impl SubAssign for CashValue {
     fn sub_assign(&mut self, rhs: Self) {
         self.0 -= rhs.0
     }
 }
 
+impl SubAssign<f64> for CashValue {
+    fn sub_assign(&mut self, rhs: f64) {
+        self.0 -= rhs
+    }
+}
+
 impl MulAssign for CashValue {
     fn mul_assign(&mut self, rhs: Self) {
         self.0 *= rhs.0
+    }
+}
+
+impl MulAssign<f64> for CashValue {
+    fn mul_assign(&mut self, rhs: f64) {
+        self.0 *= rhs
+    }
+}
+
+impl DivAssign for CashValue {
+    fn div_assign(&mut self, rhs: Self) {
+        self.0 /= rhs.0
+    }
+}
+
+impl DivAssign<f64> for CashValue {
+    fn div_assign(&mut self, rhs: f64) {
+        self.0 /= rhs
+    }
+}
+
+impl Sum for CashValue {
+    fn sum<I: Iterator<Item = Self>>(iter: I) -> Self {
+        let mut res = CashValue::default();
+        for v in iter {
+            res+=v.0
+        }
+        res
     }
 }
 
@@ -217,6 +292,62 @@ impl From<i64> for DateTime {
 impl PartialEq<i64> for DateTime {
     fn eq(&self, other: &i64) -> bool {
         self.0 == *other
+    }
+}
+
+impl Add for DateTime {
+    type Output = Self;
+
+    fn add(self, rhs: Self) -> Self {
+        Self(self.0 + rhs.0)
+    }
+}
+
+impl Add<i64> for DateTime {
+    type Output = Self;
+
+    fn add(self, rhs: i64) -> Self {
+        Self(self.0 + rhs)
+    }
+}
+
+impl AddAssign for DateTime {
+    fn add_assign(&mut self, rhs: DateTime) {
+        self.0 += rhs.0 
+    }
+}
+
+impl AddAssign<i64> for DateTime {
+    fn add_assign(&mut self, rhs: i64) {
+        self.0 += rhs
+    }
+}
+
+impl Sub for DateTime {
+    type Output = Self;
+
+    fn sub(self, rhs: Self) -> Self {
+        Self(self.0 - rhs.0)
+    }
+}
+
+impl SubAssign for DateTime {
+    fn sub_assign(&mut self, rhs: DateTime) {
+        self.0 -= rhs.0 
+    }
+}
+
+impl Sub<i64> for DateTime {
+    type Output = Self;
+
+    fn sub(self, rhs: i64) -> Self {
+        Self(self.0 - rhs)
+    }
+}
+
+impl SubAssign<i64> for DateTime {
+    fn sub_assign(&mut self, rhs: i64) {
+        self.0 -= rhs
     }
 }
 
