@@ -4,8 +4,8 @@ use super::orderbook::SimOrderBook;
 use crate::broker::record::BrokerLog;
 use crate::broker::rules::OrderExecutionRules;
 use crate::broker::{
-    BrokerCost, BrokerEvent, CashManager, ClientControlled, Dividend, HasLog, HasTime,
-    PaysDividends, PendingOrders, PositionInfo, PriceQuote, Quote, Trade, TradeCosts,
+    BrokerCost, BrokerEvent, CashManager, ClientControlled, HasLog, HasTime,
+    PaysDividends, PendingOrders, PositionInfo, PriceQuote, Quote, Trade, TradeCosts, DividendPayment,
 };
 use crate::broker::{Order, OrderExecutor, OrderType};
 use crate::data::{
@@ -148,8 +148,8 @@ impl OrderExecutor for SimulatedBroker {
 
         match OrderExecutionRules::run_all(order, &price, self) {
             Ok(trade) => {
-                self.log.record(&trade);
-                BrokerEvent::TradeSuccess(trade.clone())
+                self.log.record(trade.clone());
+                BrokerEvent::TradeSuccess(trade)
             }
             Err(e) => e,
         }
@@ -221,7 +221,12 @@ impl PaysDividends for SimulatedBroker {
                 if let Some(qty) = self.get_position_qty(&dividend.symbol) {
                     let cash_value = *qty * dividend.value;
                     self.credit(cash_value);
-                    self.log.record(dividend);
+                    let dividend_paid = DividendPayment {
+                        value: cash_value,
+                        symbol: dividend.symbol.clone(),
+                        date: dividend.date,
+                    };
+                    self.log.record(dividend_paid);
                 }
             }
         }
@@ -239,7 +244,7 @@ impl HasLog for SimulatedBroker {
         self.log.trades_between(start, end)
     }
 
-    fn dividends_between(&self, start: &DateTime, end: &DateTime) -> Vec<Dividend> {
+    fn dividends_between(&self, start: &DateTime, end: &DateTime) -> Vec<DividendPayment> {
         self.log.dividends_between(start, end)
     }
 }

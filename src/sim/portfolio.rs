@@ -1,7 +1,7 @@
 use super::broker::SimulatedBroker;
 use crate::broker::{
-    BrokerEvent, CashManager, ClientControlled, Dividend, HasLog, Order, OrderExecutor, OrderType,
-    PositionInfo, PriceQuote, Quote, Trade, TradeCosts,
+    BrokerEvent, CashManager, ClientControlled, HasLog, Order, OrderExecutor, OrderType,
+    PositionInfo, PriceQuote, Quote, Trade, TradeCosts, DividendPayment,
 };
 use crate::data::{CashValue, DateTime, PortfolioAllocation, PortfolioQty, PortfolioWeight, Price};
 use crate::portfolio::{Portfolio, PortfolioState, PortfolioStats, PortfolioValues};
@@ -89,7 +89,7 @@ impl SimPortfolio {
         self.brkr.trades_between(start, end)
     }
 
-    pub fn dividends_between(&self, start: &DateTime, end: &DateTime) -> Vec<Dividend> {
+    pub fn dividends_between(&self, start: &DateTime, end: &DateTime) -> Vec<DividendPayment> {
         self.brkr.dividends_between(start, end)
     }
 

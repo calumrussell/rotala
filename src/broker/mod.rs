@@ -20,6 +20,13 @@ pub struct Dividend {
 }
 
 #[derive(Clone, Debug)]
+pub struct DividendPayment {
+    pub value: CashValue,
+    pub symbol: String,
+    pub date: DateTime,
+}
+
+#[derive(Clone, Debug)]
 pub enum TradeType {
     Buy,
     Sell,
@@ -50,32 +57,20 @@ pub enum BrokerEvent {
 }
 
 #[derive(Clone, Debug)]
-pub enum BrokerRecordedEvents {
+pub enum BrokerRecordedEvent {
     TradeCompleted(Trade),
-    DividendPaid(Dividend),
+    DividendPaid(DividendPayment),
 }
 
-impl From<Trade> for BrokerRecordedEvents {
+impl From<Trade> for BrokerRecordedEvent {
     fn from(trade: Trade) -> Self {
-        BrokerRecordedEvents::TradeCompleted(trade)
+        BrokerRecordedEvent::TradeCompleted(trade)
     }
 }
 
-impl From<&Trade> for BrokerRecordedEvents {
-    fn from(trade: &Trade) -> Self {
-        BrokerRecordedEvents::TradeCompleted(trade.clone())
-    }
-}
-
-impl From<Dividend> for BrokerRecordedEvents {
-    fn from(dividend: Dividend) -> Self {
-        BrokerRecordedEvents::DividendPaid(dividend)
-    }
-}
-
-impl From<&Dividend> for BrokerRecordedEvents {
-    fn from(dividend: &Dividend) -> Self {
-        BrokerRecordedEvents::DividendPaid(dividend.clone())
+impl From<DividendPayment> for BrokerRecordedEvent {
+    fn from(divi: DividendPayment) -> Self {
+        BrokerRecordedEvent::DividendPaid(divi)
     }
 }
 
@@ -245,7 +240,7 @@ pub trait HasTime {
 
 pub trait HasLog {
     fn trades_between(&self, start: &DateTime, end: &DateTime) -> Vec<Trade>;
-    fn dividends_between(&self, start: &DateTime, end: &DateTime) -> Vec<Dividend>;
+    fn dividends_between(&self, start: &DateTime, end: &DateTime) -> Vec<DividendPayment>;
 }
 
 #[cfg(test)]

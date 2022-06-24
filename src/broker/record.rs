@@ -1,6 +1,6 @@
 use itertools::Itertools;
 
-use super::{BrokerRecordedEvents, Dividend, Trade, TradeType};
+use super::{BrokerRecordedEvent, DividendPayment, Trade, TradeType};
 use crate::data::{CashValue, DateTime, PortfolioQty, Price};
 
 //Records events executed by the broker.
@@ -9,36 +9,36 @@ use crate::data::{CashValue, DateTime, PortfolioQty, Price};
 //to calculate the cost basis of positions.
 #[derive(Clone)]
 pub struct BrokerLog {
-    log: Vec<BrokerRecordedEvents>,
+    log: Vec<BrokerRecordedEvent>,
 }
 
 impl BrokerLog {
-    pub fn record<E: Into<BrokerRecordedEvents>>(&mut self, event: E) {
-        let brokerevent: BrokerRecordedEvents = event.into();
+    pub fn record<E: Into<BrokerRecordedEvent>>(&mut self, event: E) {
+        let brokerevent: BrokerRecordedEvent = event.into();
         self.log.push(brokerevent);
     }
 
     pub fn trades(&self) -> Vec<Trade> {
         let mut trades = Vec::new();
         for event in &self.log {
-            if let BrokerRecordedEvents::TradeCompleted(trade) = event {
+            if let BrokerRecordedEvent::TradeCompleted(trade) = event {
                 trades.push(trade.clone());
             }
         }
         trades
     }
 
-    pub fn dividends(&self) -> Vec<Dividend> {
+    pub fn dividends(&self) -> Vec<DividendPayment> {
         let mut dividends = Vec::new();
         for event in &self.log {
-            if let BrokerRecordedEvents::DividendPaid(dividend) = event {
+            if let BrokerRecordedEvent::DividendPaid(dividend) = event {
                 dividends.push(dividend.clone());
             }
         }
         dividends
     }
 
-    pub fn dividends_between(&self, start: &DateTime, stop: &DateTime) -> Vec<Dividend> {
+    pub fn dividends_between(&self, start: &DateTime, stop: &DateTime) -> Vec<DividendPayment> {
         let dividends = self.dividends();
         dividends
             .iter()
@@ -60,7 +60,7 @@ impl BrokerLog {
         let mut cum_qty = PortfolioQty::default();
         let mut cum_val = CashValue::default();
         for event in &self.log {
-            if let BrokerRecordedEvents::TradeCompleted(trade) = event {
+            if let BrokerRecordedEvent::TradeCompleted(trade) = event {
                 if trade.symbol.eq(symbol) {
                     match trade.typ {
                         TradeType::Buy => {
@@ -143,11 +143,11 @@ mod tests {
             typ: TradeType::Buy,
         };
 
-        rec.record(&t1);
-        rec.record(&t2);
-        rec.record(&t3);
-        rec.record(&t4);
-        rec.record(&t5);
+        rec.record(t1);
+        rec.record(t2);
+        rec.record(t3);
+        rec.record(t4);
+        rec.record(t5);
         rec
     }
 
