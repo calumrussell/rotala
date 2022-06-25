@@ -88,7 +88,6 @@ pub enum OrderType {
 pub struct Order {
     order_type: OrderType,
     symbol: String,
-    //TODO: change this to qty
     shares: PortfolioQty,
     price: Option<Price>,
 }
@@ -206,8 +205,7 @@ pub trait ClientControlled {
     fn get_positions(&self) -> Vec<String>;
     fn update_holdings(&mut self, symbol: &str, change: &PortfolioQty);
     fn get_holdings(&self) -> PortfolioHoldings;
-    //TODO: horrible naming, this is the position qty
-    fn get(&self, symbol: &str) -> Option<&PortfolioQty>;
+    fn get_qty(&self, symbol: &str) -> Option<&PortfolioQty>;
 }
 
 pub trait PendingOrders {

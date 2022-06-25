@@ -33,7 +33,7 @@ impl OrderExecutionRules {
     ) -> Trade {
         let value = *price * order.get_shares();
         //Update holdings
-        let curr = brkr.get(&order.get_symbol()).unwrap_or_default();
+        let curr = brkr.get_qty(&order.get_symbol()).unwrap_or_default();
         let updated = match order.get_order_type() {
             OrderType::MarketBuy => *curr + order.get_shares(),
             OrderType::MarketSell => *curr - order.get_shares(),

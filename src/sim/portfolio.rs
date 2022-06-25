@@ -41,7 +41,6 @@ impl PortfolioStats for SimPortfolio {
         self.brkr.get_cash_balance()
     }
 
-    //TODO: Think this is supposed to be position value and not qty, no idea
     fn get_holdings(&self) -> PortfolioValues {
         let mut holdings = PortfolioValues::new();
 
@@ -137,7 +136,6 @@ impl Portfolio for SimPortfolio {
             let positions = self.brkr.get_positions();
             let mut sell_orders: Vec<Order> = Vec::new();
             for ticker in positions {
-                //TODO: need to incorporate trading costs into portfolio liquidation
                 let position_value = self.brkr.get_position_value(&ticker).unwrap_or_default();
                 //Position won't generate enough cash to fulfill total order
                 //Create orders for selling 100% of position, continue

@@ -91,8 +91,6 @@ impl PositionInfo for SimulatedBroker {
         if let Some(quote) = self.get_quote(symbol) {
             let price = quote.bid;
             if let Some(qty) = self.get_position_qty(symbol) {
-                //TODO: When we fix qty off primitive, this should be a special operation that
-                //produces CashValue
                 let position_value = price * *qty;
                 let (value_after_costs, _price_after_costs) =
                     self.calc_trade_impact(&position_value, &price, false);
@@ -184,7 +182,7 @@ impl ClientControlled for SimulatedBroker {
         self.holdings.clone()
     }
 
-    fn get(&self, symbol: &str) -> Option<&PortfolioQty> {
+    fn get_qty(&self, symbol: &str) -> Option<&PortfolioQty> {
         self.holdings.get(symbol)
     }
 
