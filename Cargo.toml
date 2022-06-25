@@ -8,6 +8,6 @@ edition = "2021"
 
 [dependencies]
 itertools = "0.10.1"
-time = "0.3.4"
+time = "0.3.11"
 rand = "0.8.4"
 rand_distr="0.4.1"
