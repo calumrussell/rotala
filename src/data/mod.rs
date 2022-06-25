@@ -83,9 +83,8 @@ impl DataSource {
 pub struct CashValue(f64);
 
 impl CashValue {
-    pub fn max() -> Self {
-        CashValue(f64::MAX)
-    }
+
+    pub const MAX: f64 = f64::MAX;
 
     pub fn abs(&self) -> Self {
         if self.0 > 0.0 {
