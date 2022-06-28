@@ -11,6 +11,10 @@ impl TimeSeries {
         self.values.clone()
     }
 
+    pub fn get_index(&self) -> Vec<f64> {
+        self.index.clone()
+    }
+
     pub fn pct_change_log(&self) -> Vec<f64> {
         let mut res: Vec<f64> = Vec::new();
         let mut temp = &self.values[0];
