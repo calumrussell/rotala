@@ -1,7 +1,7 @@
 use super::broker::SimulatedBroker;
 use crate::broker::{
-    BrokerEvent, CashManager, ClientControlled, HasLog, Order, OrderExecutor, OrderType,
-    PositionInfo, PriceQuote, Quote, Trade, TradeCosts, DividendPayment,
+    BrokerEvent, CashManager, ClientControlled, DividendPayment, HasLog, Order, OrderExecutor,
+    OrderType, PositionInfo, PriceQuote, Quote, Trade, TradeCosts,
 };
 use crate::data::{CashValue, DateTime, PortfolioAllocation, PortfolioQty, PortfolioWeight, Price};
 use crate::portfolio::{Portfolio, PortfolioState, PortfolioStats, PortfolioValues};

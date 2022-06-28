@@ -1,7 +1,7 @@
 use itertools::Itertools;
 use std::collections::HashMap;
-use std::ops::{Add, AddAssign, Div, DivAssign, Mul, MulAssign, Sub, SubAssign};
 use std::iter::Sum;
+use std::ops::{Add, AddAssign, Div, DivAssign, Mul, MulAssign, Sub, SubAssign};
 
 use crate::broker::{Dividend, Quote};
 
@@ -83,7 +83,6 @@ impl DataSource {
 pub struct CashValue(f64);
 
 impl CashValue {
-
     pub const MAX: f64 = f64::MAX;
 
     pub fn abs(&self) -> Self {
@@ -265,7 +264,7 @@ impl Sum for CashValue {
     fn sum<I: Iterator<Item = Self>>(iter: I) -> Self {
         let mut res = CashValue::default();
         for v in iter {
-            res+=v.0
+            res += v.0
         }
         res
     }
@@ -312,7 +311,7 @@ impl Add<i64> for DateTime {
 
 impl AddAssign for DateTime {
     fn add_assign(&mut self, rhs: DateTime) {
-        self.0 += rhs.0 
+        self.0 += rhs.0
     }
 }
 
@@ -332,7 +331,7 @@ impl Sub for DateTime {
 
 impl SubAssign for DateTime {
     fn sub_assign(&mut self, rhs: DateTime) {
-        self.0 -= rhs.0 
+        self.0 -= rhs.0
     }
 }
 

@@ -43,7 +43,7 @@ pub struct PerfStruct {
     pub sharpe: f64,
     pub values: Vec<f64>,
     pub returns: Vec<f64>,
-    pub dates: Vec<f64>
+    pub dates: Vec<f64>,
 }
 
 impl PortfolioPerformance {
