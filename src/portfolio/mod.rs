@@ -1,5 +1,5 @@
 use crate::broker::Order;
-use crate::data::{CashValue, PortfolioAllocation, PortfolioQty, PortfolioWeight};
+use crate::data::{CashValue, PortfolioAllocation, PortfolioQty, PortfolioWeight, DateTime};
 use std::collections::HashMap;
 
 #[derive(Clone, Debug)]
@@ -35,13 +35,14 @@ pub trait PortfolioStats {
     fn get_position_value(&self, ticker: &str) -> Option<CashValue>;
     fn get_position_liquidation_value(&self, symbol: &str) -> Option<CashValue>;
     fn get_position_qty(&self, ticker: &str) -> Option<&PortfolioQty>;
-    fn get_current_state(&self) -> PortfolioState;
+    fn get_current_state(&self, date: &DateTime) -> PortfolioState;
     fn get_holdings(&self) -> PortfolioValues;
     fn get_cash_value(&self) -> CashValue;
 }
 
 #[derive(Clone, Debug)]
 pub struct PortfolioState {
+    pub date: DateTime,
     pub value: CashValue,
     pub positions: PortfolioValues,
     pub net_cash_flow: CashValue,

@@ -66,9 +66,10 @@ impl PortfolioStats for SimPortfolio {
         self.brkr.get_position_liquidation_value(symbol)
     }
 
-    fn get_current_state(&self) -> PortfolioState {
+    fn get_current_state(&self, new_date: &DateTime) -> PortfolioState {
         let holdings = self.get_holdings();
         PortfolioState {
+            date: new_date.clone(),
             value: self.get_total_value(),
             positions: holdings,
             net_cash_flow: self.net_cash_flow,
@@ -94,7 +95,7 @@ impl SimPortfolio {
 
     pub fn set_date(&mut self, new_date: &DateTime) -> PortfolioState {
         self.brkr.set_date(new_date);
-        self.get_current_state()
+        self.get_current_state(new_date)
     }
 
     pub fn execute_order(&mut self, order: &Order) -> BrokerEvent {
