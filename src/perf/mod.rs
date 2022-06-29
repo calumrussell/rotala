@@ -125,7 +125,7 @@ impl PortfolioPerformance {
         }
 
         //Adding portfolio value
-        self.values.append(None, f64::from(state.value));
+        self.values.append(Some(i64::from(state.date) as f64), state.value.into());
 
         //Copying whole portfolio state
         let copy_state = state.clone();
@@ -306,12 +306,12 @@ mod tests {
         port.set_date(&100.into());
         let orders = port.update_weights(&target_weights);
         port.execute_orders(orders);
-        perf.update(&port.get_current_state());
+        perf.update(&port.get_current_state(&100.into()));
 
         port.set_date(&101.into());
         let orders = port.update_weights(&target_weights);
         port.execute_orders(orders);
-        perf.update(&port.get_current_state());
+        perf.update(&port.get_current_state(&101.into()));
 
         let output = perf.get_output();
 
@@ -336,25 +336,25 @@ mod tests {
         port.set_date(&100.into());
         let orders = port.update_weights(&target_weights);
         port.execute_orders(orders);
-        perf.update(&port.get_current_state());
+        perf.update(&port.get_current_state(&100.into()));
 
         port.set_date(&101.into());
         port.deposit_cash(&10_000.0.into());
         let orders = port.update_weights(&target_weights);
         port.execute_orders(orders);
-        perf.update(&port.get_current_state());
+        perf.update(&port.get_current_state(&101.into()));
 
         port.set_date(&102.into());
         port.withdraw_cash_with_liquidation(&20_000.0.into());
         let orders = port.update_weights(&target_weights);
         port.execute_orders(orders);
-        perf.update(&port.get_current_state());
+        perf.update(&port.get_current_state(&102.into()));
 
         port.set_date(&103.into());
         port.deposit_cash(&5_000.0.into());
         let orders = port.update_weights(&target_weights);
         port.execute_orders(orders);
-        perf.update(&port.get_current_state());
+        perf.update(&port.get_current_state(&103.into()));
 
         let cf = perf.cash_flow;
 
@@ -379,25 +379,25 @@ mod tests {
         port.set_date(&100.into());
         let orders = port.update_weights(&target_weights);
         port.execute_orders(orders);
-        perf.update(&port.get_current_state());
+        perf.update(&port.get_current_state(&100.into()));
 
         port.set_date(&101.into());
         port.deposit_cash(&10_000.0.into());
         let orders = port.update_weights(&target_weights);
         port.execute_orders(orders);
-        perf.update(&port.get_current_state());
+        perf.update(&port.get_current_state(&101.into()));
 
         port.set_date(&102.into());
         port.withdraw_cash(&20_000.0.into());
         let orders = port.update_weights(&target_weights);
         port.execute_orders(orders);
-        perf.update(&port.get_current_state());
+        perf.update(&port.get_current_state(&102.into()));
 
         port.set_date(&103.into());
         port.deposit_cash(&5_000.0.into());
         let orders = port.update_weights(&target_weights);
         port.execute_orders(orders);
-        perf.update(&port.get_current_state());
+        perf.update(&port.get_current_state(&103.into()));
 
         let mut perf1 = PortfolioPerformance::yearly();
 
@@ -412,23 +412,23 @@ mod tests {
         port1.set_date(&100.into());
         let orders = port1.update_weights(&target_weights1);
         port1.execute_orders(orders);
-        perf.update(&port1.get_current_state());
+        perf.update(&port1.get_current_state(&100.into()));
 
         port1.set_date(&101.into());
         let orders = port1.update_weights(&target_weights1);
         port1.execute_orders(orders);
-        perf1.update(&port1.get_current_state());
+        perf1.update(&port1.get_current_state(&101.into()));
 
         port1.set_date(&102.into());
         let orders = port1.update_weights(&target_weights1);
         port1.execute_orders(orders);
-        perf1.update(&port1.get_current_state());
+        perf1.update(&port1.get_current_state(&102.into()));
 
         port1.set_date(&103.into());
         port1.deposit_cash(&5_000.0.into());
         let orders = port1.update_weights(&target_weights1);
         port1.execute_orders(orders);
-        perf1.update(&port1.get_current_state());
+        perf1.update(&port1.get_current_state(&103.into()));
 
         let rets = perf.get_returns(None);
         let rets1 = perf.get_returns(None);
