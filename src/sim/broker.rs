@@ -12,7 +12,7 @@ use crate::data::{
     CashValue, DataSource, DateTime, PortfolioHoldings, PortfolioQty, Price, SimSource,
 };
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct SimulatedBroker {
     raw_data: DataSource,
     date: DateTime,

@@ -1,5 +1,5 @@
 use crate::broker::Order;
-use crate::data::{CashValue, PortfolioAllocation, PortfolioQty, PortfolioWeight, DateTime};
+use crate::data::{CashValue, DateTime, PortfolioAllocation, PortfolioQty, PortfolioWeight};
 use std::collections::HashMap;
 
 #[derive(Clone, Debug)]

@@ -7,7 +7,7 @@ use crate::data::{CashValue, DateTime, PortfolioQty, Price};
 //
 //Should be available to clients, but is also need internally
 //to calculate the cost basis of positions.
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct BrokerLog {
     log: Vec<BrokerRecordedEvent>,
 }

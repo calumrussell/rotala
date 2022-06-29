@@ -6,7 +6,7 @@ use crate::broker::{
 use crate::data::{CashValue, DateTime, PortfolioAllocation, PortfolioQty, PortfolioWeight, Price};
 use crate::portfolio::{Portfolio, PortfolioState, PortfolioStats, PortfolioValues};
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct SimPortfolio {
     brkr: SimulatedBroker,
     //Needed for calculation of portfolio performance inc. deposit/withdrawal

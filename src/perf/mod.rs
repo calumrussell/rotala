@@ -125,7 +125,8 @@ impl PortfolioPerformance {
         }
 
         //Adding portfolio value
-        self.values.append(Some(i64::from(state.date) as f64), state.value.into());
+        self.values
+            .append(Some(i64::from(state.date) as f64), state.value.into());
 
         //Copying whole portfolio state
         let copy_state = state.clone();

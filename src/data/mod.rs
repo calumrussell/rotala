@@ -18,7 +18,7 @@ pub trait SimSource {
     fn step(&mut self);
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct DataSource {
     quotes: HashMap<DateTime, Vec<Quote>>,
     dividends: HashMap<DateTime, Vec<Dividend>>,

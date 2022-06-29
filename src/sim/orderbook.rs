@@ -8,7 +8,7 @@ use crate::broker::{Order, OrderType};
  Has dependency on implementation details of broker, so
  needs to be in the sim folder as an implementation
 */
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct SimOrderBook {
     orderbook: HashMap<u8, Order>,
     last: u8,
