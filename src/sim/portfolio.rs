@@ -193,17 +193,14 @@ impl Portfolio for SimPortfolio {
          -> PortfolioQty {
             let abs_val = diff_val.abs();
             let trade_price: Price;
-            let (net_budget, net_price): (CashValue, Price);
             //Maximise the number of shares we can acquire/sell net of costs.
             if *diff_val > 0.0 {
                 trade_price = quote.ask;
-                (net_budget, net_price) = self.brkr.calc_trade_impact(&abs_val, &trade_price, true);
             } else {
                 trade_price = quote.bid;
-                (net_budget, net_price) =
-                    self.brkr.calc_trade_impact(&abs_val, &trade_price, false);
             }
-            (net_budget / net_price).floor()
+            let res = self.brkr.calc_trade_impact(&abs_val, &trade_price, true);
+            (res.0/ res.1).floor()
         };
 
         for symbol in target_weights.keys() {
