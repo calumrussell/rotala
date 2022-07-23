@@ -8,10 +8,7 @@ use alator::data::{CashValue, DataSource, DateTime, PortfolioAllocation, Portfol
 use alator::sim::broker::SimulatedBroker;
 use alator::simcontext::SimContext;
 
-#[test]
-fn staticweight_integration_test() {
-    let initial_cash: CashValue = 100_000.0.into();
-
+fn build_data() -> (DataSource, Vec<DateTime>) {
     let price_dist = Uniform::new(90.0, 100.0);
     let mut rng = thread_rng();
 
@@ -36,16 +33,22 @@ fn staticweight_integration_test() {
         raw_data.insert((date as i64).into(), vec![q1, q2]);
     }
     let dividends: HashMap<DateTime, Vec<Dividend>> = HashMap::new();
+    let dates = raw_data.keys().map(|d| d.clone()).collect();
+    let source = DataSource::from_hashmap(raw_data, dividends);
+    (source, dates)
+}
+
+#[test]
+fn staticweight_integration_test() {
+    let initial_cash: CashValue = 100_000.0.into();
+    let data = build_data();
 
     let mut weights: PortfolioAllocation<PortfolioWeight> = PortfolioAllocation::new();
     weights.insert(&String::from("ABC"), &0.5.into());
     weights.insert(&String::from("BCD"), &0.5.into());
 
-    let dates = raw_data.keys().map(|d| d.clone()).collect();
-    let source = DataSource::from_hashmap(raw_data, dividends);
-    let simbrkr = SimulatedBroker::new(source, vec![BrokerCost::Flat(1.0.into())]);
-
+    let simbrkr = SimulatedBroker::new(data.0, vec![BrokerCost::Flat(1.0.into())]);
     let strat = StaticWeightStrategy::yearly(simbrkr, weights);
-    let mut sim = SimContext::new(dates, initial_cash, &strat);
+    let mut sim = SimContext::new(data.1, initial_cash, &strat);
     sim.run();
 }
