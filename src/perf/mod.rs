@@ -1,7 +1,6 @@
 use crate::data::{CashValue, DateTime};
 use crate::series::TimeSeries;
 
-
 #[derive(Clone)]
 enum DataFrequency {
     Daily,
@@ -375,6 +374,6 @@ mod tests {
         let rets1 = f64::round(perf1.get_ret() * 100.0);
         println!("{:?}", rets);
         println!("{:?}", rets1);
-        assert!(rets==rets1);
+        assert!(rets == rets1);
     }
 }

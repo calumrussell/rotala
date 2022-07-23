@@ -8,10 +8,10 @@ use crate::broker::{
     PaysDividends, PendingOrders, PositionInfo, PriceQuote, Quote, Trade, TradeCosts,
 };
 use crate::broker::{Order, OrderExecutor, OrderType};
+use crate::data::PortfolioValues;
 use crate::data::{
     CashValue, DataSource, DateTime, PortfolioHoldings, PortfolioQty, Price, SimSource,
 };
-use crate::data::PortfolioValues;
 
 #[derive(Clone, Debug)]
 pub struct SimulatedBroker {

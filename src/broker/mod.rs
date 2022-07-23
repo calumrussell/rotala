@@ -1,4 +1,4 @@
-use crate::data::{CashValue, DateTime, PortfolioHoldings, PortfolioQty, Price, PortfolioValues};
+use crate::data::{CashValue, DateTime, PortfolioHoldings, PortfolioQty, PortfolioValues, Price};
 
 pub mod record;
 pub mod rules;

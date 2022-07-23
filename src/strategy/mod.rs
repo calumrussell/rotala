@@ -1,16 +1,16 @@
-/* 
+/*
  * A Strategy wraps around the broker and portfolio, the idea
  * is to move most of the functionality into a trading strategy
  * and organize calls to the rest of the system through that.
- * 
+ *
  * One key point is that the Strategy should only be aware of an
  * overall portfolio, and not aware of how the portfolio executes
  * changes with the broker.
 */
 
 use crate::broker::{
-    BrokerEvent, CashManager, DividendPayment, HasLog, Order, OrderExecutor, OrderType,
-    PositionInfo, PriceQuote, Quote, Trade, TradeCosts, ClientControlled,
+    BrokerEvent, CashManager, ClientControlled, DividendPayment, HasLog, Order, OrderExecutor,
+    OrderType, PositionInfo, PriceQuote, Quote, Trade, TradeCosts,
 };
 use crate::data::{CashValue, DateTime, PortfolioAllocation, PortfolioQty, PortfolioWeight, Price};
 use crate::perf::{PerfStruct, PortfolioPerformance, StrategySnapshot};
@@ -39,7 +39,12 @@ pub trait TransferFrom {
 }
 
 //TODO:should this execute any trades at all
-fn withdraw_cash_with_liquidation_algo<T: OrderExecutor + TradeCosts + PositionInfo + ClientControlled + PriceQuote>(cash: &CashValue, brkr: &mut T) -> BrokerEvent {
+fn withdraw_cash_with_liquidation_algo<
+    T: OrderExecutor + TradeCosts + PositionInfo + ClientControlled + PriceQuote,
+>(
+    cash: &CashValue,
+    brkr: &mut T,
+) -> BrokerEvent {
     let value = brkr.get_liquidation_value();
     if cash > &value {
         BrokerEvent::WithdrawFailure(*cash)
@@ -89,7 +94,10 @@ fn withdraw_cash_with_liquidation_algo<T: OrderExecutor + TradeCosts + PositionI
 }
 
 //Returns orders so calling function has control over when orders are executed
-fn diff<T: PositionInfo + TradeCosts + PriceQuote>(target_weights: &PortfolioAllocation<PortfolioWeight>, brkr: &T) -> Vec<Order> {
+fn diff<T: PositionInfo + TradeCosts + PriceQuote>(
+    target_weights: &PortfolioAllocation<PortfolioWeight>,
+    brkr: &T,
+) -> Vec<Order> {
     //Need liquidation value so we definitely have enough money to make all transactions after
     //costs
     let total_value = brkr.get_liquidation_value();
@@ -98,19 +106,17 @@ fn diff<T: PositionInfo + TradeCosts + PriceQuote>(target_weights: &PortfolioAll
     let mut buy_orders: Vec<Order> = Vec::new();
     let mut sell_orders: Vec<Order> = Vec::new();
 
-    let calc_required_shares_with_costs =
-        |diff_val: &CashValue, quote: &Quote| -> PortfolioQty {
-            let abs_val = diff_val.abs();
-            let trade_price: Price;
-            //Maximise the number of shares we can acquire/sell net of costs.
-            if *diff_val > 0.0 {
-                trade_price = quote.ask;
-            } else {
-                trade_price = quote.bid;
-            }
-            let res = brkr.calc_trade_impact(&abs_val, &trade_price, true);
-            (res.0 / res.1).floor()
+    let calc_required_shares_with_costs = |diff_val: &CashValue, quote: &Quote| -> PortfolioQty {
+        let abs_val = diff_val.abs();
+        //Maximise the number of shares we can acquire/sell net of costs.
+        let trade_price: Price = if *diff_val > 0.0 {
+            quote.ask
+        } else {
+            quote.bid
         };
+        let res = brkr.calc_trade_impact(&abs_val, &trade_price, true);
+        (res.0 / res.1).floor()
+    };
 
     for symbol in target_weights.keys() {
         let curr_val = brkr.get_position_value(&symbol).unwrap_or_default();
@@ -122,7 +128,7 @@ fn diff<T: PositionInfo + TradeCosts + PriceQuote>(target_weights: &PortfolioAll
         }
 
         //This is implementation detail, for a simulation we prefer immediate panic
-        let quote = brkr 
+        let quote = brkr
             .get_quote(&symbol)
             .expect("Can't find quote for symbol");
         let net_target_shares = calc_required_shares_with_costs(&diff_val, &quote);
@@ -161,8 +167,8 @@ impl StaticWeightStrategy {
     pub fn get_snapshot(&self) -> StrategySnapshot {
         StrategySnapshot {
             date: self.date,
-            value: self.brkr.get_total_value(), 
-            net_cash_flow: self.net_cash_flow.into(),
+            value: self.brkr.get_total_value(),
+            net_cash_flow: self.net_cash_flow,
         }
     }
 
@@ -230,7 +236,9 @@ impl TransferFrom for StaticWeightStrategy {
         }
     }
     fn withdraw_cash_with_liquidation(&mut self, cash: &CashValue) {
-        if let BrokerEvent::WithdrawSuccess(withdrawn) = withdraw_cash_with_liquidation_algo(cash, &mut self.brkr) {
+        if let BrokerEvent::WithdrawSuccess(withdrawn) =
+            withdraw_cash_with_liquidation_algo(cash, &mut self.brkr)
+        {
             self.net_cash_flow -= withdrawn;
         }
     }
@@ -246,17 +254,15 @@ impl Audit for StaticWeightStrategy {
     }
 }
 
-impl From<&StaticWeightStrategy>
-    for Box<StaticWeightStrategy>
-{
+impl From<&StaticWeightStrategy> for Box<StaticWeightStrategy> {
     fn from(strat: &StaticWeightStrategy) -> Self {
-        let owned: StaticWeightStrategy= strat.clone();
+        let owned: StaticWeightStrategy = strat.clone();
         Box::new(owned)
     }
 }
 impl From<&StaticWeightStrategy> for Box<dyn Strategy> {
     fn from(strat: &StaticWeightStrategy) -> Self {
-        let owned: StaticWeightStrategy= strat.clone();
+        let owned: StaticWeightStrategy = strat.clone();
         Box::new(owned)
     }
 }
