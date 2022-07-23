@@ -162,7 +162,6 @@ impl StaticWeightStrategy {
         StrategySnapshot {
             date: self.date,
             value: self.brkr.get_total_value(), 
-            positions: self.brkr.get_values(),
             net_cash_flow: self.net_cash_flow.into(),
         }
     }

@@ -1,4 +1,4 @@
-use crate::data::{CashValue, DateTime, PortfolioValues};
+use crate::data::{CashValue, DateTime};
 use crate::series::TimeSeries;
 
 
@@ -33,7 +33,6 @@ impl PortfolioCalculator {
 pub struct StrategySnapshot {
     pub date: DateTime,
     pub value: CashValue,
-    pub positions: PortfolioValues,
     pub net_cash_flow: CashValue,
 }
 
@@ -90,7 +89,6 @@ impl PortfolioPerformance {
                 let gain = end - start - f64::from(*cash_flow);
                 let capital = start + f64::from(*cash_flow);
                 let ret = gain / capital;
-                println!("{:?}", (ret, gain, capital, start, end, f64::from(*cash_flow)));
                 if is_log.is_some() && is_log.unwrap() {
                     let log_ret = (1.0 + ret).ln();
                     rets.push(log_ret);
@@ -185,11 +183,13 @@ mod tests {
 
     use crate::broker::{BrokerCost, Dividend, Quote};
     use crate::data::{DataSource, DateTime, PortfolioAllocation};
+    use crate::perf::StrategySnapshot;
     use crate::sim::broker::SimulatedBroker;
     use crate::strategy::{StaticWeightStrategy, Strategy, TransferTo};
 
     use super::DataFrequency;
     use super::PortfolioCalculator;
+    use super::PortfolioPerformance;
 
     fn setup() -> SimulatedBroker {
         let mut raw_data: HashMap<DateTime, Vec<Quote>> = HashMap::new();
@@ -327,53 +327,52 @@ mod tests {
 
     #[test]
     fn test_that_returns_with_cash_flow_correct() {
-        //The same sequence of prices should generate the same returns regardless of the timing of
-        //cash flows into/out the portfolio
-        //Only use deposits because withdrawing can they aren't idempotent and can create ordering
-        //issues that impact returns.
+        //Each period has a 10% return starting from the last period value + the value of the cash
+        //flow. Adding the cash flow at the start is the most conservative calculation and should
+        //reflect how operations are ordered in the client.
 
-        let brkr = setup();
-        let mut target_weights = PortfolioAllocation::new();
-        target_weights.insert(&String::from("ABC"), &1.0.into());
+        let mut perf = PortfolioPerformance::yearly();
+        let snap0 = StrategySnapshot {
+            date: 100.into(),
+            value: 100.0.into(),
+            net_cash_flow: 0.0.into(),
+        };
+        let snap1 = StrategySnapshot {
+            date: 101.into(),
+            value: 121.0.into(),
+            net_cash_flow: 10.0.into(),
+        };
+        let snap2 = StrategySnapshot {
+            date: 102.into(),
+            value: 144.1.into(),
+            net_cash_flow: 20.0.into(),
+        };
+        perf.update(&snap0);
+        perf.update(&snap1);
+        perf.update(&snap2);
 
-        let mut strat = StaticWeightStrategy::yearly(brkr, target_weights);
-        strat.init(&100_000.0.into());
+        let mut perf1 = PortfolioPerformance::yearly();
+        let snap3 = StrategySnapshot {
+            date: 100.into(),
+            value: 100.0.into(),
+            net_cash_flow: 0.0.into(),
+        };
+        let snap4 = StrategySnapshot {
+            date: 101.into(),
+            value: 110.0.into(),
+            net_cash_flow: 0.0.into(),
+        };
+        let snap5 = StrategySnapshot {
+            date: 102.into(),
+            value: 121.0.into(),
+            net_cash_flow: 0.0.into(),
+        };
+        perf1.update(&snap3);
+        perf1.update(&snap4);
+        perf1.update(&snap5);
 
-        strat.set_date(&100.into());
-        strat.update();
-
-        strat.set_date(&101.into());
-        strat.deposit_cash(&10_000.0.into());
-        strat.update();
-
-        strat.set_date(&102.into());
-        strat.deposit_cash(&10_000.0.into());
-        strat.update();
-
-        strat.set_date(&103.into());
-        strat.update();
-
-        let brkr1 = setup();
-        let mut target_weights1 = PortfolioAllocation::new();
-        target_weights1.insert(&String::from("ABC"), &1.0.into());
-
-        let mut strat1 = StaticWeightStrategy::yearly(brkr1, target_weights1);
-        strat1.init(&100_000.0.into());
-
-        strat1.set_date(&100.into());
-        strat1.update();
-
-        strat1.set_date(&101.into());
-        strat1.update();
-
-        strat1.set_date(&102.into());
-        strat1.update();
-
-        strat1.set_date(&103.into());
-        strat1.update();
-
-        let rets = strat.get_perf().ret;
-        let rets1 = strat1.get_perf().ret;
+        let rets = f64::round(perf.get_ret() * 100.0);
+        let rets1 = f64::round(perf1.get_ret() * 100.0);
         println!("{:?}", rets);
         println!("{:?}", rets1);
         assert!(rets==rets1);
