@@ -6,4 +6,3 @@ pub mod series;
 pub mod sim;
 pub mod simcontext;
 pub mod strategy;
-pub mod universe;
