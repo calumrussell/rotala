@@ -14,7 +14,7 @@ impl SimContext {
         self.strat.init(&self.initial_cash);
         for date in &self.sim_dates {
             self.strat.set_date(date);
-            self.strat.run();
+            self.strat.update();
         }
     }
 

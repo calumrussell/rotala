@@ -1,4 +1,4 @@
-use crate::data::{CashValue, DateTime, PortfolioHoldings, PortfolioQty, Price};
+use crate::data::{CashValue, DateTime, PortfolioHoldings, PortfolioQty, Price, PortfolioValues};
 
 pub mod record;
 pub mod rules;
@@ -194,6 +194,8 @@ pub trait PositionInfo {
     fn get_position_cost(&self, symbol: &str) -> Option<Price>;
     fn get_position_liquidation_value(&self, symbol: &str) -> Option<CashValue>;
     fn get_position_profit(&self, symbol: &str) -> Option<CashValue>;
+    fn get_liquidation_value(&self) -> CashValue;
+    fn get_total_value(&self) -> CashValue;
 }
 
 pub trait PriceQuote {
@@ -205,6 +207,7 @@ pub trait ClientControlled {
     fn get_positions(&self) -> Vec<String>;
     fn update_holdings(&mut self, symbol: &str, change: &PortfolioQty);
     fn get_holdings(&self) -> PortfolioHoldings;
+    fn get_values(&self) -> PortfolioValues;
     fn get_qty(&self, symbol: &str) -> Option<&PortfolioQty>;
 }
 

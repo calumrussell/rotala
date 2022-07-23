@@ -1,7 +1,6 @@
 pub mod broker;
 pub mod data;
 pub mod perf;
-pub mod portfolio;
 pub mod schedule;
 pub mod series;
 pub mod sim;

@@ -525,6 +525,26 @@ impl Default for PortfolioHoldings {
     }
 }
 
+#[derive(Clone, Debug)]
+pub struct PortfolioValues(pub HashMap<String, CashValue>);
+
+impl PortfolioValues {
+    pub fn insert(&mut self, ticker: &str, value: &CashValue) {
+        self.0.insert(ticker.to_string(), *value);
+    }
+
+    pub fn new() -> Self {
+        let map: HashMap<String, CashValue> = HashMap::new();
+        Self(map)
+    }
+}
+
+impl Default for PortfolioValues {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 pub trait Weight: Mul<CashValue, Output = CashValue> + Into<f64> {}
 
 #[derive(Clone, Copy, Debug)]

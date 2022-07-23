@@ -1,66 +1,56 @@
 mod common;
 
-use rand::distributions::Uniform;
+use alator::strategy::StaticWeightStrategy;
+use rand::distributions::{Distribution, Uniform};
+use rand::{thread_rng, Rng};
 use std::collections::HashMap;
 
 use alator::broker::{BrokerCost, Dividend, Quote};
 use alator::data::{CashValue, DataSource, DateTime, PortfolioAllocation, PortfolioWeight};
 use alator::perf::PortfolioPerformance;
 use alator::sim::broker::SimulatedBroker;
-use alator::sim::portfolio::SimPortfolio;
 use alator::simcontext::SimContext;
-use alator::strategy::staticweight::StaticWeightStrategyRulesMonthlyRebalancing;
 
-use common::build_fake_quote_stream;
 
 #[test]
 fn staticweight_integration_test() {
     let initial_cash: CashValue = 100_000.0.into();
 
-    let price_dist = Uniform::new(1.0, 100.0);
-    let vol_dist = Uniform::new(0.1, 0.2);
+    let price_dist = Uniform::new(90.0, 100.0);
+    let mut rng = thread_rng();
 
     let length_in_days = 200;
     let seconds_in_day = 86_400;
     let start_date = 1609750800; //Date - 4/1/21 9:00:0000
     let end_date = start_date + (seconds_in_day * length_in_days);
-
-    let abc_quotes = build_fake_quote_stream(
-        &String::from("ABC"),
-        price_dist,
-        vol_dist,
-        start_date..end_date,
-        Some(seconds_in_day as usize),
-    );
-    let bcd_quotes = build_fake_quote_stream(
-        &String::from("BCD"),
-        price_dist,
-        vol_dist,
-        start_date..end_date,
-        Some(seconds_in_day as usize),
-    );
     let mut raw_data: HashMap<DateTime, Vec<Quote>> = HashMap::new();
+    for date in (start_date..end_date).step_by(seconds_in_day) {
+        let q1 = Quote {
+            bid: price_dist.sample(&mut rng).into(),
+            ask: price_dist.sample(&mut rng).into(),
+            date: (date as i64).into(),
+            symbol: "ABC".to_string(),
+        };
+        let q2 = Quote {
+            bid: price_dist.sample(&mut rng).into(),
+            ask: price_dist.sample(&mut rng).into(),
+            date: (date as i64).into(),
+            symbol: "BCD".to_string(),
+        };
+        raw_data.insert((date as i64).into(), vec![q1, q2]);
+    }
     let dividends: HashMap<DateTime, Vec<Dividend>> = HashMap::new();
-    for (_a, b) in abc_quotes.iter().zip(bcd_quotes.iter()).enumerate() {
-        raw_data.insert(DateTime::from(b.0.date), vec![b.0.clone(), b.1.clone()]);
-    }
 
-    let mut weights: Vec<PortfolioAllocation<PortfolioWeight>> = Vec::new();
-    for _i in 0..length_in_days {
-        let mut temp = PortfolioAllocation::new();
-        temp.insert(&String::from("ABC"), &0.5.into());
-        temp.insert(&String::from("BCD"), &0.5.into());
-        weights.push(temp);
-    }
+    let mut weights: PortfolioAllocation<PortfolioWeight> = PortfolioAllocation::new();
+    weights.insert(&String::from("ABC"), &0.5.into());
+    weights.insert(&String::from("BCD"), &0.5.into());
 
     let dates = raw_data.keys().map(|d| d.clone()).collect();
     let source = DataSource::from_hashmap(raw_data, dividends);
     let simbrkr = SimulatedBroker::new(source, vec![BrokerCost::Flat(1.0.into())]);
 
-    let port = SimPortfolio::new(simbrkr);
-
     let perf = PortfolioPerformance::yearly();
-    let strat = StaticWeightStrategyRulesMonthlyRebalancing::new(port, perf, weights);
+    let strat = StaticWeightStrategy::new(simbrkr, weights);
     let mut sim = SimContext::new(dates, initial_cash, &strat);
     sim.run();
 }

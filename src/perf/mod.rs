@@ -1,4 +1,6 @@
-use crate::{data::CashValue, portfolio::PortfolioState, series::TimeSeries};
+use crate::data::{CashValue, DateTime, PortfolioValues};
+use crate::series::TimeSeries;
+
 
 #[derive(Clone)]
 enum DataFrequency {
@@ -27,10 +29,18 @@ impl PortfolioCalculator {
     }
 }
 
+#[derive(Clone, Debug)]
+pub struct StrategySnapshot {
+    pub date: DateTime,
+    pub value: CashValue,
+    pub positions: PortfolioValues,
+    pub net_cash_flow: CashValue,
+}
+
 #[derive(Clone)]
 pub struct PortfolioPerformance {
     values: TimeSeries,
-    states: Vec<PortfolioState>,
+    states: Vec<StrategySnapshot>,
     freq: DataFrequency,
     cash_flow: Vec<CashValue>,
 }
@@ -78,10 +88,12 @@ impl PortfolioPerformance {
                 let cash_flow = cash_flows.get(i).unwrap();
 
                 let gain = end - start - f64::from(*cash_flow);
-                let avg_capital = start + f64::from(*cash_flow);
-                let ret = gain / avg_capital;
+                let capital = start + f64::from(*cash_flow);
+                let ret = gain / capital;
+                println!("{:?}", (ret, gain, capital, start, end, f64::from(*cash_flow)));
                 if is_log.is_some() && is_log.unwrap() {
-                    rets.push((ret + 1_f64).log10());
+                    let log_ret = (1.0 + ret).ln();
+                    rets.push(log_ret);
                 } else {
                     rets.push(ret);
                 }
@@ -113,14 +125,14 @@ impl PortfolioPerformance {
 
     fn get_ret(&self) -> f64 {
         let log_returns = self.get_returns(Some(true));
-        let sum_log_rets = log_returns.iter().sum();
-        10_f64.powf(sum_log_rets) - 1.0
+        let sum_log_rets: f64 = log_returns.iter().sum();
+        sum_log_rets.exp() - 1.0
     }
 
-    pub fn update(&mut self, state: &PortfolioState) {
+    pub fn update(&mut self, state: &StrategySnapshot) {
         let mut last_net_cash_flow = CashValue::default();
         if !self.states.is_empty() {
-            let prev: &PortfolioState = self.states.last().unwrap();
+            let prev: &StrategySnapshot = self.states.last().unwrap();
             last_net_cash_flow += prev.net_cash_flow;
         }
 
@@ -173,11 +185,8 @@ mod tests {
 
     use crate::broker::{BrokerCost, Dividend, Quote};
     use crate::data::{DataSource, DateTime, PortfolioAllocation};
-    use crate::perf::PortfolioPerformance;
-    use crate::portfolio::Portfolio;
-    use crate::portfolio::PortfolioStats;
     use crate::sim::broker::SimulatedBroker;
-    use crate::sim::portfolio::SimPortfolio;
+    use crate::strategy::{StaticWeightStrategy, Strategy, TransferTo};
 
     use super::DataFrequency;
     use super::PortfolioCalculator;
@@ -248,7 +257,7 @@ mod tests {
         raw_data.insert(103.into(), vec![quote_a4, quote_b4]);
 
         let source = DataSource::from_hashmap(raw_data, dividends);
-        let sb = SimulatedBroker::new(source, vec![BrokerCost::Flat(1.0.into())]);
+        let sb = SimulatedBroker::new(source, vec![BrokerCost::Flat(0.0.into())]);
         sb
     }
 
@@ -294,27 +303,21 @@ mod tests {
 
     #[test]
     fn test_that_portfolio_calculates_performance_accurately() {
-        let mut perf = PortfolioPerformance::yearly();
-
         let brkr = setup();
         let mut target_weights = PortfolioAllocation::new();
         target_weights.insert(&String::from("ABC"), &0.5.into());
         target_weights.insert(&String::from("BCD"), &0.5.into());
 
-        let mut port = SimPortfolio::new(brkr);
-        port.deposit_cash(&100_000.0.into());
+        let mut strat = StaticWeightStrategy::yearly(brkr, target_weights);
+        strat.deposit_cash(&100_000.0.into());
 
-        port.set_date(&100.into());
-        let orders = port.update_weights(&target_weights);
-        port.execute_orders(orders);
-        perf.update(&port.get_current_state(&100.into()));
+        strat.set_date(&100.into());
+        strat.update();
 
-        port.set_date(&101.into());
-        let orders = port.update_weights(&target_weights);
-        port.execute_orders(orders);
-        perf.update(&port.get_current_state(&101.into()));
+        strat.set_date(&101.into());
+        strat.update();
 
-        let output = perf.get_output();
+        let output = strat.get_perf();
 
         let portfolio_return = output.ret;
         //We need to round up to cmp properly
@@ -323,117 +326,56 @@ mod tests {
     }
 
     #[test]
-    fn test_that_net_cash_flows_recorded_correctly() {
-        let mut perf = PortfolioPerformance::yearly();
-
-        let brkr = setup();
-        let mut target_weights = PortfolioAllocation::new();
-        target_weights.insert(&String::from("ABC"), &0.5.into());
-        target_weights.insert(&String::from("BCD"), &0.5.into());
-
-        let mut port = SimPortfolio::new(brkr);
-        port.deposit_cash(&100_000.0.into());
-
-        port.set_date(&100.into());
-        let orders = port.update_weights(&target_weights);
-        port.execute_orders(orders);
-        perf.update(&port.get_current_state(&100.into()));
-
-        port.set_date(&101.into());
-        port.deposit_cash(&10_000.0.into());
-        let orders = port.update_weights(&target_weights);
-        port.execute_orders(orders);
-        perf.update(&port.get_current_state(&101.into()));
-
-        port.set_date(&102.into());
-        port.withdraw_cash_with_liquidation(&20_000.0.into());
-        let orders = port.update_weights(&target_weights);
-        port.execute_orders(orders);
-        perf.update(&port.get_current_state(&102.into()));
-
-        port.set_date(&103.into());
-        port.deposit_cash(&5_000.0.into());
-        let orders = port.update_weights(&target_weights);
-        port.execute_orders(orders);
-        perf.update(&port.get_current_state(&103.into()));
-
-        let cf = perf.cash_flow;
-
-        assert!(cf.get(0).unwrap().eq(&100_000_f64));
-        assert!(cf.get(1).unwrap().eq(&10_000_f64));
-        assert!(cf.get(2).unwrap().eq(&-20_000_f64));
-        assert!(cf.get(3).unwrap().eq(&5_000_f64));
-    }
-
-    #[test]
     fn test_that_returns_with_cash_flow_correct() {
-        let mut perf = PortfolioPerformance::yearly();
+        //The same sequence of prices should generate the same returns regardless of the timing of
+        //cash flows into/out the portfolio
+        //Only use deposits because withdrawing can they aren't idempotent and can create ordering
+        //issues that impact returns.
 
         let brkr = setup();
         let mut target_weights = PortfolioAllocation::new();
-        target_weights.insert(&String::from("ABC"), &0.5.into());
-        target_weights.insert(&String::from("BCD"), &0.5.into());
+        target_weights.insert(&String::from("ABC"), &1.0.into());
 
-        let mut port = SimPortfolio::new(brkr);
-        port.deposit_cash(&100_000.0.into());
+        let mut strat = StaticWeightStrategy::yearly(brkr, target_weights);
+        strat.init(&100_000.0.into());
 
-        port.set_date(&100.into());
-        let orders = port.update_weights(&target_weights);
-        port.execute_orders(orders);
-        perf.update(&port.get_current_state(&100.into()));
+        strat.set_date(&100.into());
+        strat.update();
 
-        port.set_date(&101.into());
-        port.deposit_cash(&10_000.0.into());
-        let orders = port.update_weights(&target_weights);
-        port.execute_orders(orders);
-        perf.update(&port.get_current_state(&101.into()));
+        strat.set_date(&101.into());
+        strat.deposit_cash(&10_000.0.into());
+        strat.update();
 
-        port.set_date(&102.into());
-        port.withdraw_cash(&20_000.0.into());
-        let orders = port.update_weights(&target_weights);
-        port.execute_orders(orders);
-        perf.update(&port.get_current_state(&102.into()));
+        strat.set_date(&102.into());
+        strat.deposit_cash(&10_000.0.into());
+        strat.update();
 
-        port.set_date(&103.into());
-        port.deposit_cash(&5_000.0.into());
-        let orders = port.update_weights(&target_weights);
-        port.execute_orders(orders);
-        perf.update(&port.get_current_state(&103.into()));
-
-        let mut perf1 = PortfolioPerformance::yearly();
+        strat.set_date(&103.into());
+        strat.update();
 
         let brkr1 = setup();
         let mut target_weights1 = PortfolioAllocation::new();
-        target_weights1.insert(&String::from("ABC"), &0.5.into());
-        target_weights1.insert(&String::from("BCD"), &0.5.into());
+        target_weights1.insert(&String::from("ABC"), &1.0.into());
 
-        let mut port1 = SimPortfolio::new(brkr1);
-        port1.deposit_cash(&100_000.0.into());
+        let mut strat1 = StaticWeightStrategy::yearly(brkr1, target_weights1);
+        strat1.init(&100_000.0.into());
 
-        port1.set_date(&100.into());
-        let orders = port1.update_weights(&target_weights1);
-        port1.execute_orders(orders);
-        perf.update(&port1.get_current_state(&100.into()));
+        strat1.set_date(&100.into());
+        strat1.update();
 
-        port1.set_date(&101.into());
-        let orders = port1.update_weights(&target_weights1);
-        port1.execute_orders(orders);
-        perf1.update(&port1.get_current_state(&101.into()));
+        strat1.set_date(&101.into());
+        strat1.update();
 
-        port1.set_date(&102.into());
-        let orders = port1.update_weights(&target_weights1);
-        port1.execute_orders(orders);
-        perf1.update(&port1.get_current_state(&102.into()));
+        strat1.set_date(&102.into());
+        strat1.update();
 
-        port1.set_date(&103.into());
-        port1.deposit_cash(&5_000.0.into());
-        let orders = port1.update_weights(&target_weights1);
-        port1.execute_orders(orders);
-        perf1.update(&port1.get_current_state(&103.into()));
+        strat1.set_date(&103.into());
+        strat1.update();
 
-        let rets = perf.get_returns(None);
-        let rets1 = perf.get_returns(None);
-
-        assert!(rets.eq(&rets1));
+        let rets = strat.get_perf().ret;
+        let rets1 = strat1.get_perf().ret;
+        println!("{:?}", rets);
+        println!("{:?}", rets1);
+        assert!(rets==rets1);
     }
 }

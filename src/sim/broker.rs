@@ -11,6 +11,7 @@ use crate::broker::{Order, OrderExecutor, OrderType};
 use crate::data::{
     CashValue, DataSource, DateTime, PortfolioHoldings, PortfolioQty, Price, SimSource,
 };
+use crate::data::PortfolioValues;
 
 #[derive(Clone, Debug)]
 pub struct SimulatedBroker {
@@ -111,6 +112,27 @@ impl PositionInfo for SimulatedBroker {
         }
         None
     }
+
+    fn get_total_value(&self) -> CashValue {
+        let assets = self.get_positions();
+        let mut value = self.get_cash_balance();
+        for a in assets {
+            if let Some(position_value) = self.get_position_value(&a) {
+                value += position_value
+            }
+        }
+        value
+    }
+
+    fn get_liquidation_value(&self) -> CashValue {
+        let mut value = self.get_cash_balance();
+        for asset in self.get_positions() {
+            if let Some(asset_value) = self.get_position_liquidation_value(&asset) {
+                value += asset_value
+            }
+        }
+        value
+    }
 }
 
 impl PriceQuote for SimulatedBroker {
@@ -180,6 +202,18 @@ impl ClientControlled for SimulatedBroker {
 
     fn get_holdings(&self) -> PortfolioHoldings {
         self.holdings.clone()
+    }
+
+    fn get_values(&self) -> PortfolioValues {
+        let mut holdings = PortfolioValues::new();
+        let assets = self.get_positions();
+        for a in assets {
+            let value = self.get_position_value(&a);
+            if let Some(v) = value {
+                holdings.insert(&a, &v);
+            }
+        }
+        holdings
     }
 
     fn get_qty(&self, symbol: &str) -> Option<&PortfolioQty> {
