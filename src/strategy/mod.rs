@@ -9,8 +9,8 @@
 */
 
 use crate::broker::{
-    BrokerEvent, CashManager, ClientControlled, DividendPayment, HasLog, Order, OrderExecutor,
-    OrderType, PositionInfo, PriceQuote, Quote, Trade, TradeCosts,
+    BrokerEvent, TransferCash, DividendPayment, EventLog, Order, ExecutesOrder,
+    OrderType, PositionInfo, GetsQuote, Quote, Trade, TradeCost,
 };
 use crate::data::{CashValue, DateTime, PortfolioAllocation, PortfolioQty, PortfolioWeight, Price};
 use crate::perf::{PerfStruct, PortfolioPerformance, StrategySnapshot};
@@ -40,7 +40,7 @@ pub trait TransferFrom {
 
 //TODO:should this execute any trades at all
 fn withdraw_cash_with_liquidation_algo<
-    T: OrderExecutor + TradeCosts + PositionInfo + ClientControlled + PriceQuote,
+    T: ExecutesOrder + TradeCost + PositionInfo + GetsQuote,
 >(
     cash: &CashValue,
     brkr: &mut T,
@@ -94,7 +94,7 @@ fn withdraw_cash_with_liquidation_algo<
 }
 
 //Returns orders so calling function has control over when orders are executed
-fn diff<T: PositionInfo + TradeCosts + PriceQuote>(
+fn diff<T: PositionInfo + TradeCost + GetsQuote>(
     target_weights: &PortfolioAllocation<PortfolioWeight>,
     brkr: &T,
 ) -> Vec<Order> {

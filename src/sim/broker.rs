@@ -4,10 +4,10 @@ use super::orderbook::SimOrderBook;
 use crate::broker::record::BrokerLog;
 use crate::broker::rules::OrderExecutionRules;
 use crate::broker::{
-    BrokerCost, BrokerEvent, CashManager, ClientControlled, DividendPayment, HasLog, HasTime,
-    PaysDividends, PendingOrders, PositionInfo, PriceQuote, Quote, Trade, TradeCosts,
+    BrokerCost, BrokerEvent, TransferCash, CanUpdate, DividendPayment, EventLog, Time,
+    PayDividend, PendingOrder, PositionInfo, GetsQuote, Quote, Trade, TradeCost,
 };
-use crate::broker::{Order, OrderExecutor, OrderType};
+use crate::broker::{Order, ExecutesOrder, OrderType};
 use crate::data::PortfolioValues;
 use crate::data::{
     CashValue, DataSource, DateTime, PortfolioHoldings, PortfolioQty, Price, SimSource,
@@ -24,7 +24,7 @@ pub struct SimulatedBroker {
     trade_costs: Vec<BrokerCost>,
 }
 
-impl CashManager for SimulatedBroker {
+impl TransferCash for SimulatedBroker {
     fn withdraw_cash(&mut self, cash: CashValue) -> BrokerEvent {
         if cash > self.cash {
             return BrokerEvent::WithdrawFailure(cash);
@@ -133,9 +133,29 @@ impl PositionInfo for SimulatedBroker {
         }
         value
     }
+
+    fn get_positions(&self) -> Vec<String> {
+        self.holdings.keys()
+    }
+
+    fn get_holdings(&self) -> PortfolioHoldings {
+        self.holdings.clone()
+    }
+
+    fn get_values(&self) -> PortfolioValues {
+        let mut holdings = PortfolioValues::new();
+        let assets = self.get_positions();
+        for a in assets {
+            let value = self.get_position_value(&a);
+            if let Some(v) = value {
+                holdings.insert(&a, &v);
+            }
+        }
+        holdings
+    }
 }
 
-impl PriceQuote for SimulatedBroker {
+impl GetsQuote for SimulatedBroker {
     fn get_quote(&self, symbol: &str) -> Option<Quote> {
         self.raw_data.get_quote_by_date_symbol(&self.date, symbol)
     }
@@ -145,7 +165,7 @@ impl PriceQuote for SimulatedBroker {
     }
 }
 
-impl OrderExecutor for SimulatedBroker {
+impl ExecutesOrder for SimulatedBroker {
     fn execute_order(&mut self, order: &Order) -> BrokerEvent {
         if let OrderType::LimitBuy
         | OrderType::LimitSell
@@ -185,7 +205,7 @@ impl OrderExecutor for SimulatedBroker {
     }
 }
 
-impl PendingOrders for SimulatedBroker {
+impl PendingOrder for SimulatedBroker {
     fn insert_order(&mut self, order: &Order) {
         self.orderbook.insert_order(order);
     }
@@ -195,37 +215,13 @@ impl PendingOrders for SimulatedBroker {
     }
 }
 
-impl ClientControlled for SimulatedBroker {
-    fn get_positions(&self) -> Vec<String> {
-        self.holdings.keys()
-    }
-
-    fn get_holdings(&self) -> PortfolioHoldings {
-        self.holdings.clone()
-    }
-
-    fn get_values(&self) -> PortfolioValues {
-        let mut holdings = PortfolioValues::new();
-        let assets = self.get_positions();
-        for a in assets {
-            let value = self.get_position_value(&a);
-            if let Some(v) = value {
-                holdings.insert(&a, &v);
-            }
-        }
-        holdings
-    }
-
-    fn get_qty(&self, symbol: &str) -> Option<&PortfolioQty> {
-        self.holdings.get(symbol)
-    }
-
+impl CanUpdate for SimulatedBroker {
     fn update_holdings(&mut self, symbol: &str, change: &PortfolioQty) {
         self.holdings.insert(symbol, &*change);
     }
 }
 
-impl TradeCosts for SimulatedBroker {
+impl TradeCost for SimulatedBroker {
     fn get_trade_costs(&self, trade: &Trade) -> CashValue {
         let mut cost = CashValue::default();
         for trade_cost in &self.trade_costs {
@@ -244,7 +240,7 @@ impl TradeCosts for SimulatedBroker {
     }
 }
 
-impl PaysDividends for SimulatedBroker {
+impl PayDividend for SimulatedBroker {
     fn pay_dividends(&mut self) {
         if let Some(dividends) = self.raw_data.get_dividends_by_date(&self.date) {
             for dividend in &dividends {
@@ -265,13 +261,13 @@ impl PaysDividends for SimulatedBroker {
     }
 }
 
-impl HasTime for SimulatedBroker {
+impl Time for SimulatedBroker {
     fn now(&self) -> DateTime {
         self.date
     }
 }
 
-impl HasLog for SimulatedBroker {
+impl EventLog for SimulatedBroker {
     fn trades_between(&self, start: &DateTime, end: &DateTime) -> Vec<Trade> {
         self.log.trades_between(start, end)
     }
@@ -349,9 +345,9 @@ impl SimulatedBroker {
 #[cfg(test)]
 mod tests {
 
-    use super::{PendingOrders, SimulatedBroker};
-    use crate::broker::{BrokerCost, BrokerEvent, CashManager, Dividend, PositionInfo, Quote};
-    use crate::broker::{Order, OrderExecutor, OrderType};
+    use super::{PendingOrder, SimulatedBroker};
+    use crate::broker::{BrokerCost, BrokerEvent, TransferCash, Dividend, PositionInfo, Quote};
+    use crate::broker::{Order, ExecutesOrder, OrderType};
     use crate::data::{DataSource, DateTime};
 
     use std::collections::HashMap;

@@ -180,7 +180,7 @@ impl BrokerCost {
     }
 }
 
-pub trait CashManager {
+pub trait TransferCash {
     fn withdraw_cash(&mut self, cash: CashValue) -> BrokerEvent;
     fn deposit_cash(&mut self, cash: CashValue) -> BrokerEvent;
     fn debit(&mut self, value: CashValue) -> BrokerEvent;
@@ -196,32 +196,31 @@ pub trait PositionInfo {
     fn get_position_profit(&self, symbol: &str) -> Option<CashValue>;
     fn get_liquidation_value(&self) -> CashValue;
     fn get_total_value(&self) -> CashValue;
+    fn get_positions(&self) -> Vec<String>;
+    fn get_values(&self) -> PortfolioValues;
+    fn get_holdings(&self) -> PortfolioHoldings;
 }
 
-pub trait PriceQuote {
+pub trait GetsQuote {
     fn get_quote(&self, symbol: &str) -> Option<Quote>;
     fn get_quotes(&self) -> Option<Vec<Quote>>;
 }
 
-pub trait ClientControlled {
-    fn get_positions(&self) -> Vec<String>;
+pub trait CanUpdate {
     fn update_holdings(&mut self, symbol: &str, change: &PortfolioQty);
-    fn get_holdings(&self) -> PortfolioHoldings;
-    fn get_values(&self) -> PortfolioValues;
-    fn get_qty(&self, symbol: &str) -> Option<&PortfolioQty>;
 }
 
-pub trait PendingOrders {
+pub trait PendingOrder {
     fn insert_order(&mut self, order: &Order);
     fn delete_order(&mut self, id: &u8);
 }
 
-pub trait OrderExecutor {
+pub trait ExecutesOrder {
     fn execute_order(&mut self, order: &Order) -> BrokerEvent;
     fn execute_orders(&mut self, orders: Vec<Order>) -> Vec<BrokerEvent>;
 }
 
-pub trait TradeCosts {
+pub trait TradeCost {
     fn get_trade_costs(&self, trade: &Trade) -> CashValue;
     fn calc_trade_impact(
         &self,
@@ -231,15 +230,15 @@ pub trait TradeCosts {
     ) -> (CashValue, Price);
 }
 
-pub trait PaysDividends {
+pub trait PayDividend {
     fn pay_dividends(&mut self);
 }
 
-pub trait HasTime {
+pub trait Time {
     fn now(&self) -> DateTime;
 }
 
-pub trait HasLog {
+pub trait EventLog {
     fn trades_between(&self, start: &DateTime, end: &DateTime) -> Vec<Trade>;
     fn dividends_between(&self, start: &DateTime, end: &DateTime) -> Vec<DividendPayment>;
 }

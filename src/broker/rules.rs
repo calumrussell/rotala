@@ -1,5 +1,5 @@
 use crate::broker::{
-    BrokerEvent, CashManager, ClientControlled, HasTime, Trade, TradeCosts, TradeType,
+    BrokerEvent, TransferCash, CanUpdate, Time, Trade, TradeCost, TradeType, PositionInfo,
 };
 use crate::broker::{Order, OrderType};
 use crate::data::Price;
@@ -10,7 +10,7 @@ impl OrderExecutionRules {
     pub fn client_has_sufficient_cash(
         order: &Order,
         price: &Price,
-        brkr: &(impl CashManager + TradeCosts),
+        brkr: &(impl TransferCash + TradeCost),
     ) -> Result<bool, f64> {
         let shares = order.get_shares();
         let value = shares * *price;
@@ -29,11 +29,11 @@ impl OrderExecutionRules {
     pub fn trade_logic(
         order: &Order,
         price: &Price,
-        brkr: &mut (impl CashManager + ClientControlled + HasTime + TradeCosts),
+        brkr: &mut (impl PositionInfo + TransferCash + CanUpdate + Time + TradeCost),
     ) -> Trade {
         let value = *price * order.get_shares();
         //Update holdings
-        let curr = brkr.get_qty(&order.get_symbol()).unwrap_or_default();
+        let curr = brkr.get_position_qty(&order.get_symbol()).unwrap_or_default();
         let updated = match order.get_order_type() {
             OrderType::MarketBuy => *curr + order.get_shares(),
             OrderType::MarketSell => *curr - order.get_shares(),
@@ -70,7 +70,7 @@ impl OrderExecutionRules {
     pub fn run_all<'a>(
         order: &Order,
         price: &Price,
-        brkr: &'a mut (impl CashManager + ClientControlled + TradeCosts + HasTime),
+        brkr: &'a mut (impl PositionInfo + TransferCash + CanUpdate + TradeCost + Time),
     ) -> Result<Trade, BrokerEvent> {
         let has_cash = OrderExecutionRules::client_has_sufficient_cash(order, price, brkr);
         if has_cash.is_err() {
