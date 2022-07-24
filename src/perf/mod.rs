@@ -183,8 +183,8 @@ mod tests {
     use crate::broker::{BrokerCost, Dividend, Quote};
     use crate::data::{DataSource, DateTime, PortfolioAllocation};
     use crate::perf::StrategySnapshot;
-    use crate::sim::broker::SimulatedBroker;
-    use crate::strategy::{StaticWeightStrategy, Strategy, TransferTo};
+    use crate::sim::broker::{SimulatedBroker, SimulatedBrokerBuilder};
+    use crate::strategy::{StaticWeightStrategyBuilder, Strategy, TransferTo};
 
     use super::DataFrequency;
     use super::PortfolioCalculator;
@@ -256,7 +256,10 @@ mod tests {
         raw_data.insert(103.into(), vec![quote_a4, quote_b4]);
 
         let source = DataSource::from_hashmap(raw_data, dividends);
-        let sb = SimulatedBroker::new(source, vec![BrokerCost::Flat(0.0.into())]);
+        let sb = SimulatedBrokerBuilder::new()
+            .with_data(source)
+            .with_trade_costs(vec![BrokerCost::Flat(0.0.into())])
+            .build();
         sb
     }
 
@@ -307,7 +310,11 @@ mod tests {
         target_weights.insert(&String::from("ABC"), &0.5.into());
         target_weights.insert(&String::from("BCD"), &0.5.into());
 
-        let mut strat = StaticWeightStrategy::yearly(brkr, target_weights);
+        let mut strat = StaticWeightStrategyBuilder::new()
+            .with_brkr(brkr)
+            .with_weights(target_weights)
+            .yearly();
+
         strat.deposit_cash(&100_000.0.into());
 
         strat.set_date(&100.into());

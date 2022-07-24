@@ -1,11 +1,11 @@
-use alator::strategy::StaticWeightStrategy;
+use alator::strategy::StaticWeightStrategyBuilder;
 use rand::distributions::{Distribution, Uniform};
 use rand::thread_rng;
 use std::collections::HashMap;
 
 use alator::broker::{BrokerCost, Dividend, Quote};
 use alator::data::{CashValue, DataSource, DateTime, PortfolioAllocation, PortfolioWeight};
-use alator::sim::broker::SimulatedBroker;
+use alator::sim::broker::SimulatedBrokerBuilder;
 use alator::simcontext::SimContext;
 
 fn build_data() -> (DataSource, Vec<DateTime>) {
@@ -47,8 +47,16 @@ fn staticweight_integration_test() {
     weights.insert(&String::from("ABC"), &0.5.into());
     weights.insert(&String::from("BCD"), &0.5.into());
 
-    let simbrkr = SimulatedBroker::new(data.0, vec![BrokerCost::Flat(1.0.into())]);
-    let strat = StaticWeightStrategy::yearly(simbrkr, weights);
+    let simbrkr = SimulatedBrokerBuilder::new()
+        .with_data(data.0)
+        .with_trade_costs(vec![BrokerCost::Flat(1.0.into())])
+        .build();
+
+    let strat = StaticWeightStrategyBuilder::new()
+        .with_brkr(simbrkr)
+        .with_weights(weights)
+        .daily();
+
     let mut sim = SimContext::new(data.1, initial_cash, &strat);
     sim.run();
 }

@@ -9,8 +9,8 @@
 */
 
 use crate::broker::{
-    BrokerEvent, TransferCash, DividendPayment, EventLog, Order, ExecutesOrder,
-    OrderType, PositionInfo, GetsQuote, Quote, Trade, TradeCost,
+    BrokerEvent, DividendPayment, EventLog, ExecutesOrder, GetsQuote, Order, OrderType,
+    PositionInfo, Quote, Trade, TradeCost, TransferCash,
 };
 use crate::data::{CashValue, DateTime, PortfolioAllocation, PortfolioQty, PortfolioWeight, Price};
 use crate::perf::{PerfStruct, PortfolioPerformance, StrategySnapshot};
@@ -39,9 +39,7 @@ pub trait TransferFrom {
 }
 
 //TODO:should this execute any trades at all
-fn withdraw_cash_with_liquidation_algo<
-    T: ExecutesOrder + TradeCost + PositionInfo + GetsQuote,
->(
+fn withdraw_cash_with_liquidation_algo<T: ExecutesOrder + TradeCost + PositionInfo + GetsQuote>(
     cash: &CashValue,
     brkr: &mut T,
 ) -> BrokerEvent {
@@ -154,6 +152,66 @@ fn diff<T: PositionInfo + TradeCost + GetsQuote>(
     orders
 }
 
+pub struct StaticWeightStrategyBuilder {
+    //If missing either field, we cannot run this strategy
+    brkr: Option<SimulatedBroker>,
+    weights: Option<PortfolioAllocation<PortfolioWeight>>,
+}
+
+impl StaticWeightStrategyBuilder {
+    pub fn daily(&self) -> StaticWeightStrategy {
+        if self.brkr.is_none() || self.weights.is_none() {
+            panic!("Strategy must have broker and weights");
+        }
+
+        StaticWeightStrategy {
+            brkr: self.brkr.clone().unwrap(),
+            date: 1.into(),
+            target_weights: self.weights.clone().unwrap(),
+            perf: PortfolioPerformance::daily(),
+            net_cash_flow: 0.0.into(),
+        }
+    }
+
+    pub fn yearly(&self) -> StaticWeightStrategy {
+        if self.brkr.is_none() || self.weights.is_none() {
+            panic!("Strategy must have broker and weights");
+        }
+
+        StaticWeightStrategy {
+            brkr: self.brkr.clone().unwrap(),
+            date: 1.into(),
+            target_weights: self.weights.clone().unwrap(),
+            perf: PortfolioPerformance::yearly(),
+            net_cash_flow: 0.0.into(),
+        }
+    }
+
+    pub fn with_brkr(&mut self, brkr: SimulatedBroker) -> &mut Self {
+        self.brkr = Some(brkr);
+        self
+    }
+
+    pub fn with_weights(&mut self, weights: PortfolioAllocation<PortfolioWeight>) -> &mut Self {
+        self.weights = Some(weights);
+        self
+    }
+
+    pub fn new() -> Self {
+        Self {
+            brkr: None,
+            weights: None,
+        }
+    }
+
+}
+
+impl Default for StaticWeightStrategyBuilder {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 #[derive(Clone)]
 pub struct StaticWeightStrategy {
     brkr: SimulatedBroker,
@@ -169,26 +227,6 @@ impl StaticWeightStrategy {
             date: self.date,
             value: self.brkr.get_total_value(),
             net_cash_flow: self.net_cash_flow,
-        }
-    }
-
-    pub fn new(brkr: SimulatedBroker, weights: PortfolioAllocation<PortfolioWeight>) -> Self {
-        Self {
-            brkr,
-            date: 1.into(),
-            target_weights: weights,
-            perf: PortfolioPerformance::daily(),
-            net_cash_flow: 0.0.into(),
-        }
-    }
-
-    pub fn yearly(brkr: SimulatedBroker, weights: PortfolioAllocation<PortfolioWeight>) -> Self {
-        Self {
-            brkr,
-            date: 1.into(),
-            target_weights: weights,
-            perf: PortfolioPerformance::yearly(),
-            net_cash_flow: 0.0.into(),
         }
     }
 }
@@ -264,5 +302,64 @@ impl From<&StaticWeightStrategy> for Box<dyn Strategy> {
     fn from(strat: &StaticWeightStrategy) -> Self {
         let owned: StaticWeightStrategy = strat.clone();
         Box::new(owned)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::StaticWeightStrategyBuilder;
+    use crate::broker::{BrokerCost, Dividend, Quote};
+    use crate::data::{DataSource, DateTime, PortfolioAllocation};
+    use crate::sim::broker::{SimulatedBroker, SimulatedBrokerBuilder};
+    use std::collections::HashMap;
+
+    fn setup() -> SimulatedBroker {
+        let mut prices: HashMap<DateTime, Vec<Quote>> = HashMap::new();
+        let dividends: HashMap<DateTime, Vec<Dividend>> = HashMap::new();
+
+        let quote = Quote {
+            bid: 100.00.into(),
+            ask: 101.00.into(),
+            date: 100.into(),
+            symbol: String::from("ABC"),
+        };
+        let quote2 = Quote {
+            bid: 104.00.into(),
+            ask: 105.00.into(),
+            date: 101.into(),
+            symbol: String::from("ABC"),
+        };
+        let quote4 = Quote {
+            bid: 95.00.into(),
+            ask: 96.00.into(),
+            date: 102.into(),
+            symbol: String::from("ABC"),
+        };
+        prices.insert(100.into(), vec![quote]);
+        prices.insert(101.into(), vec![quote2]);
+        prices.insert(102.into(), vec![quote4]);
+
+        let source = DataSource::from_hashmap(prices, dividends);
+        let brkr = SimulatedBrokerBuilder::new()
+            .with_data(source)
+            .with_trade_costs(vec![BrokerCost::Flat(0.1.into())])
+            .build();
+        brkr
+    }
+
+    #[test]
+    #[should_panic]
+    fn test_that_static_builder_fails_without_weights() {
+        let brkr = setup();
+        let _strat = StaticWeightStrategyBuilder::new().with_brkr(brkr).daily();
+    }
+
+    #[test]
+    #[should_panic]
+    fn test_that_static_builder_fails_without_brkr() {
+        let weights = PortfolioAllocation::new();
+        let _strat = StaticWeightStrategyBuilder::new()
+            .with_weights(weights)
+            .daily();
     }
 }

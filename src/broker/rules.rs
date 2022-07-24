@@ -1,5 +1,5 @@
 use crate::broker::{
-    BrokerEvent, TransferCash, CanUpdate, Time, Trade, TradeCost, TradeType, PositionInfo,
+    BrokerEvent, CanUpdate, PositionInfo, Time, Trade, TradeCost, TradeType, TransferCash,
 };
 use crate::broker::{Order, OrderType};
 use crate::data::Price;
@@ -33,7 +33,9 @@ impl OrderExecutionRules {
     ) -> Trade {
         let value = *price * order.get_shares();
         //Update holdings
-        let curr = brkr.get_position_qty(&order.get_symbol()).unwrap_or_default();
+        let curr = brkr
+            .get_position_qty(&order.get_symbol())
+            .unwrap_or_default();
         let updated = match order.get_order_type() {
             OrderType::MarketBuy => *curr + order.get_shares(),
             OrderType::MarketSell => *curr - order.get_shares(),

@@ -4,14 +4,65 @@ use super::orderbook::SimOrderBook;
 use crate::broker::record::BrokerLog;
 use crate::broker::rules::OrderExecutionRules;
 use crate::broker::{
-    BrokerCost, BrokerEvent, TransferCash, CanUpdate, DividendPayment, EventLog, Time,
-    PayDividend, PendingOrder, PositionInfo, GetsQuote, Quote, Trade, TradeCost,
+    BrokerCost, BrokerEvent, CanUpdate, DividendPayment, EventLog, GetsQuote, PayDividend,
+    PendingOrder, PositionInfo, Quote, Time, Trade, TradeCost, TransferCash,
 };
-use crate::broker::{Order, ExecutesOrder, OrderType};
+use crate::broker::{ExecutesOrder, Order, OrderType};
 use crate::data::PortfolioValues;
 use crate::data::{
     CashValue, DataSource, DateTime, PortfolioHoldings, PortfolioQty, Price, SimSource,
 };
+
+pub struct SimulatedBrokerBuilder {
+    //Cannot run without data but can run with empty trade_costs
+    data: Option<DataSource>,
+    trade_costs: Vec<BrokerCost>,
+}
+
+impl SimulatedBrokerBuilder {
+    pub fn build(&self) -> SimulatedBroker {
+        if self.data.is_none() {
+            panic!("Cannot build broker without data");
+        }
+        let holdings = PortfolioHoldings::new();
+        let orderbook = SimOrderBook::new();
+        let log = BrokerLog::new();
+
+        SimulatedBroker {
+            raw_data: self.data.clone().unwrap(),
+            //Intialised as invalid so errors throw if client tries to run before init
+            date: DateTime::from(-1),
+            holdings,
+            orderbook,
+            cash: CashValue::from(0.0),
+            log,
+            trade_costs: self.trade_costs.clone(),
+        }
+    }
+
+    pub fn with_data(&mut self, data: DataSource) -> &mut Self {
+        self.data = Some(data);
+        self
+    }
+
+    pub fn with_trade_costs(&mut self, trade_costs: Vec<BrokerCost>) -> &mut Self {
+        self.trade_costs = trade_costs;
+        self
+    }
+
+    pub fn new() -> Self {
+        SimulatedBrokerBuilder {
+            data: None,
+            trade_costs: Vec::new(),
+        }
+    }
+}
+
+impl Default for SimulatedBrokerBuilder {
+    fn default() -> Self {
+        Self::new()
+    }
+}
 
 #[derive(Clone, Debug)]
 pub struct SimulatedBroker {
@@ -22,6 +73,54 @@ pub struct SimulatedBroker {
     cash: CashValue,
     log: BrokerLog,
     trade_costs: Vec<BrokerCost>,
+}
+
+impl SimulatedBroker {
+    pub fn cost_basis(&self, symbol: &str) -> Option<Price> {
+        self.log.cost_basis(symbol)
+    }
+
+    fn check_orderbook(&mut self) {
+        //Should always return because we are running after we set a new date
+        if let Some(quotes) = self.get_quotes() {
+            for quote in quotes {
+                if let Some(active_orders) = self.orderbook.check_orders_by_symbol(&quote) {
+                    for (order_id, order) in active_orders {
+                        let order = match order.get_order_type() {
+                            OrderType::LimitBuy | OrderType::StopBuy => Order::new(
+                                OrderType::MarketBuy,
+                                quote.symbol.clone(),
+                                order.get_shares(),
+                                None,
+                            ),
+                            OrderType::LimitSell | OrderType::StopSell => Order::new(
+                                OrderType::MarketSell,
+                                quote.symbol.clone(),
+                                order.get_shares(),
+                                None,
+                            ),
+                            _ => panic!("Orderbook should have only non-market orders"),
+                        };
+                        let order_result = self.execute_order(&order);
+                        //TODO: orders fail silently if the market order can't be executed
+                        if let BrokerEvent::TradeSuccess(_t) = order_result {
+                            self.orderbook.delete_order(&order_id);
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    //Contains tasks that should be run on every iteration of the simulation irregardless of the
+    //state on the client.
+    //Right now, this largely consists of actions that the broker needs to perform i.e. checking if
+    //an order has been triggered.
+    pub fn set_date(&mut self, new_date: &DateTime) {
+        self.date = *new_date;
+        self.check_orderbook();
+        self.pay_dividends();
+    }
 }
 
 impl TransferCash for SimulatedBroker {
@@ -277,77 +376,12 @@ impl EventLog for SimulatedBroker {
     }
 }
 
-impl SimulatedBroker {
-    pub fn cost_basis(&self, symbol: &str) -> Option<Price> {
-        self.log.cost_basis(symbol)
-    }
-
-    fn check_orderbook(&mut self) {
-        //Should always return because we are running after we set a new date
-        if let Some(quotes) = self.get_quotes() {
-            for quote in quotes {
-                if let Some(active_orders) = self.orderbook.check_orders_by_symbol(&quote) {
-                    for (order_id, order) in active_orders {
-                        let order = match order.get_order_type() {
-                            OrderType::LimitBuy | OrderType::StopBuy => Order::new(
-                                OrderType::MarketBuy,
-                                quote.symbol.clone(),
-                                order.get_shares(),
-                                None,
-                            ),
-                            OrderType::LimitSell | OrderType::StopSell => Order::new(
-                                OrderType::MarketSell,
-                                quote.symbol.clone(),
-                                order.get_shares(),
-                                None,
-                            ),
-                            _ => panic!("Orderbook should have only non-market orders"),
-                        };
-                        let order_result = self.execute_order(&order);
-                        //TODO: orders fail silently if the market order can't be executed
-                        if let BrokerEvent::TradeSuccess(_t) = order_result {
-                            self.orderbook.delete_order(&order_id);
-                        }
-                    }
-                }
-            }
-        }
-    }
-
-    //Contains tasks that should be run on every iteration of the simulation irregardless of the
-    //state on the client.
-    //Right now, this largely consists of actions that the broker needs to perform i.e. checking if
-    //an order has been triggered.
-    pub fn set_date(&mut self, new_date: &DateTime) {
-        self.date = *new_date;
-        self.check_orderbook();
-        self.pay_dividends();
-    }
-
-    pub fn new(raw_data: DataSource, trade_costs: Vec<BrokerCost>) -> SimulatedBroker {
-        let holdings = PortfolioHoldings::new();
-        let orderbook = SimOrderBook::new();
-        let log = BrokerLog::new();
-
-        SimulatedBroker {
-            raw_data,
-            //Intialised as invalid so errors throw if client tries to run before init
-            date: DateTime::from(-1),
-            holdings,
-            orderbook,
-            cash: CashValue::from(0.0),
-            log,
-            trade_costs,
-        }
-    }
-}
-
 #[cfg(test)]
 mod tests {
 
-    use super::{PendingOrder, SimulatedBroker};
-    use crate::broker::{BrokerCost, BrokerEvent, TransferCash, Dividend, PositionInfo, Quote};
-    use crate::broker::{Order, ExecutesOrder, OrderType};
+    use super::{PendingOrder, SimulatedBroker, SimulatedBrokerBuilder};
+    use crate::broker::{BrokerCost, BrokerEvent, Dividend, PositionInfo, Quote, TransferCash};
+    use crate::broker::{ExecutesOrder, Order, OrderType};
     use crate::data::{DataSource, DateTime};
 
     use std::collections::HashMap;
@@ -418,7 +452,10 @@ mod tests {
         dividends.insert(101.into(), dividend_row);
 
         let source = DataSource::from_hashmap(prices, dividends);
-        let brkr = SimulatedBroker::new(source, vec![BrokerCost::Flat(1.0.into())]);
+        let brkr = SimulatedBrokerBuilder::new()
+            .with_data(source)
+            .with_trade_costs(vec![BrokerCost::Flat(1.0.into())])
+            .build();
         (brkr, 10)
     }
 
@@ -672,5 +709,44 @@ mod tests {
         brkr.set_date(&101.into());
         let cash_after_dividend = brkr.get_cash_balance();
         assert!(cash_before_dividend != cash_after_dividend);
+    }
+
+    #[test]
+    #[should_panic]
+    fn test_that_broker_builder_fails_without_data() {
+        let _brkr = SimulatedBrokerBuilder::new()
+            .with_trade_costs(vec![BrokerCost::Flat(1.0.into())])
+            .build();
+    }
+
+    #[test]
+    fn test_that_broker_build_passes_without_trade_costs() {
+        let mut prices: HashMap<DateTime, Vec<Quote>> = HashMap::new();
+        let dividends: HashMap<DateTime, Vec<Dividend>> = HashMap::new();
+
+        let quote = Quote {
+            bid: 100.00.into(),
+            ask: 101.00.into(),
+            date: 100.into(),
+            symbol: String::from("ABC"),
+        };
+        let quote2 = Quote {
+            bid: 104.00.into(),
+            ask: 105.00.into(),
+            date: 101.into(),
+            symbol: String::from("ABC"),
+        };
+        let quote4 = Quote {
+            bid: 95.00.into(),
+            ask: 96.00.into(),
+            date: 102.into(),
+            symbol: String::from("ABC"),
+        };
+        prices.insert(100.into(), vec![quote]);
+        prices.insert(101.into(), vec![quote2]);
+        prices.insert(102.into(), vec![quote4]);
+
+        let source = DataSource::from_hashmap(prices, dividends);
+        let _brkr = SimulatedBrokerBuilder::new().with_data(source).build();
     }
 }
