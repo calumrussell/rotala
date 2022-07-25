@@ -14,10 +14,12 @@ use crate::broker::{
 };
 use crate::clock::Clock;
 use crate::input::DataSource;
-use crate::types::{CashValue, DateTime, PortfolioAllocation, PortfolioQty, PortfolioWeight, Price};
 use crate::perf::{PerfStruct, PortfolioPerformance, StrategySnapshot};
 use crate::schedule::{DefaultTradingSchedule, TradingSchedule};
 use crate::sim::broker::SimulatedBroker;
+use crate::types::{
+    CashValue, DateTime, PortfolioAllocation, PortfolioQty, PortfolioWeight, Price,
+};
 use std::rc::Rc;
 
 pub trait Strategy: TransferTo + Clone {
@@ -212,7 +214,6 @@ impl<T: DataSource> StaticWeightStrategyBuilder<T> {
             clock: None,
         }
     }
-
 }
 
 #[derive(Clone)]
@@ -301,8 +302,8 @@ mod tests {
     use crate::broker::{BrokerCost, Quote};
     use crate::clock::{Clock, ClockBuilder};
     use crate::input::{HashMapInput, HashMapInputBuilder};
-    use crate::types::{DateTime, PortfolioAllocation};
     use crate::sim::broker::{SimulatedBroker, SimulatedBrokerBuilder};
+    use crate::types::{DateTime, PortfolioAllocation};
 
     fn setup() -> (SimulatedBroker<HashMapInput>, Clock) {
         let mut prices: HashMap<DateTime, Vec<Quote>> = HashMap::new();
@@ -329,9 +330,8 @@ mod tests {
         prices.insert(101.into(), vec![quote2]);
         prices.insert(102.into(), vec![quote4]);
 
-        let clock = ClockBuilder::from_fixed(100.into(), 102.into())
-            .every();
-        
+        let clock = ClockBuilder::from_fixed(100.into(), 102.into()).every();
+
         let source = HashMapInputBuilder::new()
             .with_quotes(prices)
             .with_clock(Rc::clone(&clock))
@@ -348,7 +348,9 @@ mod tests {
     #[should_panic]
     fn test_that_static_builder_fails_without_weights() {
         let comp = setup();
-        let _strat = StaticWeightStrategyBuilder::<HashMapInput>::new().with_brkr(comp.0).daily();
+        let _strat = StaticWeightStrategyBuilder::<HashMapInput>::new()
+            .with_brkr(comp.0)
+            .daily();
     }
 
     #[test]

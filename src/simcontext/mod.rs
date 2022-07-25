@@ -1,7 +1,7 @@
-use crate::types::CashValue;
+use crate::clock::Clock;
 use crate::perf::PerfStruct;
 use crate::strategy::Strategy;
-use crate::clock::Clock;
+use crate::types::CashValue;
 
 pub struct SimContext<T: Strategy> {
     clock: Clock,
@@ -31,7 +31,6 @@ pub struct SimContextBuilder<T: Strategy> {
 }
 
 impl<T: Strategy> SimContextBuilder<T> {
-
     pub fn with_strategy(&mut self, strategy: T) -> &mut Self {
         self.strategy = Some(strategy);
         self
@@ -61,4 +60,3 @@ impl<T: Strategy> SimContextBuilder<T> {
         }
     }
 }
-

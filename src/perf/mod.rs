@@ -1,5 +1,5 @@
-use crate::types::{CashValue, DateTime};
 use crate::series::TimeSeries;
+use crate::types::{CashValue, DateTime};
 
 #[derive(Clone)]
 enum DataFrequency {
@@ -184,10 +184,10 @@ mod tests {
     use crate::broker::{BrokerCost, Quote};
     use crate::clock::{Clock, ClockBuilder};
     use crate::input::{HashMapInput, HashMapInputBuilder};
-    use crate::types::{DateTime, PortfolioAllocation};
     use crate::perf::StrategySnapshot;
     use crate::sim::broker::{SimulatedBroker, SimulatedBrokerBuilder};
     use crate::strategy::{StaticWeightStrategyBuilder, Strategy, TransferTo};
+    use crate::types::{DateTime, PortfolioAllocation};
 
     use super::DataFrequency;
     use super::PortfolioCalculator;
@@ -257,8 +257,7 @@ mod tests {
         raw_data.insert(102.into(), vec![quote_a3, quote_b3]);
         raw_data.insert(103.into(), vec![quote_a4, quote_b4]);
 
-        let clock = ClockBuilder::from_fixed(100.into(), 103.into())
-            .every();
+        let clock = ClockBuilder::from_fixed(100.into(), 103.into()).every();
 
         let source = HashMapInputBuilder::new()
             .with_quotes(raw_data)

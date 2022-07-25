@@ -234,7 +234,6 @@ pub trait PayDividend {
     fn pay_dividends(&mut self);
 }
 
-
 pub trait EventLog {
     fn trades_between(&self, start: &DateTime, end: &DateTime) -> Vec<Trade>;
     fn dividends_between(&self, start: &DateTime, end: &DateTime) -> Vec<DividendPayment>;

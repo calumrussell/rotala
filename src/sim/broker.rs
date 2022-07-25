@@ -8,11 +8,9 @@ use crate::broker::{
     PendingOrder, PositionInfo, Quote, Trade, TradeCost, TransferCash,
 };
 use crate::broker::{ExecutesOrder, Order, OrderType};
-use crate::types::PortfolioValues;
-use crate::types::{
-    CashValue, DateTime, PortfolioHoldings, PortfolioQty, Price,
-};
 use crate::input::DataSource;
+use crate::types::PortfolioValues;
+use crate::types::{CashValue, DateTime, PortfolioHoldings, PortfolioQty, Price};
 
 pub struct SimulatedBrokerBuilder<T: DataSource> {
     //Cannot run without data but can run with empty trade_costs
@@ -281,7 +279,6 @@ impl<T: DataSource> ExecutesOrder for SimulatedBroker<T> {
                 }
                 Err(e) => e,
             }
-
         } else {
             return BrokerEvent::TradeFailure(order.clone());
         }
@@ -370,8 +367,8 @@ mod tests {
     use crate::broker::{BrokerCost, BrokerEvent, Dividend, PositionInfo, Quote, TransferCash};
     use crate::broker::{ExecutesOrder, Order, OrderType};
     use crate::clock::{Clock, ClockBuilder};
-    use crate::types::DateTime;
     use crate::input::{HashMapInput, HashMapInputBuilder};
+    use crate::types::DateTime;
 
     use std::collections::HashMap;
     use std::rc::Rc;
@@ -427,8 +424,7 @@ mod tests {
         };
         dividends.insert(101.into(), vec![divi1]);
 
-        let clock = ClockBuilder::from_fixed(100.into(), 102.into())
-            .every();
+        let clock = ClockBuilder::from_fixed(100.into(), 102.into()).every();
 
         let source = HashMapInputBuilder::new()
             .with_quotes(prices)
@@ -610,7 +606,7 @@ mod tests {
         let _res1 = brkr.insert_order(&stop_order);
         clock.borrow_mut().tick();
         brkr.check();
- 
+
         let qty = *brkr.get_position_qty(&String::from("ABC")).unwrap();
         assert!(qty == 0.0);
     }
@@ -727,8 +723,7 @@ mod tests {
         prices.insert(101.into(), vec![quote2]);
         prices.insert(102.into(), vec![quote4]);
 
-        let clock = ClockBuilder::from_fixed(100.into(), 102.into())
-            .every();
+        let clock = ClockBuilder::from_fixed(100.into(), 102.into()).every();
 
         let source = HashMapInputBuilder::new()
             .with_quotes(prices)

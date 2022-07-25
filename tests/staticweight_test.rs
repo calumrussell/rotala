@@ -1,4 +1,4 @@
-use alator::clock::{ Clock, ClockBuilder};
+use alator::clock::{Clock, ClockBuilder};
 use alator::input::HashMapInputBuilder;
 use alator::strategy::StaticWeightStrategyBuilder;
 use rand::distributions::{Distribution, Uniform};
@@ -7,10 +7,10 @@ use std::collections::HashMap;
 use std::rc::Rc;
 
 use alator::broker::{BrokerCost, Quote};
-use alator::types::{CashValue, DateTime, PortfolioAllocation, PortfolioWeight};
 use alator::input::HashMapInput;
 use alator::sim::broker::SimulatedBrokerBuilder;
 use alator::simcontext::SimContextBuilder;
+use alator::types::{CashValue, DateTime, PortfolioAllocation, PortfolioWeight};
 
 fn build_data(clock: Clock) -> HashMapInput {
     let price_dist = Uniform::new(90.0, 100.0);
@@ -45,8 +45,7 @@ fn staticweight_integration_test() {
     let initial_cash: CashValue = 100_000.0.into();
     let length_in_days: i64 = 200;
     let start_date: i64 = 1609750800; //Date - 4/1/21 9:00:0000
-    let clock = ClockBuilder::from_length(&start_date.into(), length_in_days)
-        .daily();
+    let clock = ClockBuilder::from_length(&start_date.into(), length_in_days).daily();
 
     let data = build_data(Rc::clone(&clock));
 

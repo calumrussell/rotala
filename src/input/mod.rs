@@ -1,8 +1,8 @@
 use std::collections::HashMap;
 
 use crate::broker::{Dividend, Quote};
-use crate::types::DateTime;
 use crate::clock::Clock;
+use crate::types::DateTime;
 
 ///Retrieves price and diviends for symbol/symbols.
 ///
