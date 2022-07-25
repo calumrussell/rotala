@@ -94,3 +94,9 @@ impl HashMapInputBuilder {
         }
     }
 }
+
+impl Default for HashMapInputBuilder {
+    fn default() -> Self {
+        Self::new()
+    }
+}

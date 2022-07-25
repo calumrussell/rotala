@@ -43,14 +43,14 @@ impl ClockBuilder {
         let dates: Vec<DateTime> = (i64::from(self.start)
             ..i64::from(self.end) + ClockBuilder::SECS_IN_DAY)
             .step_by(ClockBuilder::SECS_IN_DAY as usize)
-            .map(|date_int: i64| DateTime::from(date_int))
+            .map(DateTime::from)
             .collect();
         Rc::new(RefCell::new(ClockInner { dates, pos: 0 }))
     }
 
     pub fn every(&self) -> Clock {
         let dates: Vec<DateTime> = (i64::from(self.start)..i64::from(self.end) + 1)
-            .map(|date_int: i64| DateTime::from(date_int))
+            .map(DateTime::from)
             .collect();
         Rc::new(RefCell::new(ClockInner { dates, pos: 0 }))
     }
@@ -58,7 +58,7 @@ impl ClockBuilder {
     pub fn from_length(start: &DateTime, length_in_days: i64) -> Self {
         let end = *start + (length_in_days * ClockBuilder::SECS_IN_DAY);
         Self {
-            start: start.clone(),
+            start: *start,
             end,
         }
     }

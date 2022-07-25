@@ -60,3 +60,10 @@ impl<T: Strategy> SimContextBuilder<T> {
         }
     }
 }
+
+impl<T: Strategy> Default for SimContextBuilder<T> {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+

@@ -61,7 +61,7 @@ impl OrderExecutionRules {
             symbol: order.get_symbol(),
             value,
             quantity: order.get_shares(),
-            date: date.clone(),
+            date: *date,
             typ: trade_type,
         };
 

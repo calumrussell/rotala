@@ -56,6 +56,12 @@ impl<T: DataSource> SimulatedBrokerBuilder<T> {
     }
 }
 
+impl<T: DataSource> Default for SimulatedBrokerBuilder<T> {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 #[derive(Clone, Debug)]
 pub struct SimulatedBroker<T: DataSource> {
     data: T,
@@ -280,7 +286,7 @@ impl<T: DataSource> ExecutesOrder for SimulatedBroker<T> {
                 Err(e) => e,
             }
         } else {
-            return BrokerEvent::TradeFailure(order.clone());
+            BrokerEvent::TradeFailure(order.clone())
         }
     }
 

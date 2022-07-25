@@ -216,6 +216,12 @@ impl<T: DataSource> StaticWeightStrategyBuilder<T> {
     }
 }
 
+impl<T: DataSource> Default for StaticWeightStrategyBuilder<T> {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 #[derive(Clone)]
 pub struct StaticWeightStrategy<T: DataSource> {
     brkr: SimulatedBroker<T>,
