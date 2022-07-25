@@ -1,12 +1,57 @@
 # What is Alator?
 
-Alator is a Rust application that provides portfolio backtesting and the calculation of limited performance statistics. 
+Rust library with components for investment portfolio backtesting.
 
-Whilst Alator can be used to test active or high-frequency strategies, the package was designed for low-latency backtesting of passive or low-frequency strategies. Most event-driven backtesting packages are meant to simulate one strategy at a time but if you need to perform many simulations quickly, for example creating Monte-Carlo simulations, then existing packages are typically slow. Vectorized backtesting is faster but sacrifices the ability to backtest dynamic strategies.
+This library is used as a back-end for a Python financial simulation [app](https://pytho.uk). A feature of this application is Monte-Carlo simulations of investor lifetimes, and to run hundreds of these complex, event-driven simulations within a few seconds requires a fast backtesting engine.
 
 # How does Alator work?
 
-Alator is designed to be flexible. All components of a backtest can be changed for user-defined components. The core functions of the package are the logic around simulating trade execution, code organization, and simple performance statistics.
+The primary development goal is providing a simple, flexible backtesting library that doesn't have huge performance sacrifices.
 
-A trading strategy is represented as a `Strategy` which has one `Portfolio` which has in turn one or more references to a `Broker` which can fulfill orders for the Portfolio. The `Strategy` encapsulates the logic and data inherent to a trading strategy, and dispatches orders to the `Portfolio`. The `Portfolio` abstraction defines how a certain set of instructions should be fulfilled and contains state that is potentially shared across multiple `Broker` objects. The `Broker` is purely concerned with order execution logic, for example is there enough cash in the portfolio to complete the order, and tracking the results of orders.
+Most of the logic lies within `Strategy` and `Broker`: a strategy tells the broker what trades to execute, and a broker executes them. Dependencies on outside data are not shared, as there are many cases when components require different data. The only shared dependence is `Clock` which tells other components the current point in a backtest.
 
+A conscious choice was made not to completely split `Strategy` and `Broker`, as is common in event-driven architectures having each component communicate with the other through messages. This approach would provide superior horizontal scalability in a live HFT environment but at the cost of some duplication of code/responsibility and complexity. Whilst this library could be used in production, and some components (for example, `Clock`) are designed with this in mind, it is not a primary focus, so there is no need to think about scalability beyond the confines of a single backtest run. And, hopefully, the code is easier to understand too.
+
+An example backtest (with data creation excluded):
+
+```
+    let initial_cash: CashValue = 100_000.0.into();
+    let length_in_days: i64 = 200;
+    let start_date: i64 = 1609750800; //Date - 4/1/21 9:00:0000
+    let clock = ClockBuilder::from_length(&start_date.into(), length_in_days).daily();
+
+    let data = build_data(Rc::clone(&clock));
+
+    let mut weights: PortfolioAllocation<PortfolioWeight> = PortfolioAllocation::new();
+    weights.insert(&String::from("ABC"), &0.5.into());
+    weights.insert(&String::from("BCD"), &0.5.into());
+
+    let simbrkr = SimulatedBrokerBuilder::new()
+        .with_data(data)
+        .with_trade_costs(vec![BrokerCost::Flat(1.0.into())])
+        .build();
+
+    let strat = StaticWeightStrategyBuilder::new()
+        .with_brkr(simbrkr)
+        .with_weights(weights)
+        .with_clock(Rc::clone(&clock))
+        .daily();
+
+    let mut sim = SimContextBuilder::new()
+        .with_clock(Rc::clone(&clock))
+        .with_strategy(strat)
+        .init(&initial_cash);
+
+    sim.run();
+```
+Alator comes with a `StaticWeightStrategy` and clients will typically need to implement the `Strategy` trait to build a new strategy. The `Broker` component should be reusable for most cases but may lack the features for some use-cases, the three biggest being: leverage, multiple-currency support, and shorting. Because of the current uses of the library, the main priority in the near future is to add support for multiple-currencies.
+
+# Missing features that you may expect
+
+* Leverage
+* Multi-currency/Multi-exchange support
+* Shorting 
+* Performance benchmarks
+* Concurrency
+
+The main priority in the near future, given the existing uses of the library, is support for multiple currencies and performance.
