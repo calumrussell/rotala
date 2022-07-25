@@ -1,4 +1,4 @@
-use crate::data::{CashValue, DateTime, PortfolioHoldings, PortfolioQty, PortfolioValues, Price};
+use crate::types::{CashValue, DateTime, PortfolioHoldings, PortfolioQty, PortfolioValues, Price};
 
 pub mod record;
 pub mod rules;
@@ -203,7 +203,7 @@ pub trait PositionInfo {
 
 pub trait GetsQuote {
     fn get_quote(&self, symbol: &str) -> Option<Quote>;
-    fn get_quotes(&self) -> Option<Vec<Quote>>;
+    fn get_quotes(&self) -> Option<&Vec<Quote>>;
 }
 
 pub trait CanUpdate {
@@ -234,9 +234,6 @@ pub trait PayDividend {
     fn pay_dividends(&mut self);
 }
 
-pub trait Time {
-    fn now(&self) -> DateTime;
-}
 
 pub trait EventLog {
     fn trades_between(&self, start: &DateTime, end: &DateTime) -> Vec<Trade>;

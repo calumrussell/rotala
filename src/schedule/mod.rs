@@ -1,6 +1,6 @@
 use time::OffsetDateTime;
 
-use crate::data::DateTime;
+use crate::types::DateTime;
 
 pub trait TradingSchedule {
     fn should_trade(date: &DateTime) -> bool;

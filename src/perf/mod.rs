@@ -1,4 +1,4 @@
-use crate::data::{CashValue, DateTime};
+use crate::types::{CashValue, DateTime};
 use crate::series::TimeSeries;
 
 #[derive(Clone)]
@@ -179,9 +179,12 @@ impl PortfolioPerformance {
 #[cfg(test)]
 mod tests {
     use std::collections::HashMap;
+    use std::rc::Rc;
 
-    use crate::broker::{BrokerCost, Dividend, Quote};
-    use crate::data::{DataSource, DateTime, PortfolioAllocation};
+    use crate::broker::{BrokerCost, Quote};
+    use crate::clock::{Clock, ClockBuilder};
+    use crate::input::{HashMapInput, HashMapInputBuilder};
+    use crate::types::{DateTime, PortfolioAllocation};
     use crate::perf::StrategySnapshot;
     use crate::sim::broker::{SimulatedBroker, SimulatedBrokerBuilder};
     use crate::strategy::{StaticWeightStrategyBuilder, Strategy, TransferTo};
@@ -190,9 +193,8 @@ mod tests {
     use super::PortfolioCalculator;
     use super::PortfolioPerformance;
 
-    fn setup() -> SimulatedBroker {
+    fn setup() -> (SimulatedBroker<HashMapInput>, Clock) {
         let mut raw_data: HashMap<DateTime, Vec<Quote>> = HashMap::new();
-        let dividends: HashMap<DateTime, Vec<Dividend>> = HashMap::new();
 
         let quote_a1 = Quote {
             symbol: String::from("ABC"),
@@ -255,12 +257,19 @@ mod tests {
         raw_data.insert(102.into(), vec![quote_a3, quote_b3]);
         raw_data.insert(103.into(), vec![quote_a4, quote_b4]);
 
-        let source = DataSource::from_hashmap(raw_data, dividends);
+        let clock = ClockBuilder::from_fixed(100.into(), 103.into())
+            .every();
+
+        let source = HashMapInputBuilder::new()
+            .with_quotes(raw_data)
+            .with_clock(Rc::clone(&clock))
+            .build();
+
         let sb = SimulatedBrokerBuilder::new()
             .with_data(source)
             .with_trade_costs(vec![BrokerCost::Flat(0.0.into())])
             .build();
-        sb
+        (sb, clock)
     }
 
     #[test]
@@ -305,7 +314,7 @@ mod tests {
 
     #[test]
     fn test_that_portfolio_calculates_performance_accurately() {
-        let brkr = setup();
+        let (brkr, clock) = setup();
         let mut target_weights = PortfolioAllocation::new();
         target_weights.insert(&String::from("ABC"), &0.5.into());
         target_weights.insert(&String::from("BCD"), &0.5.into());
@@ -313,14 +322,17 @@ mod tests {
         let mut strat = StaticWeightStrategyBuilder::new()
             .with_brkr(brkr)
             .with_weights(target_weights)
+            .with_clock(Rc::clone(&clock))
             .yearly();
 
         strat.deposit_cash(&100_000.0.into());
-
-        strat.set_date(&100.into());
+        clock.borrow_mut().tick();
         strat.update();
 
-        strat.set_date(&101.into());
+        clock.borrow_mut().tick();
+        strat.update();
+
+        clock.borrow_mut().tick();
         strat.update();
 
         let output = strat.get_perf();
@@ -328,6 +340,7 @@ mod tests {
         let portfolio_return = output.ret;
         //We need to round up to cmp properly
         let to_comp = (portfolio_return * 1000.0).round();
+        println!("{:?}", to_comp);
         assert!((to_comp).eq(&7.0));
     }
 

@@ -5,22 +5,23 @@ use crate::broker::record::BrokerLog;
 use crate::broker::rules::OrderExecutionRules;
 use crate::broker::{
     BrokerCost, BrokerEvent, CanUpdate, DividendPayment, EventLog, GetsQuote, PayDividend,
-    PendingOrder, PositionInfo, Quote, Time, Trade, TradeCost, TransferCash,
+    PendingOrder, PositionInfo, Quote, Trade, TradeCost, TransferCash,
 };
 use crate::broker::{ExecutesOrder, Order, OrderType};
-use crate::data::PortfolioValues;
-use crate::data::{
-    CashValue, DataSource, DateTime, PortfolioHoldings, PortfolioQty, Price, SimSource,
+use crate::types::PortfolioValues;
+use crate::types::{
+    CashValue, DateTime, PortfolioHoldings, PortfolioQty, Price,
 };
+use crate::input::DataSource;
 
-pub struct SimulatedBrokerBuilder {
+pub struct SimulatedBrokerBuilder<T: DataSource> {
     //Cannot run without data but can run with empty trade_costs
-    data: Option<DataSource>,
+    data: Option<T>,
     trade_costs: Vec<BrokerCost>,
 }
 
-impl SimulatedBrokerBuilder {
-    pub fn build(&self) -> SimulatedBroker {
+impl<T: DataSource> SimulatedBrokerBuilder<T> {
+    pub fn build(&self) -> SimulatedBroker<T> {
         if self.data.is_none() {
             panic!("Cannot build broker without data");
         }
@@ -29,9 +30,8 @@ impl SimulatedBrokerBuilder {
         let log = BrokerLog::new();
 
         SimulatedBroker {
-            raw_data: self.data.clone().unwrap(),
+            data: self.data.as_ref().unwrap().clone(),
             //Intialised as invalid so errors throw if client tries to run before init
-            date: DateTime::from(-1),
             holdings,
             orderbook,
             cash: CashValue::from(0.0),
@@ -40,7 +40,7 @@ impl SimulatedBrokerBuilder {
         }
     }
 
-    pub fn with_data(&mut self, data: DataSource) -> &mut Self {
+    pub fn with_data(&mut self, data: T) -> &mut Self {
         self.data = Some(data);
         self
     }
@@ -58,16 +58,9 @@ impl SimulatedBrokerBuilder {
     }
 }
 
-impl Default for SimulatedBrokerBuilder {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
 #[derive(Clone, Debug)]
-pub struct SimulatedBroker {
-    raw_data: DataSource,
-    date: DateTime,
+pub struct SimulatedBroker<T: DataSource> {
+    data: T,
     holdings: PortfolioHoldings,
     orderbook: SimOrderBook,
     cash: CashValue,
@@ -75,14 +68,14 @@ pub struct SimulatedBroker {
     trade_costs: Vec<BrokerCost>,
 }
 
-impl SimulatedBroker {
+impl<T: DataSource> SimulatedBroker<T> {
     pub fn cost_basis(&self, symbol: &str) -> Option<Price> {
         self.log.cost_basis(symbol)
     }
 
     fn check_orderbook(&mut self) {
         //Should always return because we are running after we set a new date
-        if let Some(quotes) = self.get_quotes() {
+        if let Some(quotes) = self.get_quotes().cloned() {
             for quote in quotes {
                 if let Some(active_orders) = self.orderbook.check_orders_by_symbol(&quote) {
                     for (order_id, order) in active_orders {
@@ -116,14 +109,13 @@ impl SimulatedBroker {
     //state on the client.
     //Right now, this largely consists of actions that the broker needs to perform i.e. checking if
     //an order has been triggered.
-    pub fn set_date(&mut self, new_date: &DateTime) {
-        self.date = *new_date;
+    pub fn check(&mut self) {
         self.check_orderbook();
         self.pay_dividends();
     }
 }
 
-impl TransferCash for SimulatedBroker {
+impl<T: DataSource> TransferCash for SimulatedBroker<T> {
     fn withdraw_cash(&mut self, cash: CashValue) -> BrokerEvent {
         if cash > self.cash {
             return BrokerEvent::WithdrawFailure(cash);
@@ -159,7 +151,7 @@ impl TransferCash for SimulatedBroker {
     }
 }
 
-impl PositionInfo for SimulatedBroker {
+impl<T: DataSource> PositionInfo for SimulatedBroker<T> {
     fn get_position_cost(&self, symbol: &str) -> Option<Price> {
         self.log.cost_basis(symbol)
     }
@@ -254,17 +246,17 @@ impl PositionInfo for SimulatedBroker {
     }
 }
 
-impl GetsQuote for SimulatedBroker {
+impl<T: DataSource> GetsQuote for SimulatedBroker<T> {
     fn get_quote(&self, symbol: &str) -> Option<Quote> {
-        self.raw_data.get_quote_by_date_symbol(&self.date, symbol)
+        self.data.get_quote(symbol)
     }
 
-    fn get_quotes(&self) -> Option<Vec<Quote>> {
-        self.raw_data.get_quotes_by_date(&self.date)
+    fn get_quotes(&self) -> Option<&Vec<Quote>> {
+        self.data.get_quotes()
     }
 }
 
-impl ExecutesOrder for SimulatedBroker {
+impl<T: DataSource> ExecutesOrder for SimulatedBroker<T> {
     fn execute_order(&mut self, order: &Order) -> BrokerEvent {
         if let OrderType::LimitBuy
         | OrderType::LimitSell
@@ -274,23 +266,24 @@ impl ExecutesOrder for SimulatedBroker {
             panic!("Can only call execute order with market orders")
         };
 
-        let quote = self.get_quote(&order.get_symbol());
-        if quote.is_none() {
-            return BrokerEvent::TradeFailure(order.clone());
-        }
+        if let Some(quote) = self.get_quote(&order.get_symbol()) {
+            let price = match order.get_order_type() {
+                OrderType::MarketBuy => quote.ask,
+                OrderType::MarketSell => quote.bid,
+                _ => unreachable!("Can only get here with market orders"),
+            };
+            let date = quote.date;
 
-        let price = match order.get_order_type() {
-            OrderType::MarketBuy => quote.unwrap().ask,
-            OrderType::MarketSell => quote.unwrap().bid,
-            _ => unreachable!("Can only get here with market orders"),
-        };
-
-        match OrderExecutionRules::run_all(order, &price, self) {
-            Ok(trade) => {
-                self.log.record(trade.clone());
-                BrokerEvent::TradeSuccess(trade)
+            match OrderExecutionRules::run_all(order, &price, &date, self) {
+                Ok(trade) => {
+                    self.log.record(trade.clone());
+                    BrokerEvent::TradeSuccess(trade)
+                }
+                Err(e) => e,
             }
-            Err(e) => e,
+
+        } else {
+            return BrokerEvent::TradeFailure(order.clone());
         }
     }
 
@@ -304,7 +297,7 @@ impl ExecutesOrder for SimulatedBroker {
     }
 }
 
-impl PendingOrder for SimulatedBroker {
+impl<T: DataSource> PendingOrder for SimulatedBroker<T> {
     fn insert_order(&mut self, order: &Order) {
         self.orderbook.insert_order(order);
     }
@@ -314,13 +307,13 @@ impl PendingOrder for SimulatedBroker {
     }
 }
 
-impl CanUpdate for SimulatedBroker {
+impl<T: DataSource> CanUpdate for SimulatedBroker<T> {
     fn update_holdings(&mut self, symbol: &str, change: &PortfolioQty) {
         self.holdings.insert(symbol, &*change);
     }
 }
 
-impl TradeCost for SimulatedBroker {
+impl<T: DataSource> TradeCost for SimulatedBroker<T> {
     fn get_trade_costs(&self, trade: &Trade) -> CashValue {
         let mut cost = CashValue::default();
         for trade_cost in &self.trade_costs {
@@ -339,10 +332,10 @@ impl TradeCost for SimulatedBroker {
     }
 }
 
-impl PayDividend for SimulatedBroker {
+impl<T: DataSource> PayDividend for SimulatedBroker<T> {
     fn pay_dividends(&mut self) {
-        if let Some(dividends) = self.raw_data.get_dividends_by_date(&self.date) {
-            for dividend in &dividends {
+        if let Some(dividends) = self.data.get_dividends() {
+            for dividend in dividends.clone() {
                 //Our dataset can include dividends for stocks we don't own so we need to check
                 //that we own the stock, not performant but can be changed later
                 if let Some(qty) = self.get_position_qty(&dividend.symbol) {
@@ -360,13 +353,7 @@ impl PayDividend for SimulatedBroker {
     }
 }
 
-impl Time for SimulatedBroker {
-    fn now(&self) -> DateTime {
-        self.date
-    }
-}
-
-impl EventLog for SimulatedBroker {
+impl<T: DataSource> EventLog for SimulatedBroker<T> {
     fn trades_between(&self, start: &DateTime, end: &DateTime) -> Vec<Trade> {
         self.log.trades_between(start, end)
     }
@@ -382,17 +369,16 @@ mod tests {
     use super::{PendingOrder, SimulatedBroker, SimulatedBrokerBuilder};
     use crate::broker::{BrokerCost, BrokerEvent, Dividend, PositionInfo, Quote, TransferCash};
     use crate::broker::{ExecutesOrder, Order, OrderType};
-    use crate::data::{DataSource, DateTime};
+    use crate::clock::{Clock, ClockBuilder};
+    use crate::types::DateTime;
+    use crate::input::{HashMapInput, HashMapInputBuilder};
 
     use std::collections::HashMap;
+    use std::rc::Rc;
 
-    fn setup() -> (SimulatedBroker, i64) {
+    fn setup() -> (SimulatedBroker<HashMapInput>, Clock) {
         let mut prices: HashMap<DateTime, Vec<Quote>> = HashMap::new();
         let mut dividends: HashMap<DateTime, Vec<Dividend>> = HashMap::new();
-
-        let mut price_row: Vec<Quote> = Vec::new();
-        let mut price_row1: Vec<Quote> = Vec::new();
-        let mut price_row2: Vec<Quote> = Vec::new();
         let quote = Quote {
             bid: 100.00.into(),
             ask: 101.00.into(),
@@ -430,40 +416,38 @@ mod tests {
             symbol: String::from("BCD"),
         };
 
-        price_row.push(quote);
-        price_row.push(quote1);
-        price_row1.push(quote2);
-        price_row1.push(quote3);
-        price_row2.push(quote4);
-        price_row2.push(quote5);
+        prices.insert(100.into(), vec![quote, quote1]);
+        prices.insert(101.into(), vec![quote2, quote3]);
+        prices.insert(102.into(), vec![quote4, quote5]);
 
-        prices.insert(100.into(), price_row);
-        prices.insert(101.into(), price_row1);
-        prices.insert(102.into(), price_row2);
-
-        let mut dividend_row: Vec<Dividend> = Vec::new();
         let divi1 = Dividend {
             value: 5.0.into(),
             symbol: String::from("ABC"),
             date: 101.into(),
         };
-        dividend_row.push(divi1);
+        dividends.insert(101.into(), vec![divi1]);
 
-        dividends.insert(101.into(), dividend_row);
+        let clock = ClockBuilder::from_fixed(100.into(), 102.into())
+            .every();
 
-        let source = DataSource::from_hashmap(prices, dividends);
+        let source = HashMapInputBuilder::new()
+            .with_quotes(prices)
+            .with_dividends(dividends)
+            .with_clock(Rc::clone(&clock))
+            .build();
+
         let brkr = SimulatedBrokerBuilder::new()
             .with_data(source)
             .with_trade_costs(vec![BrokerCost::Flat(1.0.into())])
             .build();
-        (brkr, 10)
+        (brkr, clock)
     }
 
     #[test]
     fn test_cash_deposit_withdraw() {
-        let (mut brkr, _) = setup();
+        let (mut brkr, clock) = setup();
         brkr.deposit_cash(100.0.into());
-        brkr.set_date(&100.into());
+        clock.borrow_mut().tick();
 
         //Test cash
         assert!(matches!(
@@ -496,9 +480,9 @@ mod tests {
 
     #[test]
     fn test_that_successful_market_buy_order_reduces_cash() {
-        let (mut brkr, _) = setup();
+        let (mut brkr, clock) = setup();
         brkr.deposit_cash(100_000.0.into());
-        brkr.set_date(&100.into());
+        clock.borrow_mut().tick();
 
         let order = Order::new(
             OrderType::MarketBuy,
@@ -514,9 +498,9 @@ mod tests {
 
     #[test]
     fn test_that_order_fails_without_cash_bubbling_correct_error() {
-        let (mut brkr, _) = setup();
+        let (mut brkr, clock) = setup();
         brkr.deposit_cash(100.0.into());
-        brkr.set_date(&100.into());
+        clock.borrow_mut().tick();
 
         let order = Order::new(
             OrderType::MarketBuy,
@@ -534,9 +518,9 @@ mod tests {
 
     #[test]
     fn test_that_market_buy_increases_holdings() {
-        let (mut brkr, _) = setup();
+        let (mut brkr, clock) = setup();
         brkr.deposit_cash(100_000.0.into());
-        brkr.set_date(&100.into());
+        clock.borrow_mut().tick();
 
         let order = Order::new(
             OrderType::MarketBuy,
@@ -552,9 +536,9 @@ mod tests {
 
     #[test]
     fn test_that_market_sell_decreases_holdings() {
-        let (mut brkr, _) = setup();
+        let (mut brkr, clock) = setup();
         brkr.deposit_cash(100_000.0.into());
-        brkr.set_date(&100.into());
+        clock.borrow_mut().tick();
 
         let order = Order::new(
             OrderType::MarketBuy,
@@ -578,13 +562,11 @@ mod tests {
 
     #[test]
     fn test_that_limit_order_increases_holdings_when_price_hits() {
-        //This shouldn't just trigger but we must check that the
-        //order executes at the market price, not the price of the limit
-        //order
+        //This shouldn't just trigger but we check that the order executes at the market price, not
+        //the price of the limit order
 
-        let (mut brkr, _) = setup();
+        let (mut brkr, clock) = setup();
         brkr.deposit_cash(100_000.0.into());
-        brkr.set_date(&100.into());
 
         let order = Order::new(
             OrderType::LimitBuy,
@@ -592,21 +574,24 @@ mod tests {
             495.00.into(),
             Some(102.00.into()),
         );
-        let _res = brkr.insert_order(&order);
-
-        brkr.set_date(&101.into());
+        brkr.insert_order(&order);
+        clock.borrow_mut().tick();
+        brkr.check();
 
         let qty = *brkr.get_position_qty(&String::from("ABC")).unwrap();
         let cost = brkr.cost_basis(&String::from("ABC")).unwrap();
+        println!("{:?}", cost);
+        println!("{:?}", qty);
         assert!(qty == 495.00);
         assert!(cost == 105.00);
     }
 
     #[test]
     fn test_that_stop_order_decreases_holdings_when_price_hits() {
-        let (mut brkr, _) = setup();
+        let (mut brkr, clock) = setup();
         brkr.deposit_cash(100_000.0.into());
-        brkr.set_date(&100.into());
+        clock.borrow_mut().tick();
+        brkr.check();
 
         let entry_order = Order::new(
             OrderType::MarketBuy,
@@ -623,19 +608,18 @@ mod tests {
             Some(98.0.into()),
         );
         let _res1 = brkr.insert_order(&stop_order);
-        brkr.set_date(&101.into());
-        brkr.set_date(&102.into());
-        brkr.set_date(&103.into());
-
+        clock.borrow_mut().tick();
+        brkr.check();
+ 
         let qty = *brkr.get_position_qty(&String::from("ABC")).unwrap();
         assert!(qty == 0.0);
     }
 
     #[test]
     fn test_that_valuation_updates_in_next_period() {
-        let (mut brkr, _) = setup();
+        let (mut brkr, clock) = setup();
         brkr.deposit_cash(100_000.0.into());
-        brkr.set_date(&100.into());
+        clock.borrow_mut().tick();
 
         let order = Order::new(
             OrderType::MarketBuy,
@@ -646,35 +630,34 @@ mod tests {
         let _res = brkr.execute_order(&order);
 
         let val = brkr.get_position_value(&String::from("ABC")).unwrap();
-        brkr.set_date(&101.into());
+        clock.borrow_mut().tick();
         let val1 = brkr.get_position_value(&String::from("ABC")).unwrap();
         assert_ne!(val, val1);
     }
 
     #[test]
     fn test_that_profit_calculation_is_accurate() {
-        let (mut brkr, _) = setup();
+        let (mut brkr, clock) = setup();
         brkr.deposit_cash(100_000.0.into());
-        brkr.set_date(&100.into());
-
         let order = Order::new(
             OrderType::MarketBuy,
             String::from("ABC"),
             495.0.into(),
             None,
         );
-        let _res = brkr.execute_order(&order);
+        brkr.execute_order(&order);
+        clock.borrow_mut().tick();
+        clock.borrow_mut().tick();
 
-        brkr.set_date(&101.into());
         let profit = brkr.get_position_profit(&String::from("ABC")).unwrap();
-        assert!(profit == 1485.00);
+        assert!(profit == -2970.00);
     }
 
     #[test]
     fn test_that_order_for_non_existent_stock_returns_error() {
-        let (mut brkr, _) = setup();
+        let (mut brkr, clock) = setup();
         brkr.deposit_cash(100_000.0.into());
-        brkr.set_date(&100.into());
+        clock.borrow_mut().tick();
 
         //Ticker is not in the data
         let order = Order::new(
@@ -684,7 +667,7 @@ mod tests {
             None,
         );
         let res = brkr.execute_order(&order);
-        brkr.set_date(&101.into());
+        clock.borrow_mut().tick();
 
         let cash = brkr.get_cash_balance();
         assert!(cash == 100_000.0);
@@ -693,10 +676,8 @@ mod tests {
 
     #[test]
     fn test_that_dividends_are_paid() {
-        let (mut brkr, _) = setup();
+        let (mut brkr, clock) = setup();
         brkr.deposit_cash(100_000.0.into());
-        brkr.set_date(&100.into());
-
         let order = Order::new(
             OrderType::MarketBuy,
             String::from("ABC"),
@@ -704,9 +685,10 @@ mod tests {
             None,
         );
         brkr.execute_order(&order);
-
         let cash_before_dividend = brkr.get_cash_balance();
-        brkr.set_date(&101.into());
+        clock.borrow_mut().tick();
+        brkr.check();
+
         let cash_after_dividend = brkr.get_cash_balance();
         assert!(cash_before_dividend != cash_after_dividend);
     }
@@ -714,7 +696,7 @@ mod tests {
     #[test]
     #[should_panic]
     fn test_that_broker_builder_fails_without_data() {
-        let _brkr = SimulatedBrokerBuilder::new()
+        let _brkr = SimulatedBrokerBuilder::<HashMapInput>::new()
             .with_trade_costs(vec![BrokerCost::Flat(1.0.into())])
             .build();
     }
@@ -722,7 +704,6 @@ mod tests {
     #[test]
     fn test_that_broker_build_passes_without_trade_costs() {
         let mut prices: HashMap<DateTime, Vec<Quote>> = HashMap::new();
-        let dividends: HashMap<DateTime, Vec<Dividend>> = HashMap::new();
 
         let quote = Quote {
             bid: 100.00.into(),
@@ -746,7 +727,14 @@ mod tests {
         prices.insert(101.into(), vec![quote2]);
         prices.insert(102.into(), vec![quote4]);
 
-        let source = DataSource::from_hashmap(prices, dividends);
+        let clock = ClockBuilder::from_fixed(100.into(), 102.into())
+            .every();
+
+        let source = HashMapInputBuilder::new()
+            .with_quotes(prices)
+            .with_clock(Rc::clone(&clock))
+            .build();
+
         let _brkr = SimulatedBrokerBuilder::new().with_data(source).build();
     }
 }
