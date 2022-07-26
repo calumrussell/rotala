@@ -24,7 +24,8 @@ pub struct ClockInner {
 
 impl ClockInner {
     pub fn now(&self) -> DateTime {
-        //TODO: can fail at runtime if the client ticks beyond the len
+        //This cannot trigger an error because the error will be thrown when the client ticks to an
+        //invalid position
         self.dates[self.pos]
     }
 
@@ -34,6 +35,9 @@ impl ClockInner {
 
     pub fn tick(&mut self) {
         self.pos += 1;
+        if self.pos == self.dates.len() {
+            panic!("Client has ticked past the number of dates");
+        }
     }
 
     //Doesn't change the iteration state, used for clients to setup data using clock
@@ -73,5 +77,29 @@ impl ClockBuilder {
 
     pub fn from_fixed(start: DateTime, end: DateTime) -> Self {
         Self { start, end }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::ClockBuilder;
+
+    #[test]
+    #[should_panic]
+    fn test_that_ticking_past_the_length_of_dates_triggers_panic() {
+        let clock = ClockBuilder::from_fixed(1.into(), 3.into()).every();
+        clock.borrow_mut().tick();
+        clock.borrow_mut().tick();
+        clock.borrow_mut().tick();
+    }
+
+    #[test]
+    fn test_that_there_isnt_next_when_tick_at_end() {
+        let clock = ClockBuilder::from_fixed(1.into(), 3.into()).every();
+        assert!(clock.borrow().has_next() == true);
+        clock.borrow_mut().tick();
+
+        clock.borrow_mut().tick();
+        assert!(clock.borrow().has_next() == false);
     }
 }
