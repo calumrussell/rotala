@@ -42,6 +42,7 @@ fn build_data(clock: Clock) -> HashMapInput {
 
 #[test]
 fn staticweight_integration_test() {
+    env_logger::init();
     let initial_cash: CashValue = 100_000.0.into();
     let length_in_days: i64 = 200;
     let start_date: i64 = 1609750800; //Date - 4/1/21 9:00:0000

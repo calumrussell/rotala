@@ -7,6 +7,8 @@
  * overall portfolio, and not aware of how the portfolio executes
  * changes with the broker.
 */
+use log::info;
+use std::rc::Rc;
 
 use crate::broker::{
     BrokerEvent, DividendPayment, EventLog, ExecutesOrder, GetsQuote, Order, OrderType,
@@ -20,7 +22,6 @@ use crate::sim::broker::SimulatedBroker;
 use crate::types::{
     CashValue, DateTime, PortfolioAllocation, PortfolioQty, PortfolioWeight, Price,
 };
-use std::rc::Rc;
 
 pub trait Strategy: TransferTo + Clone {
     fn update(&mut self) -> CashValue;
@@ -42,16 +43,18 @@ pub trait TransferFrom {
     fn withdraw_cash_with_liquidation(&mut self, cash: &CashValue);
 }
 
-//TODO:should this execute any trades at all
+//TODO:should this execute any trades at all?
 fn withdraw_cash_with_liquidation_algo<T: ExecutesOrder + TradeCost + PositionInfo + GetsQuote>(
     cash: &CashValue,
     brkr: &mut T,
 ) -> BrokerEvent {
+    info!("STRATEGY: Withdrawing {:?} with liquidation", cash);
     let value = brkr.get_liquidation_value();
     if cash > &value {
         BrokerEvent::WithdrawFailure(*cash)
     } else {
-        //This holds how much we have left to generate from the portfolio
+        //This holds how much we have left to generate from the portfolio to produce the cash
+        //required
         let mut total_sold = *cash;
 
         let positions = brkr.get_positions();
@@ -66,6 +69,7 @@ fn withdraw_cash_with_liquidation_algo<T: ExecutesOrder + TradeCost + PositionIn
                 //Cannot be called without qty existing
                 let qty = *brkr.get_position_qty(&ticker).unwrap();
                 let order = Order::new(OrderType::MarketSell, ticker, qty, None);
+                info!("STRATEGY: Withdrawing {:?} with liquidation, queueing sale of {:?} shares of {:?}", cash, order.get_shares(), order.get_symbol());
                 sell_orders.push(order);
                 total_sold -= position_value;
             } else {
@@ -77,6 +81,7 @@ fn withdraw_cash_with_liquidation_algo<T: ExecutesOrder + TradeCost + PositionIn
                 let price = brkr.get_quote(&ticker).unwrap().bid;
                 let shares_req = (total_sold / price).ceil();
                 let order = Order::new(OrderType::MarketSell, ticker, shares_req, None);
+                info!("STRATEGY: Withdrawing {:?} with liquidation, queueing sale of {:?} shares of {:?}", cash, order.get_shares(), order.get_symbol());
                 sell_orders.push(order);
                 total_sold = CashValue::default();
                 break;
@@ -86,10 +91,12 @@ fn withdraw_cash_with_liquidation_algo<T: ExecutesOrder + TradeCost + PositionIn
             //The portfolio can provide enough cash so we can execute the sell orders
             //We leave the portfolio in the wrong state for the client to deal with
             brkr.execute_orders(sell_orders);
+            info!("STRATEGY: Succesfully withdrew {:?} with liquidation", cash);
             BrokerEvent::WithdrawSuccess(*cash)
         } else {
             //The portfolio doesn't have the cash, don't execute any orders and return to
             //client to deal with the result
+            info!("STRATEGY: Failed to withdrew {:?} with liquidation", cash);
             BrokerEvent::WithdrawFailure(*cash)
         }
     }
@@ -102,6 +109,7 @@ fn diff<T: PositionInfo + TradeCost + GetsQuote>(
 ) -> Vec<Order> {
     //Need liquidation value so we definitely have enough money to make all transactions after
     //costs
+    info!("STRATEGY: Calculating diff of current allocation vs. target");
     let total_value = brkr.get_liquidation_value();
     let mut orders: Vec<Order> = Vec::new();
 
@@ -268,6 +276,7 @@ impl<T: DataSource> Strategy for StaticWeightStrategy<T> {
 
 impl<T: DataSource> TransferTo for StaticWeightStrategy<T> {
     fn deposit_cash(&mut self, cash: &CashValue) {
+        info!("STRATEGY: Depositing {:?} into strategy", cash);
         self.brkr.deposit_cash(*cash);
         self.net_cash_flow += *cash;
     }
@@ -276,11 +285,15 @@ impl<T: DataSource> TransferTo for StaticWeightStrategy<T> {
 impl<T: DataSource> TransferFrom for StaticWeightStrategy<T> {
     fn withdraw_cash(&mut self, cash: &CashValue) {
         if let BrokerEvent::WithdrawSuccess(withdrawn) = self.brkr.withdraw_cash(*cash) {
+            info!("STRATEGY: Succesfully withdrew {:?} from strategy", cash);
             self.net_cash_flow -= withdrawn;
         }
+        info!("STRATEGY: Failed to withdraw {:?} from strategy", cash);
     }
     fn withdraw_cash_with_liquidation(&mut self, cash: &CashValue) {
         if let BrokerEvent::WithdrawSuccess(withdrawn) =
+            //No logging here because the implementation is fully logged due to the greater
+            //complexity of this task vs standard withdraw
             withdraw_cash_with_liquidation_algo(cash, &mut self.brkr)
         {
             self.net_cash_flow -= withdrawn;
@@ -356,15 +369,29 @@ mod tests {
         let comp = setup();
         let _strat = StaticWeightStrategyBuilder::<HashMapInput>::new()
             .with_brkr(comp.0)
+            .with_clock(Rc::clone(&comp.1))
             .daily();
     }
 
     #[test]
     #[should_panic]
     fn test_that_static_builder_fails_without_brkr() {
+        let comp = setup();
         let weights = PortfolioAllocation::new();
         let _strat = StaticWeightStrategyBuilder::<HashMapInput>::new()
             .with_weights(weights)
+            .with_clock(Rc::clone(&comp.1))
+            .daily();
+    }
+
+    #[test]
+    #[should_panic]
+    fn test_that_static_builder_fails_without_clock() {
+        let comp = setup();
+        let weights = PortfolioAllocation::new();
+        let _strat = StaticWeightStrategyBuilder::<HashMapInput>::new()
+            .with_weights(weights)
+            .with_brkr(comp.0)
             .daily();
     }
 }

@@ -57,10 +57,7 @@ impl ClockBuilder {
 
     pub fn from_length(start: &DateTime, length_in_days: i64) -> Self {
         let end = *start + (length_in_days * ClockBuilder::SECS_IN_DAY);
-        Self {
-            start: *start,
-            end,
-        }
+        Self { start: *start, end }
     }
 
     pub fn from_fixed(start: DateTime, end: DateTime) -> Self {

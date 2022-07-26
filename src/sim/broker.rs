@@ -1,4 +1,5 @@
 use core::panic;
+use log::info;
 
 use super::orderbook::SimOrderBook;
 use crate::broker::record::BrokerLog;
@@ -79,6 +80,7 @@ impl<T: DataSource> SimulatedBroker<T> {
 
     fn check_orderbook(&mut self) {
         //Should always return because we are running after we set a new date
+        info!("BROKER: Checking orderbook");
         if let Some(quotes) = self.get_quotes().cloned() {
             for quote in quotes {
                 if let Some(active_orders) = self.orderbook.check_orders_by_symbol(&quote) {
@@ -98,9 +100,14 @@ impl<T: DataSource> SimulatedBroker<T> {
                             ),
                             _ => panic!("Orderbook should have only non-market orders"),
                         };
+                        info!(
+                            "BROKER: Checked orderbook attempting to execute order with id: {}",
+                            &order_id
+                        );
                         let order_result = self.execute_order(&order);
                         //TODO: orders fail silently if the market order can't be executed
                         if let BrokerEvent::TradeSuccess(_t) = order_result {
+                            info!("BROKER: Orderbook order executed successfully, deleting order with id: {}", &order_id);
                             self.orderbook.delete_order(&order_id);
                         }
                     }
@@ -122,13 +129,25 @@ impl<T: DataSource> SimulatedBroker<T> {
 impl<T: DataSource> TransferCash for SimulatedBroker<T> {
     fn withdraw_cash(&mut self, cash: CashValue) -> BrokerEvent {
         if cash > self.cash {
+            info!(
+                "BROKER: Attempted cash withdraw of {:?} but only have {:?}",
+                cash, self.cash
+            );
             return BrokerEvent::WithdrawFailure(cash);
         }
+        info!(
+            "BROKER: Successful cash withdraw of {:?}, {:?} left in cash",
+            cash, self.cash
+        );
         self.cash -= cash;
         BrokerEvent::WithdrawSuccess(cash)
     }
 
     fn deposit_cash(&mut self, cash: CashValue) -> BrokerEvent {
+        info!(
+            "BROKER: Deposited {:?} cash, current balance of {:?}",
+            cash, self.cash
+        );
         self.cash += cash;
         BrokerEvent::DepositSuccess(cash)
     }
@@ -136,6 +155,10 @@ impl<T: DataSource> TransferCash for SimulatedBroker<T> {
     //Identical to deposit_cash but is seperated to distinguish internal cash
     //transactions from external with no value returned to client
     fn credit(&mut self, value: CashValue) -> BrokerEvent {
+        info!(
+            "BROKER: Credited {:?} cash, current balance of {:?}",
+            value, self.cash
+        );
         self.cash += value;
         BrokerEvent::TransactionSuccess
     }
@@ -144,8 +167,16 @@ impl<T: DataSource> TransferCash for SimulatedBroker<T> {
     //failure of an internal transaction with no value returned to clients
     fn debit(&mut self, value: CashValue) -> BrokerEvent {
         if value > self.cash {
+            info!(
+                "BROKER: Debit failed of {:?} cash, current balance of {:?}",
+                value, self.cash
+            );
             return BrokerEvent::TransactionFailure;
         }
+        info!(
+            "BROKER: Debited {:?} cash, current balance of {:?}",
+            value, self.cash
+        );
         self.cash -= value;
         BrokerEvent::TransactionSuccess
     }
@@ -262,6 +293,12 @@ impl<T: DataSource> GetsQuote for SimulatedBroker<T> {
 
 impl<T: DataSource> ExecutesOrder for SimulatedBroker<T> {
     fn execute_order(&mut self, order: &Order) -> BrokerEvent {
+        info!(
+            "BROKER: Attempting to execute {:?} order for {:?} shares of {:?}",
+            order.get_order_type(),
+            order.get_shares(),
+            order.get_symbol()
+        );
         if let OrderType::LimitBuy
         | OrderType::LimitSell
         | OrderType::StopBuy
@@ -280,13 +317,19 @@ impl<T: DataSource> ExecutesOrder for SimulatedBroker<T> {
 
             match OrderExecutionRules::run_all(order, &price, &date, self) {
                 Ok(trade) => {
+                    let price = trade.value / trade.quantity;
+                    info!("BROKER: Successfully executed {:?} trade for {:?} shares at {:?} in {:?} for total of {:?}", trade.typ, trade.quantity, price, trade.symbol, trade.value);
                     self.log.record(trade.clone());
                     BrokerEvent::TradeSuccess(trade)
                 }
                 Err(e) => e,
             }
         } else {
-            BrokerEvent::TradeFailure(order.clone())
+            panic!(
+                "BROKER: Attempted to execute {:?} trade, no quote for {:?}",
+                order.get_order_type(),
+                order.get_symbol()
+            );
         }
     }
 
@@ -302,16 +345,27 @@ impl<T: DataSource> ExecutesOrder for SimulatedBroker<T> {
 
 impl<T: DataSource> PendingOrder for SimulatedBroker<T> {
     fn insert_order(&mut self, order: &Order) {
+        info!(
+            "BROKER: Attempting to insert {:?} order for {:?} shares of {:?} into orderbook",
+            order.get_order_type(),
+            order.get_shares(),
+            order.get_symbol()
+        );
         self.orderbook.insert_order(order);
     }
 
     fn delete_order(&mut self, order_id: &u8) {
+        info!("BROKER: Deleting order_id {:?} from orderbook", order_id);
         self.orderbook.delete_order(order_id)
     }
 }
 
 impl<T: DataSource> CanUpdate for SimulatedBroker<T> {
     fn update_holdings(&mut self, symbol: &str, change: &PortfolioQty) {
+        info!(
+            "BROKER: Incrementing holdings in {:?} by {:?}",
+            symbol, change
+        );
         self.holdings.insert(symbol, &*change);
     }
 }
@@ -337,11 +391,16 @@ impl<T: DataSource> TradeCost for SimulatedBroker<T> {
 
 impl<T: DataSource> PayDividend for SimulatedBroker<T> {
     fn pay_dividends(&mut self) {
+        info!("BROKER: Checking dividends");
         if let Some(dividends) = self.data.get_dividends() {
             for dividend in dividends.clone() {
                 //Our dataset can include dividends for stocks we don't own so we need to check
                 //that we own the stock, not performant but can be changed later
                 if let Some(qty) = self.get_position_qty(&dividend.symbol) {
+                    info!(
+                        "BROKER: Found dividend of {:?} for portfolio holding {:?}",
+                        dividend.value, dividend.symbol
+                    );
                     let cash_value = *qty * dividend.value;
                     self.credit(cash_value);
                     let dividend_paid = DividendPayment {
@@ -499,7 +558,7 @@ mod tests {
     }
 
     #[test]
-    fn test_that_order_fails_without_cash_bubbling_correct_error() {
+    fn test_that_buy_order_larger_than_cash_fails_with_error_returned_without_panic() {
         let (mut brkr, clock) = setup();
         brkr.deposit_cash(100.0.into());
         clock.borrow_mut().tick();
@@ -507,6 +566,7 @@ mod tests {
         let order = Order::new(
             OrderType::MarketBuy,
             String::from("ABC"),
+            //Order value is greater than cash balance
             495.00.into(),
             None,
         );
@@ -516,6 +576,34 @@ mod tests {
 
         assert!(cash == 100.0);
         assert!(matches!(res, BrokerEvent::TradeFailure(..)));
+    }
+
+    #[test]
+    fn test_that_sell_order_larger_than_holding_fails_with_error_returned_without_panic() {
+        let (mut brkr, clock) = setup();
+        brkr.deposit_cash(100_000.0.into());
+        let order = Order::new(
+            OrderType::MarketBuy,
+            String::from("ABC"),
+            100.0.into(),
+            None,
+        );
+        brkr.execute_order(&order);
+        clock.borrow_mut().tick();
+
+        let order1 = Order::new(
+            OrderType::MarketSell,
+            String::from("ABC"),
+            //Order qty greater than current holding
+            105.0.into(),
+            None,
+        );
+        let res = brkr.execute_order(&order1);
+        println!("{:?}", res);
+        assert!(matches!(res, BrokerEvent::TradeFailure(..)));
+        let qty = brkr.get_position_qty("ABC").unwrap();
+        println!("{:?}", qty);
+        assert!(*qty == 100.0);
     }
 
     #[test]
@@ -656,27 +744,6 @@ mod tests {
     }
 
     #[test]
-    fn test_that_order_for_non_existent_stock_returns_error() {
-        let (mut brkr, clock) = setup();
-        brkr.deposit_cash(100_000.0.into());
-        clock.borrow_mut().tick();
-
-        //Ticker is not in the data
-        let order = Order::new(
-            OrderType::MarketBuy,
-            String::from("XYZ"),
-            495.0.into(),
-            None,
-        );
-        let res = brkr.execute_order(&order);
-        clock.borrow_mut().tick();
-
-        let cash = brkr.get_cash_balance();
-        assert!(cash == 100_000.0);
-        assert!(matches!(res, BrokerEvent::TradeFailure(..)));
-    }
-
-    #[test]
     fn test_that_dividends_are_paid() {
         let (mut brkr, clock) = setup();
         brkr.deposit_cash(100_000.0.into());
@@ -737,5 +804,25 @@ mod tests {
             .build();
 
         let _brkr = SimulatedBrokerBuilder::new().with_data(source).build();
+    }
+
+    #[test]
+    #[should_panic]
+    fn test_that_broker_panics_if_client_attempts_to_trade_nonexistent_stock() {
+        //If the client attempts to pass orders for companies for which there is no data we want to
+        //panic. Whilst this condition is harsh for any live trading environment, it makes sense
+        //here because it likely means that the client will be passed a result which makes no sense
+        //in return
+        //May change in future
+        let (mut brkr, _clock) = setup();
+        brkr.deposit_cash(100_000.0.into());
+        let order = Order::new(
+            OrderType::MarketBuy,
+            //Non-existent ticker
+            String::from("XYZ"),
+            100.0.into(),
+            None,
+        );
+        brkr.execute_order(&order);
     }
 }

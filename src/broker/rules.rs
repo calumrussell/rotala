@@ -7,26 +7,42 @@ use crate::types::{DateTime, Price};
 pub struct OrderExecutionRules;
 
 impl OrderExecutionRules {
-    pub fn client_has_sufficient_cash(
+    fn client_has_sufficient_cash(
         order: &Order,
         price: &Price,
         brkr: &(impl TransferCash + TradeCost),
-    ) -> Result<bool, f64> {
+    ) -> Result<(), ()> {
         let shares = order.get_shares();
         let value = shares * *price;
         match order.get_order_type() {
             OrderType::MarketBuy => {
                 if brkr.get_cash_balance() > value {
-                    return Ok(true);
+                    return Ok(());
                 }
-                Err(f64::from(value))
+                Err(())
             }
-            OrderType::MarketSell => Ok(true),
+            OrderType::MarketSell => Ok(()),
             _ => unreachable!("Shouldn't hit unless something has gone wrong"),
         }
     }
 
-    pub fn trade_logic(
+    fn client_has_sufficient_holdings_for_sale(
+        order: &Order,
+        brkr: &impl PositionInfo,
+    ) -> Result<(), ()> {
+        if let OrderType::MarketSell = order.get_order_type() {
+            if let Some(holding) = brkr.get_position_qty(&order.get_symbol()) {
+                if *holding >= order.shares {
+                    return Ok(());
+                }
+            }
+            Err(())
+        } else {
+            Ok(())
+        }
+    }
+
+    fn trade_logic(
         order: &Order,
         price: &Price,
         date: &DateTime,
@@ -76,8 +92,10 @@ impl OrderExecutionRules {
         date: &DateTime,
         brkr: &'a mut (impl PositionInfo + TransferCash + CanUpdate + TradeCost),
     ) -> Result<Trade, BrokerEvent> {
-        let has_cash = OrderExecutionRules::client_has_sufficient_cash(order, price, brkr);
-        if has_cash.is_err() {
+        if let Err(()) = OrderExecutionRules::client_has_sufficient_cash(order, price, brkr) {
+            return Err(BrokerEvent::TradeFailure(order.clone()));
+        }
+        if let Err(()) = OrderExecutionRules::client_has_sufficient_holdings_for_sale(order, brkr) {
             return Err(BrokerEvent::TradeFailure(order.clone()));
         }
         let trade = OrderExecutionRules::trade_logic(order, price, date, brkr);

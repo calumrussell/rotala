@@ -66,4 +66,3 @@ impl<T: Strategy> Default for SimContextBuilder<T> {
         Self::new()
     }
 }
-
