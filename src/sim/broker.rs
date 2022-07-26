@@ -63,6 +63,22 @@ impl<T: DataSource> Default for SimulatedBrokerBuilder<T> {
     }
 }
 
+///Broker implementation that can be used to replicate the execution logic and data structures of a
+///broker. Created through the Builder struct, and requires an implementation of `DataSource` to
+///run correctly.
+///
+///Supports all `OrderType` variants defined in broker/mod.rs: MarketBuy, MarketSell, LimitBuy, LimitSell,
+///StopBuy, StopSell.
+///
+///Supports multiple `BrokerCost` models defined in broker/mod.rs: Flat, PerShare, PctOfValue.
+///
+///Cash balance held in single currency, which is assumed to be the same currency used in all
+///quotes found in the implementation of `DataSource` passed to `SimulatedBroker`.
+///
+///Keeps an internal log of trades executed and dividends received/paid. The events supported by
+///the `BrokerLog` are stored in the `BrokerRecordedEvent` enum in broker/mod.rs.
+///
+///Rules used to validate and execute trades are stored in broker/rules.rs.
 #[derive(Clone, Debug)]
 pub struct SimulatedBroker<T: DataSource> {
     data: T,

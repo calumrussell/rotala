@@ -3,6 +3,8 @@ use std::collections::HashMap;
 use std::iter::Sum;
 use std::ops::{Add, AddAssign, Div, DivAssign, Mul, MulAssign, Sub, SubAssign};
 
+///Defines a set of base types that are used by multiple components.
+
 #[derive(Clone, Copy, Debug, PartialOrd, PartialEq)]
 pub struct CashValue(f64);
 
@@ -421,6 +423,9 @@ impl Sub for Price {
     }
 }
 
+//Represents the current state of a portfolio in terms of the number of shares held
+//TODO: this is fairly unclear, we also have values which should be computable from holdings so at
+//least one of these structures is not needed.
 #[derive(Clone, Debug)]
 pub struct PortfolioHoldings(pub HashMap<String, PortfolioQty>);
 
@@ -449,6 +454,7 @@ impl Default for PortfolioHoldings {
     }
 }
 
+//Represents the current state of a portfolio in terms of the value of each position
 #[derive(Clone, Debug)]
 pub struct PortfolioValues(pub HashMap<String, CashValue>);
 
@@ -496,6 +502,8 @@ impl Mul<CashValue> for PortfolioWeight {
     }
 }
 
+//Represents the state of the portfolio in terms of the percentage of total value assigned to each
+//ticker
 #[derive(Clone, Debug)]
 pub struct PortfolioAllocation<T: Weight>(pub HashMap<String, T>);
 

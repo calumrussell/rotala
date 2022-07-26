@@ -2,6 +2,12 @@ use time::OffsetDateTime;
 
 use crate::types::DateTime;
 
+///`TradingSchedule` should be used within `Strategy` implementations to control when a rebalancing
+///should run. This is a helper to the creation of strategies, and is not required by any other
+///component. Despite the name, which implies use for rebalancing only, it can also be used to
+///indicate when `Strategy` data needs to be updated or similar.
+//TODO: make this more generic, there is no reason why it has to only concern a rebalancing
+//schedule
 pub trait TradingSchedule {
     fn should_trade(date: &DateTime) -> bool;
 }
@@ -14,6 +20,8 @@ impl TradingSchedule for DefaultTradingSchedule {
     }
 }
 
+//TODO: some of this logic can be moved over to DateTime within types/ as we have a generic date
+//implementation that can wrap around some of the queries made here
 pub struct LastBusinessDayTradingSchedule;
 
 impl TradingSchedule for LastBusinessDayTradingSchedule {

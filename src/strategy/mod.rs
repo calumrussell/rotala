@@ -1,12 +1,3 @@
-/*
- * A Strategy wraps around the broker and portfolio, the idea
- * is to move most of the functionality into a trading strategy
- * and organize calls to the rest of the system through that.
- *
- * One key point is that the Strategy should only be aware of an
- * overall portfolio, and not aware of how the portfolio executes
- * changes with the broker.
-*/
 use log::info;
 use std::rc::Rc;
 
@@ -16,13 +7,34 @@ use crate::broker::{
 };
 use crate::clock::Clock;
 use crate::input::DataSource;
-use crate::perf::{PerfStruct, PortfolioPerformance, StrategySnapshot};
+use crate::perf::{PerfStruct, StrategyPerformance, StrategySnapshot};
 use crate::schedule::{DefaultTradingSchedule, TradingSchedule};
 use crate::sim::broker::SimulatedBroker;
 use crate::types::{
     CashValue, DateTime, PortfolioAllocation, PortfolioQty, PortfolioWeight, Price,
 };
 
+///Strategies define an a set of operations that should be performed on some schedule to bring the
+///broker passed to the strategy into the desired state.
+///
+///Strategies can have their own data dependencies seperate from Broker but, at least in a
+///backtest, care should be taken to give that data source a reference to a `Clock` so that the
+///date is updated correctly across the backtest components.
+///
+///The strategy target is represented in the `StaticWeightStrategy` implementation as percentages
+///of portfolio but there is no need to do so. Brokers just accept a series of orders so it does
+///not matter how these orders are created.
+///
+///The `StaticWeightStrategy` implementation has a reference to `Clock` but a direct reference is
+///not required to run the strategy, it is only used to update `StrategyPerformance`. Strategy
+///implementations should run idempotently, although some with a dependence on external data which
+///has it's own state, without much additional state
+
+///The `Strategy` trait defines the key lifecycle events that are required to create and run a backtest.
+///This functionality is closely bound into `SimContext` which is the struct that wraps around the
+///components of a backtest, runs it, and offers the interface into the components (like
+///`Strategy`) to clients. The reasoning for this is explained in the documentation for
+///`SimContext`.
 pub trait Strategy: TransferTo + Clone {
     fn update(&mut self) -> CashValue;
     fn init(&mut self, initial_cash: &CashValue);
@@ -43,11 +55,25 @@ pub trait TransferFrom {
     fn withdraw_cash_with_liquidation(&mut self, cash: &CashValue);
 }
 
-//TODO:should this execute any trades at all?
+//Withdrawing with liquidation will execute orders in order to generate the target amount of cash
+//required.
+//
+//This function should be used relatively sparingly because it breaks the update cycle between
+//`Strategy` and `Broker`: the orders are not executed in any particular order so the state within
+//`Broker` is left in a random state, which may not be immediately clear to clients and can cause
+//significant unexpected drift in performance if this function is called repeatedly with long
+//rebalance cycles.
+//
+//The primary use-case for this functionality is for clients that implement tax payments: these are
+//mandatory reductions in cash that have to be paid before the simulation can proceed to the next
+//valid state.
 fn withdraw_cash_with_liquidation_algo<T: ExecutesOrder + TradeCost + PositionInfo + GetsQuote>(
     cash: &CashValue,
     brkr: &mut T,
 ) -> BrokerEvent {
+    //TODO:should this execute any trades at all? Would it be better to return a sequence of orders
+    //required to achieve the cash balance, and then leave it up to the calling function to decide
+    //whether to execute?
     info!("STRATEGY: Withdrawing {:?} with liquidation", cash);
     let value = brkr.get_liquidation_value();
     if cash > &value {
@@ -102,6 +128,8 @@ fn withdraw_cash_with_liquidation_algo<T: ExecutesOrder + TradeCost + PositionIn
     }
 }
 
+//Calculates the diff between the current state of the portfolio within broker, and the
+//target_weights passed into the function.
 //Returns orders so calling function has control over when orders are executed
 fn diff<T: PositionInfo + TradeCost + GetsQuote>(
     target_weights: &PortfolioAllocation<PortfolioWeight>,
@@ -180,7 +208,7 @@ impl<T: DataSource> StaticWeightStrategyBuilder<T> {
         StaticWeightStrategy {
             brkr: self.brkr.clone().unwrap(),
             target_weights: self.weights.clone().unwrap(),
-            perf: PortfolioPerformance::daily(),
+            perf: StrategyPerformance::daily(),
             net_cash_flow: 0.0.into(),
             clock: Rc::clone(self.clock.as_ref().unwrap()),
         }
@@ -194,7 +222,7 @@ impl<T: DataSource> StaticWeightStrategyBuilder<T> {
         StaticWeightStrategy {
             brkr: self.brkr.clone().unwrap(),
             target_weights: self.weights.clone().unwrap(),
-            perf: PortfolioPerformance::yearly(),
+            perf: StrategyPerformance::yearly(),
             net_cash_flow: 0.0.into(),
             clock: Rc::clone(self.clock.as_ref().unwrap()),
         }
@@ -230,11 +258,13 @@ impl<T: DataSource> Default for StaticWeightStrategyBuilder<T> {
     }
 }
 
+///Basic implementation of an investment strategy which takes a set of fixed-weight allocations and
+///rebalances over time towards those weights.
 #[derive(Clone)]
 pub struct StaticWeightStrategy<T: DataSource> {
     brkr: SimulatedBroker<T>,
     target_weights: PortfolioAllocation<PortfolioWeight>,
-    perf: PortfolioPerformance,
+    perf: StrategyPerformance,
     net_cash_flow: CashValue,
     clock: Clock,
 }

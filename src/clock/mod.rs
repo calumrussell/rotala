@@ -4,16 +4,27 @@ use std::vec::IntoIter;
 
 use crate::types::DateTime;
 
+///Clock is a reference to the internal clock used be all components that have a dependency on the
+///date within the backtest.
+///
+///Previous implementations did not use a shared clock which result in runtime errors and
+///complexity when some parts of the system updated their time but others did not. By creating a
+///shared reference, we significantly reduce the scope for unexpected behaviour due to
+///inadvertently incorrect sequencing of operations. An added benefit is that this significantly
+///simplifies the interface for data queries so that live-trading would be possible.
 pub type Clock = Rc<RefCell<ClockInner>>;
 
 #[derive(Debug)]
 pub struct ClockInner {
+    //We have a position and Vec because we should be able to return an iterator without changing
+    //the state of the Clock
     pos: usize,
     dates: Vec<DateTime>,
 }
 
 impl ClockInner {
     pub fn now(&self) -> DateTime {
+        //TODO: can fail at runtime if the client ticks beyond the len
         self.dates[self.pos]
     }
 
@@ -25,7 +36,7 @@ impl ClockInner {
         self.pos += 1;
     }
 
-    //Note that this doesn't change the iteration state, used for clients to setup data using clock
+    //Doesn't change the iteration state, used for clients to setup data using clock
     pub fn peek(&self) -> IntoIter<DateTime> {
         self.dates.clone().into_iter()
     }

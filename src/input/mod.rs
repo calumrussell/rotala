@@ -7,8 +7,9 @@ use crate::types::DateTime;
 ///Retrieves price and diviends for symbol/symbols.
 ///
 ///Whilst this trait is created with backtests in mind, the calling pattern should match that used
-///in live-trading systems. Backtests should keep (some) time state within structs implementing
-///this trait, callers should not have to store time state.
+///in live-trading systems. All system time data is stored within structs implementing this trait
+///(in this case, a reference to `Clock`). Callers should not have to store time state themselves,
+///this pattern reduces runtime errors.
 pub trait DataSource: Clone {
     fn get_quote(&self, symbol: &str) -> Option<Quote>;
     fn get_quotes(&self) -> Option<&Vec<Quote>>;
@@ -19,7 +20,7 @@ type QuotesHashMap = HashMap<DateTime, Vec<Quote>>;
 type DividendsHashMap = HashMap<DateTime, Vec<Dividend>>;
 
 ///Data structure that implements DataSouce trait. Used to store Quote and Dividend data. Stores
-///state tracking what the current time is in the simulation.
+///a reference to Clock which tracks the date inside simulation.
 #[derive(Clone, Debug)]
 pub struct HashMapInput {
     quotes: QuotesHashMap,

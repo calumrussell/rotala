@@ -35,8 +35,18 @@ pub struct StrategySnapshot {
     pub net_cash_flow: CashValue,
 }
 
+///Tracks the performance of a strategy and calculates simple performance statistics.
+///
+///Should be owned by a `Strategy` with the `Strategy` controlling and defining the update cycle.
+///When the `Strategy` creates the Performance object though, the frequency has to be set for
+///calculation which the update cycle must match.
+///
+///All of the calculation functions are private. Clients retrieve performance data through the
+///`SimContext` which then queries `Strategy` which then queries this struct. The reasons for this
+///are explained in the docs for `SimContext` but, essentially, this structure allows less
+///error-prone initializations at the cost of more indirection.
 #[derive(Clone)]
-pub struct PortfolioPerformance {
+pub struct StrategyPerformance {
     values: TimeSeries,
     states: Vec<StrategySnapshot>,
     freq: DataFrequency,
@@ -54,7 +64,7 @@ pub struct PerfStruct {
     pub dates: Vec<f64>,
 }
 
-impl PortfolioPerformance {
+impl StrategyPerformance {
     pub fn get_output(&self) -> PerfStruct {
         PerfStruct {
             ret: self.get_ret(),
@@ -149,7 +159,7 @@ impl PortfolioPerformance {
     }
 
     pub fn yearly() -> Self {
-        PortfolioPerformance {
+        StrategyPerformance {
             values: TimeSeries::new::<f64>(None, Vec::new()),
             states: Vec::new(),
             freq: DataFrequency::Yearly,
@@ -158,7 +168,7 @@ impl PortfolioPerformance {
     }
 
     pub fn monthly() -> Self {
-        PortfolioPerformance {
+        StrategyPerformance {
             values: TimeSeries::new::<f64>(None, Vec::new()),
             states: Vec::new(),
             freq: DataFrequency::Monthly,
@@ -167,7 +177,7 @@ impl PortfolioPerformance {
     }
 
     pub fn daily() -> Self {
-        PortfolioPerformance {
+        StrategyPerformance {
             values: TimeSeries::new::<f64>(None, Vec::new()),
             states: Vec::new(),
             freq: DataFrequency::Daily,
@@ -191,7 +201,7 @@ mod tests {
 
     use super::DataFrequency;
     use super::PortfolioCalculator;
-    use super::PortfolioPerformance;
+    use super::StrategyPerformance;
 
     fn setup() -> (SimulatedBroker<HashMapInput>, Clock) {
         let mut raw_data: HashMap<DateTime, Vec<Quote>> = HashMap::new();
@@ -349,7 +359,7 @@ mod tests {
         //flow. Adding the cash flow at the start is the most conservative calculation and should
         //reflect how operations are ordered in the client.
 
-        let mut perf = PortfolioPerformance::yearly();
+        let mut perf = StrategyPerformance::yearly();
         let snap0 = StrategySnapshot {
             date: 100.into(),
             value: 100.0.into(),
@@ -369,7 +379,7 @@ mod tests {
         perf.update(&snap1);
         perf.update(&snap2);
 
-        let mut perf1 = PortfolioPerformance::yearly();
+        let mut perf1 = StrategyPerformance::yearly();
         let snap3 = StrategySnapshot {
             date: 100.into(),
             value: 100.0.into(),
