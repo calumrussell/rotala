@@ -1,12 +1,12 @@
 use itertools::Itertools;
 
 use super::{BrokerRecordedEvent, DividendPayment, Trade, TradeType};
-use crate::data::{CashValue, DateTime, PortfolioQty, Price};
+use crate::types::{CashValue, DateTime, PortfolioQty, Price};
 
-//Records events executed by the broker.
-//
-//Should be available to clients, but is also need internally
-//to calculate the cost basis of positions.
+///Records certain events executed by the broker.
+///
+///This is required for some internal calculations, such as the cost basis of positions, but also
+///should be public to clients for tax calculations.
 #[derive(Clone, Debug)]
 pub struct BrokerLog {
     log: Vec<BrokerRecordedEvent>,

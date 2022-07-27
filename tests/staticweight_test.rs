@@ -1,66 +1,74 @@
-mod common;
-
-use rand::distributions::Uniform;
+use alator::clock::{Clock, ClockBuilder};
+use alator::input::HashMapInputBuilder;
+use alator::strategy::StaticWeightStrategyBuilder;
+use rand::distributions::{Distribution, Uniform};
+use rand::thread_rng;
 use std::collections::HashMap;
+use std::rc::Rc;
 
-use alator::broker::{BrokerCost, Dividend, Quote};
-use alator::data::{CashValue, DataSource, DateTime, PortfolioAllocation, PortfolioWeight};
-use alator::perf::PortfolioPerformance;
-use alator::sim::broker::SimulatedBroker;
-use alator::sim::portfolio::SimPortfolio;
-use alator::simcontext::SimContext;
-use alator::strategy::staticweight::StaticWeightStrategyRulesMonthlyRebalancing;
+use alator::broker::{BrokerCost, Quote};
+use alator::input::HashMapInput;
+use alator::sim::broker::SimulatedBrokerBuilder;
+use alator::simcontext::SimContextBuilder;
+use alator::types::{CashValue, DateTime, PortfolioAllocation, PortfolioWeight};
 
-use common::build_fake_quote_stream;
+fn build_data(clock: Clock) -> HashMapInput {
+    let price_dist = Uniform::new(90.0, 100.0);
+    let mut rng = thread_rng();
+
+    let mut raw_data: HashMap<DateTime, Vec<Quote>> = HashMap::new();
+    for date in clock.borrow().peek() {
+        let q1 = Quote {
+            bid: price_dist.sample(&mut rng).into(),
+            ask: price_dist.sample(&mut rng).into(),
+            date: i64::from(date).into(),
+            symbol: "ABC".to_string(),
+        };
+        let q2 = Quote {
+            bid: price_dist.sample(&mut rng).into(),
+            ask: price_dist.sample(&mut rng).into(),
+            date: i64::from(date).into(),
+            symbol: "BCD".to_string(),
+        };
+        raw_data.insert(i64::from(date).into(), vec![q1, q2]);
+    }
+
+    let source = HashMapInputBuilder::new()
+        .with_quotes(raw_data)
+        .with_clock(Rc::clone(&clock))
+        .build();
+    source
+}
 
 #[test]
 fn staticweight_integration_test() {
+    env_logger::init();
     let initial_cash: CashValue = 100_000.0.into();
+    let length_in_days: i64 = 200;
+    let start_date: i64 = 1609750800; //Date - 4/1/21 9:00:0000
+    let clock = ClockBuilder::from_length(&start_date.into(), length_in_days).daily();
 
-    let price_dist = Uniform::new(1.0, 100.0);
-    let vol_dist = Uniform::new(0.1, 0.2);
+    let data = build_data(Rc::clone(&clock));
 
-    let length_in_days = 200;
-    let seconds_in_day = 86_400;
-    let start_date = 1609750800; //Date - 4/1/21 9:00:0000
-    let end_date = start_date + (seconds_in_day * length_in_days);
+    let mut weights: PortfolioAllocation<PortfolioWeight> = PortfolioAllocation::new();
+    weights.insert(&String::from("ABC"), &0.5.into());
+    weights.insert(&String::from("BCD"), &0.5.into());
 
-    let abc_quotes = build_fake_quote_stream(
-        &String::from("ABC"),
-        price_dist,
-        vol_dist,
-        start_date..end_date,
-        Some(seconds_in_day as usize),
-    );
-    let bcd_quotes = build_fake_quote_stream(
-        &String::from("BCD"),
-        price_dist,
-        vol_dist,
-        start_date..end_date,
-        Some(seconds_in_day as usize),
-    );
-    let mut raw_data: HashMap<DateTime, Vec<Quote>> = HashMap::new();
-    let dividends: HashMap<DateTime, Vec<Dividend>> = HashMap::new();
-    for (_a, b) in abc_quotes.iter().zip(bcd_quotes.iter()).enumerate() {
-        raw_data.insert(DateTime::from(b.0.date), vec![b.0.clone(), b.1.clone()]);
-    }
+    let simbrkr = SimulatedBrokerBuilder::new()
+        .with_data(data)
+        .with_trade_costs(vec![BrokerCost::Flat(1.0.into())])
+        .build();
 
-    let mut weights: Vec<PortfolioAllocation<PortfolioWeight>> = Vec::new();
-    for _i in 0..length_in_days {
-        let mut temp = PortfolioAllocation::new();
-        temp.insert(&String::from("ABC"), &0.5.into());
-        temp.insert(&String::from("BCD"), &0.5.into());
-        weights.push(temp);
-    }
+    let strat = StaticWeightStrategyBuilder::new()
+        .with_brkr(simbrkr)
+        .with_weights(weights)
+        .with_clock(Rc::clone(&clock))
+        .daily();
 
-    let dates = raw_data.keys().map(|d| d.clone()).collect();
-    let source = DataSource::from_hashmap(raw_data, dividends);
-    let simbrkr = SimulatedBroker::new(source, vec![BrokerCost::Flat(1.0.into())]);
+    let mut sim = SimContextBuilder::new()
+        .with_clock(Rc::clone(&clock))
+        .with_strategy(strat)
+        .init(&initial_cash);
 
-    let port = SimPortfolio::new(simbrkr);
-
-    let perf = PortfolioPerformance::yearly();
-    let strat = StaticWeightStrategyRulesMonthlyRebalancing::new(port, perf, weights);
-    let mut sim = SimContext::new(dates, initial_cash, &strat);
     sim.run();
 }

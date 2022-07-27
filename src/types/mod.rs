@@ -2,82 +2,9 @@ use itertools::Itertools;
 use std::collections::HashMap;
 use std::iter::Sum;
 use std::ops::{Add, AddAssign, Div, DivAssign, Mul, MulAssign, Sub, SubAssign};
+use time::OffsetDateTime;
 
-use crate::broker::{Dividend, Quote};
-
-/* Abstracts basic data operations for components that use data.
- */
-pub trait SimSource {
-    fn get_quotes_dates(&self) -> Vec<DateTime>;
-    //Added dividends, could make sense to support a range of *Actions* such as Quote or Dividend
-    //but doesn't make sense when there is only too (and it wouldn't change the public interface).
-    fn get_dividends_by_date(&self, date: &DateTime) -> Option<Vec<Dividend>>;
-    fn get_quotes_by_date(&self, date: &DateTime) -> Option<Vec<Quote>>;
-    fn get_quote_by_date_symbol(&self, date: &DateTime, symbol: &str) -> Option<Quote>;
-    fn has_next(&self) -> bool;
-    fn step(&mut self);
-}
-
-#[derive(Clone, Debug)]
-pub struct DataSource {
-    quotes: HashMap<DateTime, Vec<Quote>>,
-    dividends: HashMap<DateTime, Vec<Dividend>>,
-    pos: usize,
-    keys: Vec<DateTime>,
-}
-
-impl SimSource for DataSource {
-    fn get_quotes_dates(&self) -> Vec<DateTime> {
-        self.quotes.keys().map(|v| v.to_owned()).collect_vec()
-    }
-
-    fn get_quote_by_date_symbol(&self, date: &DateTime, symbol: &str) -> Option<Quote> {
-        if let Some(quotes) = self.get_quotes_by_date(date) {
-            for quote in &quotes {
-                if quote.symbol.eq(symbol) {
-                    return Some(quote.clone());
-                }
-            }
-        }
-        None
-    }
-
-    fn get_quotes_by_date(&self, date: &DateTime) -> Option<Vec<Quote>> {
-        if let Some(quotes) = self.quotes.get(date) {
-            return Some(quotes.clone());
-        }
-        None
-    }
-    fn get_dividends_by_date(&self, date: &DateTime) -> Option<Vec<Dividend>> {
-        if let Some(dividends) = self.dividends.get(date) {
-            return Some(dividends.clone());
-        }
-        None
-    }
-
-    fn step(&mut self) {
-        self.pos += 1;
-    }
-
-    fn has_next(&self) -> bool {
-        self.pos < self.keys.len()
-    }
-}
-
-impl DataSource {
-    pub fn from_hashmap(
-        quotes: HashMap<DateTime, Vec<Quote>>,
-        dividends: HashMap<DateTime, Vec<Dividend>>,
-    ) -> DataSource {
-        let keys = quotes.keys().copied().collect_vec();
-        DataSource {
-            quotes,
-            pos: 0,
-            keys,
-            dividends,
-        }
-    }
-}
+///Defines a set of base types that are used by multiple components.
 
 #[derive(Clone, Copy, Debug, PartialOrd, PartialEq)]
 pub struct CashValue(f64);
@@ -270,10 +197,112 @@ impl Sum for CashValue {
     }
 }
 
-//TODO: add date-related functions, this has been replicated across the code base in client
-//projects so there is no need not to add that functionality here
+pub enum Weekday {
+    Monday,
+    Tuesday,
+    Wednesday,
+    Thursday,
+    Friday,
+    Saturday,
+    Sunday,
+}
+
+impl From<time::Weekday> for Weekday {
+    fn from(v: time::Weekday) -> Self {
+        match v {
+            time::Weekday::Monday => Weekday::Monday,
+            time::Weekday::Tuesday => Weekday::Tuesday,
+            time::Weekday::Wednesday => Weekday::Wednesday,
+            time::Weekday::Thursday => Weekday::Thursday,
+            time::Weekday::Friday => Weekday::Friday,
+            time::Weekday::Saturday => Weekday::Saturday,
+            time::Weekday::Sunday => Weekday::Sunday,
+        }
+    }
+}
+
+pub enum Month {
+    January,
+    February,
+    March,
+    April,
+    May,
+    June,
+    July,
+    August,
+    September,
+    October,
+    November,
+    December,
+}
+
+impl From<time::Month> for Month {
+    fn from(v: time::Month) -> Self {
+        match v {
+            time::Month::January => Month::January,
+            time::Month::February => Month::February,
+            time::Month::March => Month::March,
+            time::Month::April => Month::April,
+            time::Month::May => Month::May,
+            time::Month::June => Month::June,
+            time::Month::July => Month::July,
+            time::Month::August => Month::August,
+            time::Month::September => Month::September,
+            time::Month::October => Month::October,
+            time::Month::November => Month::November,
+            time::Month::December => Month::December,
+        }
+    }
+}
+
+impl From<Month> for u8 {
+    fn from(v: Month) -> Self {
+        match v {
+            Month::January => 1,
+            Month::February => 2,
+            Month::March => 3,
+            Month::April => 4,
+            Month::May => 5,
+            Month::June => 6,
+            Month::July => 7,
+            Month::August => 8,
+            Month::September => 9,
+            Month::October => 10,
+            Month::November => 11,
+            Month::December => 12,
+        }
+    }
+}
+
 #[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
 pub struct DateTime(i64);
+
+impl DateTime {
+    pub fn day(&self) -> u8 {
+        let date: OffsetDateTime = (*self).into();
+        date.day()
+    }
+
+    pub fn weekday(&self) -> Weekday {
+        let date: OffsetDateTime = (*self).into();
+        date.weekday().into()
+    }
+
+    pub fn month(&self) -> Month {
+        let date: OffsetDateTime = (*self).into();
+        date.month().into()
+    }
+}
+
+impl From<DateTime> for OffsetDateTime {
+    fn from(v: DateTime) -> Self {
+        if let Ok(date) = OffsetDateTime::from_unix_timestamp(i64::from(v)) {
+            date
+        } else {
+            panic!("Tried to convert non-date value");
+        }
+    }
+}
 
 impl From<DateTime> for i64 {
     fn from(v: DateTime) -> Self {
@@ -497,6 +526,9 @@ impl Sub for Price {
     }
 }
 
+//Represents the current state of a portfolio in terms of the number of shares held
+//TODO: this is fairly unclear, we also have values which should be computable from holdings so at
+//least one of these structures is not needed.
 #[derive(Clone, Debug)]
 pub struct PortfolioHoldings(pub HashMap<String, PortfolioQty>);
 
@@ -520,6 +552,27 @@ impl PortfolioHoldings {
 }
 
 impl Default for PortfolioHoldings {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+//Represents the current state of a portfolio in terms of the value of each position
+#[derive(Clone, Debug)]
+pub struct PortfolioValues(pub HashMap<String, CashValue>);
+
+impl PortfolioValues {
+    pub fn insert(&mut self, ticker: &str, value: &CashValue) {
+        self.0.insert(ticker.to_string(), *value);
+    }
+
+    pub fn new() -> Self {
+        let map: HashMap<String, CashValue> = HashMap::new();
+        Self(map)
+    }
+}
+
+impl Default for PortfolioValues {
     fn default() -> Self {
         Self::new()
     }
@@ -552,6 +605,8 @@ impl Mul<CashValue> for PortfolioWeight {
     }
 }
 
+//Represents the state of the portfolio in terms of the percentage of total value assigned to each
+//ticker
 #[derive(Clone, Debug)]
 pub struct PortfolioAllocation<T: Weight>(pub HashMap<String, T>);
 

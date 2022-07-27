@@ -1,7 +1,11 @@
-use time::OffsetDateTime;
+use crate::types::{DateTime, Weekday};
 
-use crate::data::DateTime;
-
+///`TradingSchedule` should be used within `Strategy` implementations to control when a rebalancing
+///should run. This is a helper to the creation of strategies, and is not required by any other
+///component. Despite the name, which implies use for rebalancing only, it can also be used to
+///indicate when `Strategy` data needs to be updated or similar.
+//TODO: make this more generic, there is no reason why it has to only concern a rebalancing
+//schedule
 pub trait TradingSchedule {
     fn should_trade(date: &DateTime) -> bool;
 }
@@ -18,48 +22,37 @@ pub struct LastBusinessDayTradingSchedule;
 
 impl TradingSchedule for LastBusinessDayTradingSchedule {
     fn should_trade(date: &DateTime) -> bool {
-        let time = OffsetDateTime::from_unix_timestamp(i64::from(*date));
+        if (*date).day() < (28 - 7) {
+            return false;
+        }
 
-        let seconds_in_day = 86400;
-        match time {
-            Ok(t) => {
-                if t.day() < (28 - 7) {
-                    //Cannot be greater than a week before minimum number of days in month
-                    return false;
-                }
+        match (*date).weekday() {
+            Weekday::Saturday | Weekday::Sunday => {
+                return false;
+            }
+            _ => (),
+        }
 
-                match t.weekday() {
-                    //Shouldn't pass anything but weekday but to be safe
-                    time::Weekday::Saturday | time::Weekday::Sunday => return false,
-                    _ => (),
-                }
-
-                /*
-                Only need to go up to four as we are checking for weekends.
-                The day offset_time should either be a weekend or a day with a different
-                month, if either of these things is false then we return false.
-                The day of the new month is not necessarily the first day.
-                 */
-                for i in 1..4 {
-                    let offset_time = OffsetDateTime::from_unix_timestamp(
-                        i64::from(*date) + (i * seconds_in_day),
-                    )
-                    .unwrap();
-                    match offset_time.weekday() {
-                        time::Weekday::Saturday | time::Weekday::Sunday => continue,
-                        _ => {
-                            if offset_time.month() == t.month() {
-                                return false;
-                            } else {
-                                continue;
-                            }
-                        }
+        //Only need to check up to four dates as we are checking for weekends. The day should
+        //either be a weekend or a day with a different month. If either of these things is false
+        //then we return false.
+        //The day of the new month is not necessarily the first day.
+        //
+        for i in 1..4 {
+            let seconds_in_day = 86400;
+            let offset_time = (*date) + (i * seconds_in_day);
+            match offset_time.weekday() {
+                Weekday::Saturday | Weekday::Sunday => continue,
+                _ => {
+                    if offset_time.month() as u8 == (*date).month() as u8 {
+                        return false;
+                    } else {
+                        continue;
                     }
                 }
-                true
             }
-            _ => false,
         }
+        true
     }
 }
 
