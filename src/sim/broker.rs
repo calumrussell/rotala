@@ -729,8 +729,9 @@ mod tests {
         clock.borrow_mut().tick();
         brkr.check();
 
-        let qty = *brkr.get_position_qty(&String::from("ABC")).unwrap();
-        assert!(qty == 0.0);
+        //When a position is reduced to zero, it is removed from holdings altogether and
+        //get_position_qty should return None, as opposed to 0.0
+        assert!(brkr.get_position_qty("ABC".into()) == None);
     }
 
     #[test]
