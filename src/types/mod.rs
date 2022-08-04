@@ -537,6 +537,10 @@ impl PortfolioHoldings {
         self.0.get(ticker)
     }
 
+    pub fn remove(&mut self, ticker: &str) {
+        self.0.remove(ticker);
+    }
+
     pub fn keys(&self) -> Vec<String> {
         self.0.keys().cloned().collect_vec()
     }

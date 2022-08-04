@@ -334,11 +334,19 @@ impl<T: DataSource> ExecutesOrder for SimulatedBroker<T> {
             match OrderExecutionRules::run_all(order, &price, &date, self) {
                 Ok(trade) => {
                     let price = trade.value / trade.quantity;
-                    info!("BROKER: Successfully executed {:?} trade for {:?} shares at {:?} in {:?} for total of {:?}", trade.typ, trade.quantity, price, trade.symbol, trade.value);
+                    info!("BROKER: Successfully executed {:?} trade for {:?} shares at {:?} in {:?} for total of {:?}", trade.typ, trade.quantity, f64::from(price), trade.symbol, trade.value);
                     self.log.record(trade.clone());
                     BrokerEvent::TradeSuccess(trade)
                 }
-                Err(e) => e,
+                Err(e) => {
+                    info!(
+                        "Broker: Trade failed for {:?} trade for {:?} shares of {:?}",
+                        order.get_order_type(),
+                        order.get_shares(),
+                        order.get_symbol()
+                    );
+                    e
+                }
             }
         } else {
             panic!(
@@ -382,7 +390,11 @@ impl<T: DataSource> CanUpdate for SimulatedBroker<T> {
             "BROKER: Incrementing holdings in {:?} by {:?}",
             symbol, change
         );
-        self.holdings.insert(symbol, &*change);
+        if *change == 0.0 {
+            self.holdings.remove(symbol);
+        } else {
+            self.holdings.insert(symbol, &*change);
+        }
     }
 }
 

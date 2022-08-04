@@ -4,7 +4,7 @@ use crate::broker::{Dividend, Quote};
 use crate::clock::Clock;
 use crate::types::DateTime;
 
-///Retrieves price and diviends for symbol/symbols.
+///Retrieves price and dividends for symbol/symbols.
 ///
 ///Whilst this trait is created with backtests in mind, the calling pattern should match that used
 ///in live-trading systems. All system time data is stored within structs implementing this trait
@@ -16,8 +16,8 @@ pub trait DataSource: Clone {
     fn get_dividends(&self) -> Option<&Vec<Dividend>>;
 }
 
-type QuotesHashMap = HashMap<DateTime, Vec<Quote>>;
-type DividendsHashMap = HashMap<DateTime, Vec<Dividend>>;
+pub type QuotesHashMap = HashMap<DateTime, Vec<Quote>>;
+pub type DividendsHashMap = HashMap<DateTime, Vec<Dividend>>;
 
 ///Data structure that implements DataSouce trait. Used to store Quote and Dividend data. Stores
 ///a reference to Clock which tracks the date inside simulation.

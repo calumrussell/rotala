@@ -1,6 +1,6 @@
 use std::collections::HashMap;
-use std::rc::Rc;
 use std::io::{Cursor, Write};
+use std::rc::Rc;
 
 use alator::broker::{
     ExecutesOrder, GetsQuote, Order, OrderType, PositionInfo, Quote, TransferCash,
@@ -152,12 +152,12 @@ impl Strategy for MovingAverageStrategy {
     fn init(&mut self, initial_cash: &CashValue) {
         self.deposit_cash(initial_cash);
     }
-    
+
     fn update(&mut self) -> CashValue {
         //If you need to use dividends or place non-market orders then we need to call:
         //self.brkr.check(); somewhere here. We don't use these features so this call is
         //excluded.
-        
+
         //The simulation does not run at the same frequency as the strategy, we are only trading
         //when we have information from our data source.
         //
@@ -218,11 +218,7 @@ impl MovingAverageStrategy {
     fn new(brkr: SimulatedBroker<HashMapInput>) -> Self {
         let ten = MovingAverage::new(10);
         let fifty = MovingAverage::new(50);
-        Self {
-            brkr,
-            ten,
-            fifty,
-        }
+        Self { brkr, ten, fifty }
     }
 }
 
