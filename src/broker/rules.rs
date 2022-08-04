@@ -39,6 +39,13 @@ fn client_has_sufficient_holdings_for_sale(
     }
 }
 
+fn client_is_issuing_nonsense_order(order: &Order) -> Result<(), ()> {
+    if order.get_shares() == 0.0 {
+        return Err(());
+    }
+    Ok(())
+}
+
 fn trade_logic(
     order: &Order,
     price: &Price,
@@ -50,6 +57,9 @@ fn trade_logic(
     let curr = brkr
         .get_position_qty(&order.get_symbol())
         .unwrap_or_default();
+
+    //This includes calculation of existing position, so we can just update our holdings with the
+    //actual value
     let updated = match order.get_order_type() {
         OrderType::MarketBuy => *curr + order.get_shares(),
         OrderType::MarketSell => *curr - order.get_shares(),
@@ -98,6 +108,9 @@ impl OrderExecutionRules {
             return Err(BrokerEvent::TradeFailure(order.clone()));
         }
         if let Err(()) = client_has_sufficient_holdings_for_sale(order, brkr) {
+            return Err(BrokerEvent::TradeFailure(order.clone()));
+        }
+        if let Err(()) = client_is_issuing_nonsense_order(order) {
             return Err(BrokerEvent::TradeFailure(order.clone()));
         }
         let trade = trade_logic(order, price, date, brkr);

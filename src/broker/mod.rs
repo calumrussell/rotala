@@ -199,6 +199,7 @@ pub trait TransferCash {
 }
 
 pub trait PositionInfo {
+    //Position qty can always return a value, if we don't have the position then qty is 0
     fn get_position_qty(&self, symbol: &str) -> Option<&PortfolioQty>;
     fn get_position_value(&self, symbol: &str) -> Option<CashValue>;
     fn get_position_cost(&self, symbol: &str) -> Option<Price>;
