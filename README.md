@@ -46,6 +46,12 @@ An example backtest (with data creation excluded):
 ```
 Alator comes with a `StaticWeightStrategy` and clients will typically need to implement the `Strategy` trait to build a new strategy. The `Broker` component should be reusable for most cases but may lack the features for some use-cases, the three biggest being: leverage, multiple-currency support, and shorting. Because of the current uses of the library, the main priority in the near future is to add support for multiple-currencies.
 
+# How do you get data into Alator for backtesting?
+
+Alator is flexible about the underlying representation of data: at the bottom is just an implementation of a broker that operates on `Quote` structures. So all you need to provide the broker is a structure that implements `DataSource` and which can be queried to find `Quote` events (or any kind of broker-related event: for example, dividends). You can use ticks, you can use candlesticks, there is no dependency on underlying structure within the default broker implementation (but it is often the case that the strategy you implement will have a dependency on the data structure used i.e. a moving average system contains some assumptions about data frequency).
+
+In the tests folder, we have provided an implementation of a simple moving average crossover strategy that pulls data directly from Binance. To see the system running: fail the test with an assert and pass `RUST_LOG=info` to the command.
+
 # Missing features that you may expect
 
 * Leverage
