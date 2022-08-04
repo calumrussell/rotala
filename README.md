@@ -61,3 +61,7 @@ In the tests folder, we have provided an implementation of a simple moving avera
 * Concurrency
 
 The main priority in the near future, given the existing uses of the library, is support for multiple currencies and performance.
+
+# Change Log
+
+v.0.1.1 - Added test case showing how to create data source. Changed behaviour of `PositionInfo`.`get_portfolio_qty` so that ambiguous zero values aren't shown to client. 
