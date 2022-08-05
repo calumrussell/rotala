@@ -63,14 +63,21 @@ impl ClockBuilder {
         Rc::new(RefCell::new(ClockInner { dates, pos: 0 }))
     }
 
-    pub fn every(&self) -> Clock {
+    pub fn every_second(&self) -> Clock {
         let dates: Vec<DateTime> = (i64::from(self.start)..i64::from(self.end) + 1)
             .map(DateTime::from)
             .collect();
         Rc::new(RefCell::new(ClockInner { dates, pos: 0 }))
     }
 
-    pub fn from_length(start: &DateTime, length_in_days: i64) -> Self {
+    //Runs for length given + 1 period
+    pub fn from_length_seconds(start: &DateTime, length_in_seconds: i64) -> Self {
+        let end = *start + length_in_seconds;
+        Self { start: *start, end }
+    }
+
+    //Runs for length given + 1 period
+    pub fn from_length_days(start: &DateTime, length_in_days: i64) -> Self {
         let end = *start + (length_in_days * ClockBuilder::SECS_IN_DAY);
         Self { start: *start, end }
     }
@@ -87,7 +94,7 @@ mod tests {
     #[test]
     #[should_panic]
     fn test_that_ticking_past_the_length_of_dates_triggers_panic() {
-        let clock = ClockBuilder::from_fixed(1.into(), 3.into()).every();
+        let clock = ClockBuilder::from_fixed(1.into(), 3.into()).every_second();
         clock.borrow_mut().tick();
         clock.borrow_mut().tick();
         clock.borrow_mut().tick();
@@ -95,11 +102,23 @@ mod tests {
 
     #[test]
     fn test_that_there_isnt_next_when_tick_at_end() {
-        let clock = ClockBuilder::from_fixed(1.into(), 3.into()).every();
+        let clock = ClockBuilder::from_fixed(1.into(), 3.into()).every_second();
         assert!(clock.borrow().has_next() == true);
         clock.borrow_mut().tick();
 
         clock.borrow_mut().tick();
         assert!(clock.borrow().has_next() == false);
+    }
+
+    #[test]
+    fn test_that_clock_created_from_length_peeks_correctly() {
+        //Should run for the length given + 1
+        let clock = ClockBuilder::from_length_seconds(&(1.into()), 10).every_second();
+        let mut count = 0;
+        for _i in clock.borrow().peek() {
+            count += 1;
+        }
+        println!("{:?}", count);
+        assert!(count == 11);
     }
 }

@@ -1,6 +1,6 @@
 [package]
 name = "alator"
-version = "0.1.2"
+version = "0.1.3"
 authors = ["Calum Russell <calum.mj.russell@gmail.com>"]
 edition = "2021"
 

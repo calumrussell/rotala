@@ -517,7 +517,7 @@ mod tests {
         };
         dividends.insert(101.into(), vec![divi1]);
 
-        let clock = ClockBuilder::from_fixed(100.into(), 102.into()).every();
+        let clock = ClockBuilder::from_fixed(100.into(), 102.into()).every_second();
 
         let source = HashMapInputBuilder::new()
             .with_quotes(prices)
@@ -825,7 +825,7 @@ mod tests {
         prices.insert(101.into(), vec![quote2]);
         prices.insert(102.into(), vec![quote4]);
 
-        let clock = ClockBuilder::from_fixed(100.into(), 102.into()).every();
+        let clock = ClockBuilder::from_fixed(100.into(), 102.into()).every_second();
 
         let source = HashMapInputBuilder::new()
             .with_quotes(prices)

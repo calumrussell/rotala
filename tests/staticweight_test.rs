@@ -46,7 +46,7 @@ fn staticweight_integration_test() {
     let initial_cash: CashValue = 100_000.0.into();
     let length_in_days: i64 = 200;
     let start_date: i64 = 1609750800; //Date - 4/1/21 9:00:0000
-    let clock = ClockBuilder::from_length(&start_date.into(), length_in_days).daily();
+    let clock = ClockBuilder::from_length_days(&start_date.into(), length_in_days).daily();
 
     let data = build_data(Rc::clone(&clock));
 

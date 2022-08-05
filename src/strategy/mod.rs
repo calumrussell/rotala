@@ -176,7 +176,7 @@ impl<T: DataSource> Strategy for StaticWeightStrategy<T> {
 }
 
 impl<T: DataSource> TransferTo for StaticWeightStrategy<T> {
-        fn deposit_cash(&mut self, cash: &CashValue)  -> StrategyEvent {
+    fn deposit_cash(&mut self, cash: &CashValue) -> StrategyEvent {
         info!("STRATEGY: Depositing {:?} into strategy", cash);
         self.brkr.deposit_cash(*cash);
         self.net_cash_flow += *cash;
@@ -256,7 +256,7 @@ mod tests {
         prices.insert(101.into(), vec![quote2]);
         prices.insert(102.into(), vec![quote4]);
 
-        let clock = ClockBuilder::from_fixed(100.into(), 102.into()).every();
+        let clock = ClockBuilder::from_fixed(100.into(), 102.into()).every_second();
 
         let source = HashMapInputBuilder::new()
             .with_quotes(prices)

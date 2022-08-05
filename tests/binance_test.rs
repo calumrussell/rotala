@@ -241,7 +241,7 @@ fn binance_test() {
     let (quotes, dates) = build_data();
     //Clock is the only shared reference between backtesting components: it keeps the time inside
     //the simulation and should guard against the accidental use of future data.
-    let clock = ClockBuilder::from_fixed(dates.0.into(), dates.1.into()).every();
+    let clock = ClockBuilder::from_fixed(dates.0.into(), dates.1.into()).every_second();
 
     let data = HashMapInputBuilder::new()
         .with_clock(Rc::clone(&clock))

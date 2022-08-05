@@ -267,7 +267,7 @@ mod tests {
         raw_data.insert(102.into(), vec![quote_a3, quote_b3]);
         raw_data.insert(103.into(), vec![quote_a4, quote_b4]);
 
-        let clock = ClockBuilder::from_fixed(100.into(), 103.into()).every();
+        let clock = ClockBuilder::from_fixed(100.into(), 103.into()).every_second();
 
         let source = HashMapInputBuilder::new()
             .with_quotes(raw_data)
