@@ -1,4 +1,9 @@
-use crate::types::{CashValue, DateTime, PortfolioHoldings, PortfolioQty, PortfolioValues, Price};
+use log::info;
+
+use crate::types::{
+    CashValue, DateTime, PortfolioAllocation, PortfolioHoldings, PortfolioQty, PortfolioValues,
+    PortfolioWeight, Price,
+};
 
 pub mod record;
 pub mod rules;
@@ -248,6 +253,150 @@ pub trait PayDividend {
 pub trait EventLog {
     fn trades_between(&self, start: &DateTime, end: &DateTime) -> Vec<Trade>;
     fn dividends_between(&self, start: &DateTime, end: &DateTime) -> Vec<DividendPayment>;
+}
+
+pub struct BrokerCalculations;
+
+impl BrokerCalculations {
+    //Withdrawing with liquidation will execute orders in order to generate the target amount of cash
+    //required.
+    //
+    //This function should be used relatively sparingly because it breaks the update cycle between
+    //`Strategy` and `Broker`: the orders are not executed in any particular order so the state within
+    //`Broker` is left in a random state, which may not be immediately clear to clients and can cause
+    //significant unexpected drift in performance if this function is called repeatedly with long
+    //rebalance cycles.
+    //
+    //The primary use-case for this functionality is for clients that implement tax payments: these are
+    //mandatory reductions in cash that have to be paid before the simulation can proceed to the next
+    //valid state.
+    pub fn withdraw_cash_with_liquidation<
+        T: ExecutesOrder + TradeCost + PositionInfo + GetsQuote,
+    >(
+        cash: &CashValue,
+        brkr: &mut T,
+    ) -> BrokerEvent {
+        //TODO:should this execute any trades at all? Would it be better to return a sequence of orders
+        //required to achieve the cash balance, and then leave it up to the calling function to decide
+        //whether to execute?
+        info!("STRATEGY: Withdrawing {:?} with liquidation", cash);
+        let value = brkr.get_liquidation_value();
+        if cash > &value {
+            BrokerEvent::WithdrawFailure(*cash)
+        } else {
+            //This holds how much we have left to generate from the portfolio to produce the cash
+            //required
+            let mut total_sold = *cash;
+
+            let positions = brkr.get_positions();
+            let mut sell_orders: Vec<Order> = Vec::new();
+            for ticker in positions {
+                let position_value = brkr.get_position_value(&ticker).unwrap_or_default();
+                //Position won't generate enough cash to fulfill total order
+                //Create orders for selling 100% of position, continue
+                //to next position to see if we can generate enough cash
+                //Sell 100% of position
+                if position_value <= total_sold {
+                    //Cannot be called without qty existing
+                    let qty = *brkr.get_position_qty(&ticker).unwrap();
+                    let order = Order::new(OrderType::MarketSell, ticker, qty, None);
+                    info!("STRATEGY: Withdrawing {:?} with liquidation, queueing sale of {:?} shares of {:?}", cash, order.get_shares(), order.get_symbol());
+                    sell_orders.push(order);
+                    total_sold -= position_value;
+                } else {
+                    //Position can generate all the cash we need
+                    //Create orders to sell 100% of position, don't continue to next
+                    //stock
+                    //
+                    //Cannot be called without quote existing
+                    let price = brkr.get_quote(&ticker).unwrap().bid;
+                    let shares_req = (total_sold / price).ceil();
+                    let order = Order::new(OrderType::MarketSell, ticker, shares_req, None);
+                    info!("STRATEGY: Withdrawing {:?} with liquidation, queueing sale of {:?} shares of {:?}", cash, order.get_shares(), order.get_symbol());
+                    sell_orders.push(order);
+                    total_sold = CashValue::default();
+                    break;
+                }
+            }
+            if total_sold == 0.0 {
+                //The portfolio can provide enough cash so we can execute the sell orders
+                //We leave the portfolio in the wrong state for the client to deal with
+                brkr.execute_orders(sell_orders);
+                info!("STRATEGY: Succesfully withdrew {:?} with liquidation", cash);
+                BrokerEvent::WithdrawSuccess(*cash)
+            } else {
+                //The portfolio doesn't have the cash, don't execute any orders and return to
+                //client to deal with the result
+                info!("STRATEGY: Failed to withdrew {:?} with liquidation", cash);
+                BrokerEvent::WithdrawFailure(*cash)
+            }
+        }
+    }
+
+    //Calculates the diff between the current state of the portfolio within broker, and the
+    //target_weights passed into the function.
+    //Returns orders so calling function has control over when orders are executed
+    pub fn diff_brkr_against_target_weights<T: PositionInfo + TradeCost + GetsQuote>(
+        target_weights: &PortfolioAllocation<PortfolioWeight>,
+        brkr: &T,
+    ) -> Vec<Order> {
+        //Need liquidation value so we definitely have enough money to make all transactions after
+        //costs
+        info!("STRATEGY: Calculating diff of current allocation vs. target");
+        let total_value = brkr.get_liquidation_value();
+        let mut orders: Vec<Order> = Vec::new();
+
+        let mut buy_orders: Vec<Order> = Vec::new();
+        let mut sell_orders: Vec<Order> = Vec::new();
+
+        let calc_required_shares_with_costs =
+            |diff_val: &CashValue, quote: &Quote| -> PortfolioQty {
+                let abs_val = diff_val.abs();
+                //Maximise the number of shares we can acquire/sell net of costs.
+                let trade_price: Price = if *diff_val > 0.0 {
+                    quote.ask
+                } else {
+                    quote.bid
+                };
+                let res = brkr.calc_trade_impact(&abs_val, &trade_price, true);
+                (res.0 / res.1).floor()
+            };
+
+        for symbol in target_weights.keys() {
+            let curr_val = brkr.get_position_value(&symbol).unwrap_or_default();
+            //Iterating over target_weights so will always find value
+            let target_val = total_value * *target_weights.get(&symbol).unwrap();
+            let diff_val = target_val - curr_val;
+            if diff_val == 0.0 {
+                break;
+            }
+
+            //This is implementation detail, for a simulation we prefer immediate panic
+            let quote = brkr
+                .get_quote(&symbol)
+                .expect("Can't find quote for symbol");
+            let net_target_shares = calc_required_shares_with_costs(&diff_val, &quote);
+            if diff_val > 0.0 {
+                buy_orders.push(Order::new(
+                    OrderType::MarketBuy,
+                    symbol.clone(),
+                    net_target_shares,
+                    None,
+                ));
+            } else {
+                sell_orders.push(Order::new(
+                    OrderType::MarketSell,
+                    symbol.clone(),
+                    net_target_shares,
+                    None,
+                ));
+            }
+        }
+        //Sell orders have to be executed before buy orders
+        orders.extend(sell_orders);
+        orders.extend(buy_orders);
+        orders
+    }
 }
 
 #[cfg(test)]
