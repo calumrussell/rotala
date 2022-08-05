@@ -53,6 +53,7 @@ pub struct StrategyPerformance {
     cash_flow: Vec<CashValue>,
 }
 
+#[derive(Clone)]
 pub struct PerfStruct {
     pub ret: f64,
     pub cagr: f64,

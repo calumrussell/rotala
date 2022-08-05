@@ -64,6 +64,8 @@ The main priority in the near future, given the existing uses of the library, is
 
 # Change Log
 
+v0.1.4 - Added Clone to `PerfStruct`.
+
 v0.1.3 - Clock creation methods are more descriptive, and define more clearly what kind of frequency and time scale the clock should run at.
 
 v0.1.2 - Transfer traits in strategy now return events to caller that communicate the result of the operation.
