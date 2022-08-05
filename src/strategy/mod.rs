@@ -39,8 +39,15 @@ pub trait Strategy: TransferTo + Clone {
     fn get_perf(&self) -> PerfStruct;
 }
 
+pub enum StrategyEvent {
+    //Mirrors BrokerEvent
+    WithdrawSuccess(CashValue),
+    WithdrawFailure(CashValue),
+    DepositSuccess(CashValue),
+}
+
 pub trait TransferTo {
-    fn deposit_cash(&mut self, cash: &CashValue);
+    fn deposit_cash(&mut self, cash: &CashValue) -> StrategyEvent;
 }
 
 pub trait Audit {
@@ -49,8 +56,8 @@ pub trait Audit {
 }
 
 pub trait TransferFrom {
-    fn withdraw_cash(&mut self, cash: &CashValue);
-    fn withdraw_cash_with_liquidation(&mut self, cash: &CashValue);
+    fn withdraw_cash(&mut self, cash: &CashValue) -> StrategyEvent;
+    fn withdraw_cash_with_liquidation(&mut self, cash: &CashValue) -> StrategyEvent;
 }
 
 pub struct StaticWeightStrategyBuilder<T: DataSource> {
@@ -169,29 +176,35 @@ impl<T: DataSource> Strategy for StaticWeightStrategy<T> {
 }
 
 impl<T: DataSource> TransferTo for StaticWeightStrategy<T> {
-    fn deposit_cash(&mut self, cash: &CashValue) {
+        fn deposit_cash(&mut self, cash: &CashValue)  -> StrategyEvent {
         info!("STRATEGY: Depositing {:?} into strategy", cash);
         self.brkr.deposit_cash(*cash);
         self.net_cash_flow += *cash;
+        StrategyEvent::DepositSuccess(*cash)
     }
 }
 
 impl<T: DataSource> TransferFrom for StaticWeightStrategy<T> {
-    fn withdraw_cash(&mut self, cash: &CashValue) {
+    fn withdraw_cash(&mut self, cash: &CashValue) -> StrategyEvent {
         if let BrokerEvent::WithdrawSuccess(withdrawn) = self.brkr.withdraw_cash(*cash) {
             info!("STRATEGY: Succesfully withdrew {:?} from strategy", cash);
             self.net_cash_flow -= withdrawn;
+            return StrategyEvent::WithdrawSuccess(*cash);
         }
         info!("STRATEGY: Failed to withdraw {:?} from strategy", cash);
+        StrategyEvent::WithdrawFailure(*cash)
     }
-    fn withdraw_cash_with_liquidation(&mut self, cash: &CashValue) {
+
+    fn withdraw_cash_with_liquidation(&mut self, cash: &CashValue) -> StrategyEvent {
         if let BrokerEvent::WithdrawSuccess(withdrawn) =
             //No logging here because the implementation is fully logged due to the greater
             //complexity of this task vs standard withdraw
             BrokerCalculations::withdraw_cash_with_liquidation(cash, &mut self.brkr)
         {
             self.net_cash_flow -= withdrawn;
+            return StrategyEvent::WithdrawSuccess(*cash);
         }
+        StrategyEvent::WithdrawFailure(*cash)
     }
 }
 

@@ -10,7 +10,7 @@ use alator::input::{HashMapInput, HashMapInputBuilder, QuotesHashMap};
 use alator::perf::PerfStruct;
 use alator::sim::broker::{SimulatedBroker, SimulatedBrokerBuilder};
 use alator::simcontext::SimContextBuilder;
-use alator::strategy::{Strategy, TransferTo};
+use alator::strategy::{Strategy, StrategyEvent, TransferTo};
 use alator::types::CashValue;
 
 /* Get the data from Binance, build quote from open and close of candle, insert the quotes into
@@ -139,8 +139,9 @@ struct MovingAverageStrategy {
 }
 
 impl TransferTo for MovingAverageStrategy {
-    fn deposit_cash(&mut self, cash: &CashValue) {
+    fn deposit_cash(&mut self, cash: &CashValue) -> StrategyEvent {
         self.brkr.deposit_cash(cash.clone());
+        StrategyEvent::DepositSuccess(*cash)
     }
 }
 

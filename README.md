@@ -64,4 +64,6 @@ The main priority in the near future, given the existing uses of the library, is
 
 # Change Log
 
-v.0.1.1 - Added test case showing how to create data source. Changed behaviour of `PositionInfo`.`get_portfolio_qty` so that ambiguous zero values aren't shown to client. 
+v0.1.2 - Transfer traits in strategy now return events to caller that communicate the result of the operation.
+
+v0.1.1 - Added test case showing how to create data source. Changed behaviour of `PositionInfo`.`get_portfolio_qty` so that ambiguous zero values aren't shown to client. 
