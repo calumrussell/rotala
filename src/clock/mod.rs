@@ -111,6 +111,18 @@ mod tests {
     }
 
     #[test]
+    fn test_that_clock_created_from_fixed_peeks_correctly() {
+        let start = 1;
+        let end = start + (3 * 86400);
+        let clock = ClockBuilder::from_fixed(start.into(), end.into()).daily();
+        let mut dates: Vec<i64> = Vec::new();
+        for date in clock.borrow().peek() {
+            dates.push(i64::from(date));
+        }
+        assert!(dates == vec![1, 86401, 172801, 259201]);
+    }
+
+    #[test]
     fn test_that_clock_created_from_length_peeks_correctly() {
         //Should run for the length given + 1
         let clock = ClockBuilder::from_length_seconds(&(1.into()), 10).every_second();
