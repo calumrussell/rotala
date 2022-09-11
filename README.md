@@ -64,6 +64,8 @@ The main priority in the near future, given the existing uses of the library, is
 
 # Change Log
 
+v0.1.6 - When broker attempts to query the value of a security without price and fails to find a quote for the current time, it will use the cached last seen bid instead of returning no value. This has changed the mutability guarantees of certain operations - for example, get_position_value - that sound like they should be immutable. Added tests to verify working functionality.
+
 v0.1.5 - Backtest won't panic when the client generates target weights containing a security without a quote for the current date. Assumes that the client knows that the security will be tradable at some point, just not today (for example, weekends). If the client has created a target weight for a non-existent security, no error will be thrown. This reversion is required to account for non-trading days/bank holidays/etc. without requiring an ex-ante calculation of these dates. Added test cases for this scenario, added test to panic when diffing against a zero-value broker, added test to verify the behaviour of ClockBuilder when creating a fixed date Clock.
 
 v0.1.4 - Added Clone to `PerfStruct`.
