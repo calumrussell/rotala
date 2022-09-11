@@ -344,6 +344,9 @@ impl BrokerCalculations {
         //costs
         info!("STRATEGY: Calculating diff of current allocation vs. target");
         let total_value = brkr.get_liquidation_value();
+        if total_value == 0.0 {
+            panic!("Client is attempting to trade a portfolio with zero value");
+        }
         let mut orders: Vec<Order> = Vec::new();
 
         let mut buy_orders: Vec<Order> = Vec::new();
@@ -433,6 +436,25 @@ mod tests {
         clock.borrow_mut().tick();
         let orders = BrokerCalculations::diff_brkr_against_target_weights(&weights, &brkr);
         assert!(orders.len() == 1);
+    }
+
+    #[test]
+    #[should_panic]
+    fn diff_panics_if_brkr_has_no_cash() {
+        //If we get to a point where the client is diffing without cash, we can assume that no further operations are possible
+        //and we should panic
+        let clock = ClockBuilder::from_length_days(&(0.into()), 10).daily();
+        let input = fake_data_generator(Rc::clone(&clock));
+
+        let mut brkr = SimulatedBrokerBuilder::new()
+            .with_data(input)
+            .build();
+
+        let mut weights = PortfolioAllocation::new();
+        weights.insert("ABC", &1.0.into());
+
+        clock.borrow_mut().tick();
+        BrokerCalculations::diff_brkr_against_target_weights(&weights, &brkr);
     }
  
     #[test]
