@@ -206,14 +206,17 @@ pub trait TransferCash {
 pub trait PositionInfo {
     //Position qty can always return a value, if we don't have the position then qty is 0
     fn get_position_qty(&self, symbol: &str) -> Option<&PortfolioQty>;
-    fn get_position_value(&self, symbol: &str) -> Option<CashValue>;
+    //This mutates because the broker needs to keep track of prices last seen
+    fn get_position_value(&mut self, symbol: &str) -> Option<CashValue>;
     fn get_position_cost(&self, symbol: &str) -> Option<Price>;
     fn get_position_liquidation_value(&self, symbol: &str) -> Option<CashValue>;
     fn get_position_profit(&self, symbol: &str) -> Option<CashValue>;
     fn get_liquidation_value(&self) -> CashValue;
-    fn get_total_value(&self) -> CashValue;
+    //Mutates because it calls get_position_value
+    fn get_total_value(&mut self) -> CashValue;
     fn get_positions(&self) -> Vec<String>;
-    fn get_values(&self) -> PortfolioValues;
+    //Mutates because it calls get_position_value
+    fn get_values(&mut self) -> PortfolioValues;
     fn get_holdings(&self) -> PortfolioHoldings;
 }
 
@@ -336,9 +339,10 @@ impl BrokerCalculations {
     //Calculates the diff between the current state of the portfolio within broker, and the
     //target_weights passed into the function.
     //Returns orders so calling function has control over when orders are executed
+    //Requires mutable reference to brkr because it calls get_position_value
     pub fn diff_brkr_against_target_weights<T: PositionInfo + TradeCost + GetsQuote>(
         target_weights: &PortfolioAllocation<PortfolioWeight>,
-        brkr: &T,
+        brkr: &mut T,
     ) -> Vec<Order> {
         //Need liquidation value so we definitely have enough money to make all transactions after
         //costs
@@ -353,7 +357,7 @@ impl BrokerCalculations {
         let mut sell_orders: Vec<Order> = Vec::new();
 
         let calc_required_shares_with_costs =
-            |diff_val: &CashValue, quote: &Quote| -> PortfolioQty {
+            |diff_val: &CashValue, quote: &Quote, brkr: & T| -> PortfolioQty {
                 let abs_val = diff_val.abs();
                 //Maximise the number of shares we can acquire/sell net of costs.
                 let trade_price: Price = if *diff_val > 0.0 {
@@ -377,7 +381,7 @@ impl BrokerCalculations {
             //We do not throw an error here, we just proceed assuming that the client has passed in data that will
             //eventually prove correct if we are missing quotes for the current time.
             if let Some(quote) = brkr.get_quote(&symbol) {
-                let net_target_shares = calc_required_shares_with_costs(&diff_val, &quote);
+                let net_target_shares = calc_required_shares_with_costs(&diff_val, &quote, &brkr);
                 if diff_val > 0.0 {
                     buy_orders.push(Order::new(
                         OrderType::MarketBuy,
@@ -434,7 +438,7 @@ mod tests {
 
         brkr.deposit_cash(100_000.0.into());
         clock.borrow_mut().tick();
-        let orders = BrokerCalculations::diff_brkr_against_target_weights(&weights, &brkr);
+        let orders = BrokerCalculations::diff_brkr_against_target_weights(&weights, &mut brkr);
         assert!(orders.len() == 1);
     }
 
@@ -454,7 +458,7 @@ mod tests {
         weights.insert("ABC", &1.0.into());
 
         clock.borrow_mut().tick();
-        BrokerCalculations::diff_brkr_against_target_weights(&weights, &brkr);
+        BrokerCalculations::diff_brkr_against_target_weights(&weights, &mut brkr);
     }
  
     #[test]

@@ -1,5 +1,6 @@
 use core::panic;
 use log::info;
+use std::collections::HashMap;
 
 use super::orderbook::SimOrderBook;
 use crate::broker::record::BrokerLog;
@@ -36,6 +37,7 @@ impl<T: DataSource> SimulatedBrokerBuilder<T> {
             cash: CashValue::from(0.0),
             log,
             trade_costs: self.trade_costs.clone(),
+            last_price: HashMap::new(),
         }
     }
 
@@ -79,6 +81,13 @@ impl<T: DataSource> Default for SimulatedBrokerBuilder<T> {
 ///the `BrokerLog` are stored in the `BrokerRecordedEvent` enum in broker/mod.rs.
 ///
 ///Rules used to validate and execute trades are stored in broker/rules.rs.
+/// 
+/// `last_price` stores the last seen price for a security that is in the portfolio. If we are
+/// unable to find a current quote for a security, this value is used to provide a valuation.
+/// We update `last_price` when a security enters the portfolio, and when a quote is successfully
+/// retrieved. We do not need to worry about removing values because the queries are generated
+/// only for values that are in the portfolio i.e. when a security is removed, the broker will
+/// stop using the query. No method should, therefore, iterate over these values.
 #[derive(Clone, Debug)]
 pub struct SimulatedBroker<T: DataSource> {
     data: T,
@@ -87,6 +96,7 @@ pub struct SimulatedBroker<T: DataSource> {
     cash: CashValue,
     log: BrokerLog,
     trade_costs: Vec<BrokerCost>,
+    last_price: HashMap<String, Price>,
 }
 
 impl<T: DataSource> SimulatedBroker<T> {
@@ -243,7 +253,7 @@ impl<T: DataSource> PositionInfo for SimulatedBroker<T> {
         None
     }
 
-    fn get_position_value(&self, symbol: &str) -> Option<CashValue> {
+    fn get_position_value(&mut self, symbol: &str) -> Option<CashValue> {
         //TODO: we need to introduce some kind of distinction between short and long
         //      positions.
         if let Some(quote) = self.get_quote(symbol) {
@@ -251,11 +261,19 @@ impl<T: DataSource> PositionInfo for SimulatedBroker<T> {
             if let Some(qty) = self.get_position_qty(symbol) {
                 return Some(price * *qty);
             }
+            self.last_price.insert(quote.symbol.clone(), price.clone());
+        } else {
+            //Unable to find a quote, but we were able to find a last price
+            if let Some(price) = self.last_price.get(symbol) {
+                if let Some(qty) = self.get_position_qty(symbol) {
+                    return Some(*price * *qty);
+                }
+            }
         }
         None
     }
 
-    fn get_total_value(&self) -> CashValue {
+    fn get_total_value(&mut self) -> CashValue {
         let assets = self.get_positions();
         let mut value = self.get_cash_balance();
         for a in assets {
@@ -284,7 +302,7 @@ impl<T: DataSource> PositionInfo for SimulatedBroker<T> {
         self.holdings.clone()
     }
 
-    fn get_values(&self) -> PortfolioValues {
+    fn get_values(&mut self) -> PortfolioValues {
         let mut holdings = PortfolioValues::new();
         let assets = self.get_positions();
         for a in assets {
@@ -333,9 +351,14 @@ impl<T: DataSource> ExecutesOrder for SimulatedBroker<T> {
 
             match OrderExecutionRules::run_all(order, &price, &date, self) {
                 Ok(trade) => {
+                    //The price could differ from the quote in practice if we add slippage, so we want to use the trade price where
+                    //possible
                     let price = trade.value / trade.quantity;
                     info!("BROKER: Successfully executed {:?} trade for {:?} shares at {:?} in {:?} for total of {:?}", trade.typ, trade.quantity, f64::from(price), trade.symbol, trade.value);
                     self.log.record(trade.clone());
+                    //We use the old quote here, which doesn't include slippage, because we need the value not the purchase price so
+                    //we need to factor in the spread. This is not totally accurate but should be close.
+                    self.last_price.insert(trade.symbol.clone(), quote.bid.clone());
                     BrokerEvent::TradeSuccess(trade)
                 }
                 Err(e) => {
@@ -853,5 +876,75 @@ mod tests {
             None,
         );
         brkr.execute_order(&order);
+    }
+
+    #[test]
+    fn test_that_broker_uses_last_value_if_it_fails_to_find_quote() {
+        //If the broker cannot find a quote in the current period for a stock, it automatically
+        //uses a value of zero. This is a problem because the current time could a weekend or
+        //bank holiday, and if the broker is attempting to value the portfolio on that day
+        //they will ask for a quote, not find one, and then use a value of zero which is
+        //incorrect.
+
+        let mut prices: HashMap<DateTime, Vec<Quote>> = HashMap::new();
+        let dividends: HashMap<DateTime, Vec<Dividend>> = HashMap::new();
+        let quote = Quote {
+            bid: 100.00.into(),
+            ask: 101.00.into(),
+            date: 100.into(),
+            symbol: String::from("ABC"),
+        };
+        let quote1 = Quote {
+            bid: 10.00.into(),
+            ask: 11.00.into(),
+            date: 100.into(),
+            symbol: String::from("BCD"),
+        };
+        let quote2 = Quote {
+            bid: 104.00.into(),
+            ask: 105.00.into(),
+            date: 101.into(),
+            symbol: String::from("ABC"),
+        };
+        prices.insert(100.into(), vec![quote, quote1]);
+        //We are missing a quote for BCD on 101, but the broker should return the last seen value
+        prices.insert(101.into(), vec![quote2]);
+        let clock = ClockBuilder::from_fixed(100.into(), 101.into()).every_second();
+
+        let source = HashMapInputBuilder::new()
+            .with_quotes(prices)
+            .with_dividends(dividends)
+            .with_clock(Rc::clone(&clock))
+            .build();
+
+        let mut brkr = SimulatedBrokerBuilder::new()
+            .with_data(source)
+            .with_trade_costs(vec![BrokerCost::Flat(1.0.into())])
+            .build();
+
+        brkr.deposit_cash(100_000.0.into());
+
+        let order = Order::new(
+            OrderType::MarketBuy,
+            String::from("ABC"),
+            100.0.into(),
+            None,
+        );
+        brkr.execute_order(&order);
+
+        let order1 = Order::new(
+            OrderType::MarketBuy,
+            String::from("BCD"),
+            100.0.into(),
+            None,
+        );
+        brkr.execute_order(&order1);
+
+        clock.borrow_mut().tick();
+
+        let value = brkr.get_position_value("BCD").unwrap();
+        println!("{:?}", value);
+        //We test against the bid price, which gives us the value exclusive of the price paid at ask
+        assert!(value == 10.0 * 100.0);
     }
 }

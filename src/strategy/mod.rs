@@ -138,7 +138,7 @@ pub struct StaticWeightStrategy<T: DataSource> {
 }
 
 impl<T: DataSource> StaticWeightStrategy<T> {
-    pub fn get_snapshot(&self) -> StrategySnapshot {
+    pub fn get_snapshot(&mut self) -> StrategySnapshot {
         StrategySnapshot {
             date: self.clock.borrow().now(),
             value: self.brkr.get_total_value(),
@@ -158,7 +158,7 @@ impl<T: DataSource> Strategy for StaticWeightStrategy<T> {
         if DefaultTradingSchedule::should_trade(&self.clock.borrow().now()) {
             let orders = BrokerCalculations::diff_brkr_against_target_weights(
                 &self.target_weights,
-                &self.brkr,
+                &mut self.brkr,
             );
             if !orders.is_empty() {
                 self.brkr.execute_orders(orders);
