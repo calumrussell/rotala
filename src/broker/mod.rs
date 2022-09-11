@@ -203,19 +203,18 @@ pub trait TransferCash {
     fn get_cash_balance(&self) -> CashValue;
 }
 
+//Mutates because we have to call get_position_value
 pub trait PositionInfo {
     //Position qty can always return a value, if we don't have the position then qty is 0
     fn get_position_qty(&self, symbol: &str) -> Option<&PortfolioQty>;
     //This mutates because the broker needs to keep track of prices last seen
     fn get_position_value(&mut self, symbol: &str) -> Option<CashValue>;
     fn get_position_cost(&self, symbol: &str) -> Option<Price>;
-    fn get_position_liquidation_value(&self, symbol: &str) -> Option<CashValue>;
-    fn get_position_profit(&self, symbol: &str) -> Option<CashValue>;
-    fn get_liquidation_value(&self) -> CashValue;
-    //Mutates because it calls get_position_value
+    fn get_position_liquidation_value(&mut self, symbol: &str) -> Option<CashValue>;
+    fn get_position_profit(&mut self, symbol: &str) -> Option<CashValue>;
+    fn get_liquidation_value(&mut self) -> CashValue;
     fn get_total_value(&mut self) -> CashValue;
     fn get_positions(&self) -> Vec<String>;
-    //Mutates because it calls get_position_value
     fn get_values(&mut self) -> PortfolioValues;
     fn get_holdings(&self) -> PortfolioHoldings;
 }

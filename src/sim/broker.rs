@@ -217,18 +217,13 @@ impl<T: DataSource> PositionInfo for SimulatedBroker<T> {
         self.log.cost_basis(symbol)
     }
 
-    fn get_position_profit(&self, symbol: &str) -> Option<CashValue> {
+    fn get_position_profit(&mut self, symbol: &str) -> Option<CashValue> {
         if let Some(cost) = self.log.cost_basis(symbol) {
-            if let Some(price) = self.get_quote(symbol) {
-                //Once we get to this point we can unwrap safely
-                let qty = *self.get_position_qty(symbol).unwrap();
-                let profit: Price = if qty > 0.0 {
-                    price.bid - cost
-                } else {
-                    price.ask - cost
-                };
-                //Profit in CashValue
-                return Some(profit * qty);
+            if let Some(position_value) = self.get_position_value(symbol) {
+                if let Some(qty) = self.get_position_qty(symbol) {
+                    let price = position_value / *qty;
+                    return Some(*qty * (price-cost));
+                }
             }
         }
         None
@@ -238,16 +233,16 @@ impl<T: DataSource> PositionInfo for SimulatedBroker<T> {
         self.holdings.get(symbol)
     }
 
-    fn get_position_liquidation_value(&self, symbol: &str) -> Option<CashValue> {
+    fn get_position_liquidation_value(&mut self, symbol: &str) -> Option<CashValue> {
         //TODO: we need to introduce some kind of distinction between short and long
         //      positions.
-        if let Some(quote) = self.get_quote(symbol) {
-            let price = quote.bid;
+        if let Some(position_value) = self.get_position_value(symbol) {
             if let Some(qty) = self.get_position_qty(symbol) {
-                let position_value = price * *qty;
+                let price = position_value / *qty;
                 let (value_after_costs, _price_after_costs) =
                     self.calc_trade_impact(&position_value, &price, false);
                 return Some(value_after_costs);
+
             }
         }
         None
@@ -256,18 +251,22 @@ impl<T: DataSource> PositionInfo for SimulatedBroker<T> {
     fn get_position_value(&mut self, symbol: &str) -> Option<CashValue> {
         //TODO: we need to introduce some kind of distinction between short and long
         //      positions.
-        if let Some(quote) = self.get_quote(symbol) {
-            let price = quote.bid;
+
+        let maybe_price: Option<Price> = match self.get_quote(symbol) {
+            Some(quote) => Some(quote.bid),
+            None => {
+                if let Some(price) = self.last_price.get(symbol) {
+                    Some(price.clone())
+                } else {
+                    None
+                }
+            }
+        };
+
+        if let Some(price) = maybe_price {
+            self.last_price.insert(symbol.to_string(), price);
             if let Some(qty) = self.get_position_qty(symbol) {
                 return Some(price * *qty);
-            }
-            self.last_price.insert(quote.symbol, price);
-        } else {
-            //Unable to find a quote, but we were able to find a last price
-            if let Some(price) = self.last_price.get(symbol) {
-                if let Some(qty) = self.get_position_qty(symbol) {
-                    return Some(*price * *qty);
-                }
             }
         }
         None
@@ -284,7 +283,7 @@ impl<T: DataSource> PositionInfo for SimulatedBroker<T> {
         value
     }
 
-    fn get_liquidation_value(&self) -> CashValue {
+    fn get_liquidation_value(&mut self) -> CashValue {
         let mut value = self.get_cash_balance();
         for asset in self.get_positions() {
             if let Some(asset_value) = self.get_position_liquidation_value(&asset) {
@@ -907,10 +906,26 @@ mod tests {
             date: 101.into(),
             symbol: String::from("ABC"),
         };
+        let quote4 = Quote {
+            bid: 104.00.into(),
+            ask: 105.00.into(),
+            date: 102.into(),
+            symbol: String::from("ABC"),
+        };
+        let quote5 = Quote {
+            bid: 12.00.into(),
+            ask: 13.00.into(),
+            date: 102.into(),
+            symbol: String::from("BCD"),
+        };
+ 
         prices.insert(100.into(), vec![quote, quote1]);
         //We are missing a quote for BCD on 101, but the broker should return the last seen value
         prices.insert(101.into(), vec![quote2]);
-        let clock = ClockBuilder::from_fixed(100.into(), 101.into()).every_second();
+        //And when we check the next date, it updates correctly
+        prices.insert(102.into(), vec![quote4, quote5]);
+  
+        let clock = ClockBuilder::from_fixed(100.into(), 102.into()).every_second();
 
         let source = HashMapInputBuilder::new()
             .with_quotes(prices)
@@ -947,5 +962,12 @@ mod tests {
         println!("{:?}", value);
         //We test against the bid price, which gives us the value exclusive of the price paid at ask
         assert!(value == 10.0 * 100.0);
+
+        clock.borrow_mut().tick();
+
+        let value1 = brkr.get_position_value("BCD").unwrap();
+        println!("{:?}", value1);
+        assert!(value1 == 12.0 * 100.0);
+ 
     }
 }
