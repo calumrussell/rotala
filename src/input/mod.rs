@@ -1,7 +1,7 @@
+use rand::distributions::{Distribution, Uniform};
+use rand::thread_rng;
 use std::collections::HashMap;
 use std::rc::Rc;
-use rand::thread_rng;
-use rand::distributions::{Distribution, Uniform};
 
 use crate::broker::{Dividend, Quote};
 use crate::clock::Clock;

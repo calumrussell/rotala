@@ -81,7 +81,7 @@ impl<T: DataSource> Default for SimulatedBrokerBuilder<T> {
 ///the `BrokerLog` are stored in the `BrokerRecordedEvent` enum in broker/mod.rs.
 ///
 ///Rules used to validate and execute trades are stored in broker/rules.rs.
-/// 
+///
 /// `last_price` stores the last seen price for a security that is in the portfolio. If we are
 /// unable to find a current quote for a security, this value is used to provide a valuation.
 /// We update `last_price` when a security enters the portfolio, and when a quote is successfully
@@ -261,7 +261,7 @@ impl<T: DataSource> PositionInfo for SimulatedBroker<T> {
             if let Some(qty) = self.get_position_qty(symbol) {
                 return Some(price * *qty);
             }
-            self.last_price.insert(quote.symbol.clone(), price.clone());
+            self.last_price.insert(quote.symbol, price);
         } else {
             //Unable to find a quote, but we were able to find a last price
             if let Some(price) = self.last_price.get(symbol) {
@@ -358,7 +358,8 @@ impl<T: DataSource> ExecutesOrder for SimulatedBroker<T> {
                     self.log.record(trade.clone());
                     //We use the old quote here, which doesn't include slippage, because we need the value not the purchase price so
                     //we need to factor in the spread. This is not totally accurate but should be close.
-                    self.last_price.insert(trade.symbol.clone(), quote.bid.clone());
+                    self.last_price
+                        .insert(trade.symbol.clone(), quote.bid);
                     BrokerEvent::TradeSuccess(trade)
                 }
                 Err(e) => {
@@ -416,7 +417,7 @@ impl<T: DataSource> CanUpdate for SimulatedBroker<T> {
         if *change == 0.0 {
             self.holdings.remove(symbol);
         } else {
-            self.holdings.insert(symbol, &*change);
+            self.holdings.insert(symbol, change);
         }
     }
 }

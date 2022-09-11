@@ -357,7 +357,7 @@ impl BrokerCalculations {
         let mut sell_orders: Vec<Order> = Vec::new();
 
         let calc_required_shares_with_costs =
-            |diff_val: &CashValue, quote: &Quote, brkr: & T| -> PortfolioQty {
+            |diff_val: &CashValue, quote: &Quote, brkr: &T| -> PortfolioQty {
                 let abs_val = diff_val.abs();
                 //Maximise the number of shares we can acquire/sell net of costs.
                 let trade_price: Price = if *diff_val > 0.0 {
@@ -381,7 +381,7 @@ impl BrokerCalculations {
             //We do not throw an error here, we just proceed assuming that the client has passed in data that will
             //eventually prove correct if we are missing quotes for the current time.
             if let Some(quote) = brkr.get_quote(&symbol) {
-                let net_target_shares = calc_required_shares_with_costs(&diff_val, &quote, &brkr);
+                let net_target_shares = calc_required_shares_with_costs(&diff_val, &quote, brkr);
                 if diff_val > 0.0 {
                     buy_orders.push(Order::new(
                         OrderType::MarketBuy,
@@ -409,13 +409,13 @@ impl BrokerCalculations {
 #[cfg(test)]
 mod tests {
 
-    use std::rc::Rc;
     use crate::clock::ClockBuilder;
+    use crate::input::fake_data_generator;
     use crate::sim::broker::SimulatedBrokerBuilder;
     use crate::types::PortfolioAllocation;
-    use crate::input::fake_data_generator;
+    use std::rc::Rc;
 
-    use super::{BrokerCost, BrokerCalculations, TransferCash};
+    use super::{BrokerCalculations, BrokerCost, TransferCash};
 
     #[test]
     fn diff_continues_if_security_missing() {
@@ -425,9 +425,7 @@ mod tests {
         let clock = ClockBuilder::from_length_days(&(0.into()), 10).daily();
         let input = fake_data_generator(Rc::clone(&clock));
 
-        let mut brkr = SimulatedBrokerBuilder::new()
-            .with_data(input)
-            .build();
+        let mut brkr = SimulatedBrokerBuilder::new().with_data(input).build();
 
         let mut weights = PortfolioAllocation::new();
         weights.insert("ABC", &0.5.into());
@@ -450,9 +448,7 @@ mod tests {
         let clock = ClockBuilder::from_length_days(&(0.into()), 10).daily();
         let input = fake_data_generator(Rc::clone(&clock));
 
-        let mut brkr = SimulatedBrokerBuilder::new()
-            .with_data(input)
-            .build();
+        let mut brkr = SimulatedBrokerBuilder::new().with_data(input).build();
 
         let mut weights = PortfolioAllocation::new();
         weights.insert("ABC", &1.0.into());
@@ -460,7 +456,7 @@ mod tests {
         clock.borrow_mut().tick();
         BrokerCalculations::diff_brkr_against_target_weights(&weights, &mut brkr);
     }
- 
+
     #[test]
     fn can_estimate_trade_costs_of_proposed_trade() {
         let pershare = BrokerCost::PerShare(0.1.into());
