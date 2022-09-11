@@ -1,4 +1,7 @@
 use std::collections::HashMap;
+use std::rc::Rc;
+use rand::thread_rng;
+use rand::distributions::{Distribution, Uniform};
 
 use crate::broker::{Dividend, Quote};
 use crate::clock::Clock;
@@ -100,4 +103,32 @@ impl Default for HashMapInputBuilder {
     fn default() -> Self {
         Self::new()
     }
+}
+
+pub fn fake_data_generator(clock: Clock) -> HashMapInput {
+    let price_dist = Uniform::new(90.0, 100.0);
+    let mut rng = thread_rng();
+
+    let mut raw_data: HashMap<DateTime, Vec<Quote>> = HashMap::new();
+    for date in clock.borrow().peek() {
+        let q1 = Quote {
+            bid: price_dist.sample(&mut rng).into(),
+            ask: price_dist.sample(&mut rng).into(),
+            date: i64::from(date).into(),
+            symbol: "ABC".to_string(),
+        };
+        let q2 = Quote {
+            bid: price_dist.sample(&mut rng).into(),
+            ask: price_dist.sample(&mut rng).into(),
+            date: i64::from(date).into(),
+            symbol: "BCD".to_string(),
+        };
+        raw_data.insert(i64::from(date).into(), vec![q1, q2]);
+    }
+
+    let source = HashMapInputBuilder::new()
+        .with_quotes(raw_data)
+        .with_clock(Rc::clone(&clock))
+        .build();
+    source
 }

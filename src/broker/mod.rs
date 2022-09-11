@@ -344,6 +344,9 @@ impl BrokerCalculations {
         //costs
         info!("STRATEGY: Calculating diff of current allocation vs. target");
         let total_value = brkr.get_liquidation_value();
+        if total_value == 0.0 {
+            panic!("Client is attempting to trade a portfolio with zero value");
+        }
         let mut orders: Vec<Order> = Vec::new();
 
         let mut buy_orders: Vec<Order> = Vec::new();
@@ -371,25 +374,25 @@ impl BrokerCalculations {
                 break;
             }
 
-            //This is implementation detail, for a simulation we prefer immediate panic
-            let quote = brkr
-                .get_quote(&symbol)
-                .expect("Can't find quote for symbol");
-            let net_target_shares = calc_required_shares_with_costs(&diff_val, &quote);
-            if diff_val > 0.0 {
-                buy_orders.push(Order::new(
-                    OrderType::MarketBuy,
-                    symbol.clone(),
-                    net_target_shares,
-                    None,
-                ));
-            } else {
-                sell_orders.push(Order::new(
-                    OrderType::MarketSell,
-                    symbol.clone(),
-                    net_target_shares,
-                    None,
-                ));
+            //We do not throw an error here, we just proceed assuming that the client has passed in data that will
+            //eventually prove correct if we are missing quotes for the current time.
+            if let Some(quote) = brkr.get_quote(&symbol) {
+                let net_target_shares = calc_required_shares_with_costs(&diff_val, &quote);
+                if diff_val > 0.0 {
+                    buy_orders.push(Order::new(
+                        OrderType::MarketBuy,
+                        symbol.clone(),
+                        net_target_shares,
+                        None,
+                    ));
+                } else {
+                    sell_orders.push(Order::new(
+                        OrderType::MarketSell,
+                        symbol.clone(),
+                        net_target_shares,
+                        None,
+                    ));
+                }
             }
         }
         //Sell orders have to be executed before buy orders
@@ -402,8 +405,58 @@ impl BrokerCalculations {
 #[cfg(test)]
 mod tests {
 
-    use super::BrokerCost;
+    use std::rc::Rc;
+    use crate::clock::ClockBuilder;
+    use crate::sim::broker::SimulatedBrokerBuilder;
+    use crate::types::PortfolioAllocation;
+    use crate::input::fake_data_generator;
 
+    use super::{BrokerCost, BrokerCalculations, TransferCash};
+
+    #[test]
+    fn diff_continues_if_security_missing() {
+        //In this scenario, the user has inserted incorrect information but this scenario can also occur if there is no quote
+        //for a given security on a certain date. We are interested in the latter case, not the former but it is more
+        //difficult to test for the latter, and the code should be the same.
+        let clock = ClockBuilder::from_length_days(&(0.into()), 10).daily();
+        let input = fake_data_generator(Rc::clone(&clock));
+
+        let mut brkr = SimulatedBrokerBuilder::new()
+            .with_data(input)
+            .build();
+
+        let mut weights = PortfolioAllocation::new();
+        weights.insert("ABC", &0.5.into());
+        //There is no quote for this security in the underlying data, code should make the assumption (that doesn't apply here)
+        //that there is some quote for this security at a later date and continues to generate order for ABC without throwing
+        //error
+        weights.insert("XYZ", &0.5.into());
+
+        brkr.deposit_cash(100_000.0.into());
+        clock.borrow_mut().tick();
+        let orders = BrokerCalculations::diff_brkr_against_target_weights(&weights, &brkr);
+        assert!(orders.len() == 1);
+    }
+
+    #[test]
+    #[should_panic]
+    fn diff_panics_if_brkr_has_no_cash() {
+        //If we get to a point where the client is diffing without cash, we can assume that no further operations are possible
+        //and we should panic
+        let clock = ClockBuilder::from_length_days(&(0.into()), 10).daily();
+        let input = fake_data_generator(Rc::clone(&clock));
+
+        let mut brkr = SimulatedBrokerBuilder::new()
+            .with_data(input)
+            .build();
+
+        let mut weights = PortfolioAllocation::new();
+        weights.insert("ABC", &1.0.into());
+
+        clock.borrow_mut().tick();
+        BrokerCalculations::diff_brkr_against_target_weights(&weights, &brkr);
+    }
+ 
     #[test]
     fn can_estimate_trade_costs_of_proposed_trade() {
         let pershare = BrokerCost::PerShare(0.1.into());
