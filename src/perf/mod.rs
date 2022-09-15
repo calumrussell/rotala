@@ -1,4 +1,4 @@
-use crate::series::TimeSeries;
+use crate::series::Series;
 use crate::types::{CashValue, DateTime};
 
 #[derive(Clone)]
@@ -8,9 +8,14 @@ enum DataFrequency {
     Yearly,
 }
 
-pub struct PortfolioCalculator;
+/// A set of calculations that relate to portfolios. For example, compounded annual
+/// growth rate. These calculations depend on the underlying representation of the data,
+/// such as asset class, so they are a higher-level than `Series` calculations.
+/// Calculations are intentionally stateless as it is up to the client to decide when
+/// the calculations are performed, and where the data for those calcs is stored.
+pub struct PortfolioCalculations;
 
-impl PortfolioCalculator {
+impl PortfolioCalculations {
     fn annualize_returns(ret: f64, periods: i32, frequency: &DataFrequency) -> f64 {
         match frequency {
             DataFrequency::Daily => ((1.0 + ret).powf(252_f64 / periods as f64)) - 1.0,
@@ -26,6 +31,61 @@ impl PortfolioCalculator {
             DataFrequency::Yearly => vol,
         }
     }
+
+    fn get_vol(portfolio_values: Vec<f64>, cash_flows: Vec<f64>, freq: DataFrequency) -> f64 {
+        let rets = PortfolioCalculations::get_returns_with_cashflows(portfolio_values, cash_flows, None);
+        let vol = Series::vol(rets);
+        PortfolioCalculations::annualize_volatility(vol, &freq)
+    }
+
+    fn get_sharpe(portfolio_values: Vec<f64>, cash_flows: Vec<f64>, freq: DataFrequency) -> f64 {
+        let vol = PortfolioCalculations::get_vol(portfolio_values, cash_flows, freq);
+        let ret = PortfolioCalculations::get_portfolio_return(portfolio_values, cash_flows);
+        ret / vol
+    }
+
+    fn get_maxdd(portfolio_values: Vec<f64>) -> f64 {
+        Series::maxdd(portfolio_values)
+    }
+
+    fn get_cagr(portfolio_values: Vec<f64>, cash_flows: Vec<f64>, freq: DataFrequency) -> f64 {
+        let ret = PortfolioCalculations::get_portfolio_return(portfolio_values, cash_flows);
+        let days = portfolio_values.len() as i32;
+        PortfolioCalculations::annualize_returns(ret, days, &freq)
+    }
+
+    fn get_portfolio_return(portfolio_values: Vec<f64>, cash_flows: Vec<f64>) -> f64 {
+        let log_rets = PortfolioCalculations::get_returns_with_cashflows(portfolio_values, cash_flows, Some(true));
+        let sum_log_rets: f64 = log_rets.iter().sum();
+        sum_log_rets.exp() - 1.0
+    }
+
+    fn get_returns_with_cashflows(portfolio_values: Vec<f64>, cash_flows: Vec<f64>, is_log: Option<bool>) -> Vec<f64> {
+        let count = portfolio_values.len();
+        let mut rets: Vec<f64> = Vec::new();
+
+        if count.ne(&0) {
+            for i in 1..count {
+                let end = portfolio_values.get(i).unwrap();
+                let start = portfolio_values.get(i - 1).unwrap();
+
+                let cash_flow = cash_flows.get(i).unwrap();
+
+                let gain = end - start - f64::from(*cash_flow);
+                let capital = start + f64::from(*cash_flow);
+                let ret = gain / capital;
+                if is_log.is_some() && is_log.unwrap() {
+                    let log_ret = (1.0 + ret).ln();
+                    rets.push(log_ret);
+                } else {
+                    rets.push(ret);
+                }
+            }
+        }
+        rets
+    }
+
+
 }
 
 #[derive(Clone, Debug)]
