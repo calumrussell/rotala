@@ -44,10 +44,17 @@ impl PortfolioCalculations {
         ret / vol
     }
 
-    //TODO: this isn't right when there are cash flows but it requires a change to the 
-    //underlying algo in Series
-    fn get_maxdd(portfolio_values: &Vec<f64>) -> f64 {
-        Series::maxdd(portfolio_values)
+    fn get_maxdd(portfolio_values: &Vec<f64>, cash_flows: &Vec<f64>) -> f64 {
+        //Adds N to the runtime, can run faster but it isn't worth the time atm
+        let rets = PortfolioCalculations::get_returns_with_cashflows(portfolio_values, cash_flows, false);
+        let mut values_with_cashflows = vec![100_000.0];
+        for i in rets {
+            //Because we add one value on creation, we can always unwrap safely
+            let last_value = values_with_cashflows.last().unwrap();
+            let new_value = last_value * (1.0 + i);
+            values_with_cashflows.push(new_value);
+        }
+        Series::maxdd(&values_with_cashflows)
     }
 
     fn get_cagr(portfolio_values: &Vec<f64>, cash_flows: &Vec<f64>, freq: &DataFrequency) -> f64 {
@@ -134,7 +141,7 @@ impl StrategyPerformance {
             ret: PortfolioCalculations::get_portfolio_return(&self.values, &self.cash_flows),
             cagr: PortfolioCalculations::get_cagr(&self.values, &self.cash_flows, &self.freq),
             vol: PortfolioCalculations::get_vol(&self.values, &self.cash_flows, &self.freq),
-            mdd: PortfolioCalculations::get_maxdd(&self.values),
+            mdd: PortfolioCalculations::get_maxdd(&self.values, &self.cash_flows),
             sharpe: PortfolioCalculations::get_sharpe(&self.values, &self.cash_flows, &self.freq),
             values: self.values.clone(),
             returns: PortfolioCalculations::get_returns_with_cashflows(&self.values, &self.cash_flows, false),
