@@ -32,35 +32,37 @@ impl PortfolioCalculations {
         }
     }
 
-    fn get_vol(portfolio_values: Vec<f64>, cash_flows: Vec<f64>, freq: DataFrequency) -> f64 {
-        let rets = PortfolioCalculations::get_returns_with_cashflows(portfolio_values, cash_flows, None);
-        let vol = Series::vol(rets);
+    fn get_vol(portfolio_values: &Vec<f64>, cash_flows: &Vec<f64>, freq: &DataFrequency) -> f64 {
+        let rets = PortfolioCalculations::get_returns_with_cashflows(portfolio_values, cash_flows, false);
+        let vol = Series::vol(&rets);
         PortfolioCalculations::annualize_volatility(vol, &freq)
     }
 
-    fn get_sharpe(portfolio_values: Vec<f64>, cash_flows: Vec<f64>, freq: DataFrequency) -> f64 {
+    fn get_sharpe(portfolio_values: &Vec<f64>, cash_flows: &Vec<f64>, freq: &DataFrequency) -> f64 {
         let vol = PortfolioCalculations::get_vol(portfolio_values, cash_flows, freq);
         let ret = PortfolioCalculations::get_portfolio_return(portfolio_values, cash_flows);
         ret / vol
     }
 
-    fn get_maxdd(portfolio_values: Vec<f64>) -> f64 {
+    //TODO: this isn't right when there are cash flows but it requires a change to the 
+    //underlying algo in Series
+    fn get_maxdd(portfolio_values: &Vec<f64>) -> f64 {
         Series::maxdd(portfolio_values)
     }
 
-    fn get_cagr(portfolio_values: Vec<f64>, cash_flows: Vec<f64>, freq: DataFrequency) -> f64 {
+    fn get_cagr(portfolio_values: &Vec<f64>, cash_flows: &Vec<f64>, freq: &DataFrequency) -> f64 {
         let ret = PortfolioCalculations::get_portfolio_return(portfolio_values, cash_flows);
         let days = portfolio_values.len() as i32;
         PortfolioCalculations::annualize_returns(ret, days, &freq)
     }
 
-    fn get_portfolio_return(portfolio_values: Vec<f64>, cash_flows: Vec<f64>) -> f64 {
-        let log_rets = PortfolioCalculations::get_returns_with_cashflows(portfolio_values, cash_flows, Some(true));
+    fn get_portfolio_return(portfolio_values: &Vec<f64>, cash_flows: &Vec<f64>) -> f64 {
+        let log_rets = PortfolioCalculations::get_returns_with_cashflows(portfolio_values, cash_flows, true);
         let sum_log_rets: f64 = log_rets.iter().sum();
         sum_log_rets.exp() - 1.0
     }
 
-    fn get_returns_with_cashflows(portfolio_values: Vec<f64>, cash_flows: Vec<f64>, is_log: Option<bool>) -> Vec<f64> {
+    fn get_returns_with_cashflows(portfolio_values: &Vec<f64>, cash_flows: &Vec<f64>, is_log: bool) -> Vec<f64> {
         let count = portfolio_values.len();
         let mut rets: Vec<f64> = Vec::new();
 
@@ -74,7 +76,7 @@ impl PortfolioCalculations {
                 let gain = end - start - f64::from(*cash_flow);
                 let capital = start + f64::from(*cash_flow);
                 let ret = gain / capital;
-                if is_log.is_some() && is_log.unwrap() {
+                if is_log == true {
                     let log_ret = (1.0 + ret).ln();
                     rets.push(log_ret);
                 } else {
@@ -95,6 +97,18 @@ pub struct StrategySnapshot {
     pub net_cash_flow: CashValue,
 }
 
+#[derive(Clone)]
+pub struct PerfStruct {
+    pub ret: f64,
+    pub cagr: f64,
+    pub vol: f64,
+    pub mdd: f64,
+    pub sharpe: f64,
+    pub values: Vec<f64>,
+    pub returns: Vec<f64>,
+    pub dates: Vec<i64>,
+}
+
 ///Tracks the performance of a strategy and calculates simple performance statistics.
 ///
 ///Should be owned by a `Strategy` with the `Strategy` controlling and defining the update cycle.
@@ -107,96 +121,27 @@ pub struct StrategySnapshot {
 ///error-prone initializations at the cost of more indirection.
 #[derive(Clone)]
 pub struct StrategyPerformance {
-    values: TimeSeries,
     states: Vec<StrategySnapshot>,
+    dates: Vec<i64>,
+    values: Vec<f64>,
+    cash_flows: Vec<f64>,
     freq: DataFrequency,
-    cash_flow: Vec<CashValue>,
-}
-
-#[derive(Clone)]
-pub struct PerfStruct {
-    pub ret: f64,
-    pub cagr: f64,
-    pub vol: f64,
-    pub mdd: f64,
-    pub sharpe: f64,
-    pub values: Vec<f64>,
-    pub returns: Vec<f64>,
-    pub dates: Vec<f64>,
 }
 
 impl StrategyPerformance {
     pub fn get_output(&self) -> PerfStruct {
         PerfStruct {
-            ret: self.get_ret(),
-            cagr: self.get_cagr(),
-            vol: self.get_vol(),
-            mdd: self.get_maxdd(),
-            sharpe: self.get_sharpe(),
-            values: self.get_values(),
-            returns: self.get_returns(None),
-            dates: self.values.get_index(),
+            ret: PortfolioCalculations::get_portfolio_return(&self.values, &self.cash_flows),
+            cagr: PortfolioCalculations::get_cagr(&self.values, &self.cash_flows, &self.freq),
+            vol: PortfolioCalculations::get_vol(&self.values, &self.cash_flows, &self.freq),
+            mdd: PortfolioCalculations::get_maxdd(&self.values),
+            sharpe: PortfolioCalculations::get_sharpe(&self.values, &self.cash_flows, &self.freq),
+            values: self.values.clone(),
+            returns: PortfolioCalculations::get_returns_with_cashflows(&self.values, &self.cash_flows, false),
+            dates: self.dates.clone(),
         }
     }
-
-    fn get_values(&self) -> Vec<f64> {
-        self.values.get_values()
-    }
-
-    fn get_returns(&self, is_log: Option<bool>) -> Vec<f64> {
-        let portfolio_values = self.get_values();
-        let cash_flows = &self.cash_flow;
-        let count = portfolio_values.len();
-        let mut rets: Vec<f64> = Vec::new();
-
-        if count.ne(&0) {
-            for i in 1..count {
-                let end = portfolio_values.get(i).unwrap();
-                let start = portfolio_values.get(i - 1).unwrap();
-
-                let cash_flow = cash_flows.get(i).unwrap();
-
-                let gain = end - start - f64::from(*cash_flow);
-                let capital = start + f64::from(*cash_flow);
-                let ret = gain / capital;
-                if is_log.is_some() && is_log.unwrap() {
-                    let log_ret = (1.0 + ret).ln();
-                    rets.push(log_ret);
-                } else {
-                    rets.push(ret);
-                }
-            }
-        }
-        rets
-    }
-
-    fn get_vol(&self) -> f64 {
-        let rets = TimeSeries::new(None, self.get_returns(None));
-        PortfolioCalculator::annualize_volatility(rets.vol(), &self.freq)
-    }
-
-    fn get_sharpe(&self) -> f64 {
-        let vol = self.get_vol();
-        let ret = self.get_ret();
-        ret / vol
-    }
-
-    fn get_maxdd(&self) -> f64 {
-        self.values.maxdd()
-    }
-
-    fn get_cagr(&self) -> f64 {
-        let ret = self.get_ret();
-        let days = self.values.count() as i32;
-        PortfolioCalculator::annualize_returns(ret, days, &self.freq)
-    }
-
-    fn get_ret(&self) -> f64 {
-        let log_returns = self.get_returns(Some(true));
-        let sum_log_rets: f64 = log_returns.iter().sum();
-        sum_log_rets.exp() - 1.0
-    }
-
+    
     pub fn update(&mut self, state: &StrategySnapshot) {
         let mut last_net_cash_flow = CashValue::default();
         if !self.states.is_empty() {
@@ -204,9 +149,8 @@ impl StrategyPerformance {
             last_net_cash_flow += prev.net_cash_flow;
         }
 
-        //Adding portfolio value
-        self.values
-            .append(Some(i64::from(state.date) as f64), state.value.into());
+        self.values.push(f64::from(state.value));
+        self.dates.push(i64::from(state.date));
 
         //Copying whole portfolio state
         let copy_state = state.clone();
@@ -216,33 +160,36 @@ impl StrategyPerformance {
         //Can calculate this from change in state but
         //this makes it explicit and saves an iteration
         let chg_cash_flow = state.net_cash_flow - last_net_cash_flow;
-        self.cash_flow.push(chg_cash_flow);
+        self.cash_flows.push(chg_cash_flow.into());
     }
 
     pub fn yearly() -> Self {
         StrategyPerformance {
-            values: TimeSeries::new::<f64>(None, Vec::new()),
+            values: Vec::new(),
+            dates: Vec::new(),
             states: Vec::new(),
             freq: DataFrequency::Yearly,
-            cash_flow: Vec::new(),
+            cash_flows: Vec::new(),
         }
     }
 
     pub fn monthly() -> Self {
         StrategyPerformance {
-            values: TimeSeries::new::<f64>(None, Vec::new()),
+            values: Vec::new(),
+            dates: Vec::new(),
             states: Vec::new(),
             freq: DataFrequency::Monthly,
-            cash_flow: Vec::new(),
+            cash_flows: Vec::new(),
         }
     }
 
     pub fn daily() -> Self {
         StrategyPerformance {
-            values: TimeSeries::new::<f64>(None, Vec::new()),
+            values: Vec::new(),
+            dates: Vec::new(),
             states: Vec::new(),
             freq: DataFrequency::Daily,
-            cash_flow: Vec::new(),
+            cash_flows: Vec::new(),
         }
     }
 }
@@ -261,8 +208,8 @@ mod tests {
     use crate::types::{DateTime, PortfolioAllocation};
 
     use super::DataFrequency;
-    use super::PortfolioCalculator;
     use super::StrategyPerformance;
+    use super::PortfolioCalculations;
 
     fn setup() -> (SimulatedBroker<HashMapInput>, Clock) {
         let mut raw_data: HashMap<DateTime, Vec<Quote>> = HashMap::new();
@@ -345,38 +292,38 @@ mod tests {
     #[test]
     fn test_that_annualizations_calculate_correctly() {
         assert_eq!(
-            (PortfolioCalculator::annualize_returns(0.29, 252, &DataFrequency::Daily) * 100.0)
+            (PortfolioCalculations::annualize_returns(0.29, 252, &DataFrequency::Daily) * 100.0)
                 .round(),
             29.0
         );
         assert_eq!(
-            (PortfolioCalculator::annualize_returns(0.10, 4, &DataFrequency::Monthly) * 100.0)
+            (PortfolioCalculations::annualize_returns(0.10, 4, &DataFrequency::Monthly) * 100.0)
                 .round(),
             33.0
         );
         assert_eq!(
-            (PortfolioCalculator::annualize_returns(0.30, 3, &DataFrequency::Yearly) * 100.0)
+            (PortfolioCalculations::annualize_returns(0.30, 3, &DataFrequency::Yearly) * 100.0)
                 .round(),
             9.0
         );
         assert_eq!(
-            (PortfolioCalculator::annualize_returns(0.05, 126, &DataFrequency::Daily) * 100.0)
+            (PortfolioCalculations::annualize_returns(0.05, 126, &DataFrequency::Daily) * 100.0)
                 .round(),
             10.0
         );
 
         assert_eq!(
-            (PortfolioCalculator::annualize_volatility(0.01, &DataFrequency::Daily) * 100.0)
+            (PortfolioCalculations::annualize_volatility(0.01, &DataFrequency::Daily) * 100.0)
                 .round(),
             16.0
         );
         assert_eq!(
-            (PortfolioCalculator::annualize_volatility(0.05, &DataFrequency::Monthly) * 100.0)
+            (PortfolioCalculations::annualize_volatility(0.05, &DataFrequency::Monthly) * 100.0)
                 .round(),
             17.0
         );
         assert_eq!(
-            (PortfolioCalculator::annualize_volatility(0.27, &DataFrequency::Yearly) * 100.0)
+            (PortfolioCalculations::annualize_volatility(0.27, &DataFrequency::Yearly) * 100.0)
                 .round(),
             27.0
         );
@@ -460,8 +407,11 @@ mod tests {
         perf1.update(&snap4);
         perf1.update(&snap5);
 
-        let rets = f64::round(perf.get_ret() * 100.0);
-        let rets1 = f64::round(perf1.get_ret() * 100.0);
+        let portfolio_values = perf1.values;
+        let cash_flows = perf1.cash_flows;
+
+        let rets = f64::round(PortfolioCalculations::get_portfolio_return(&portfolio_values, &cash_flows) * 100.0);
+        let rets1 = f64::round(PortfolioCalculations::get_portfolio_return(&portfolio_values, &cash_flows) * 100.0);
         println!("{:?}", rets);
         println!("{:?}", rets1);
         assert!(rets == rets1);
