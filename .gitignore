@@ -2,3 +2,5 @@
 *.csv
 /.vscode
 Cargo.lock
+alator/
+antevorta/

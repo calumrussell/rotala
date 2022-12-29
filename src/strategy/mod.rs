@@ -2,15 +2,13 @@ use log::info;
 use std::rc::Rc;
 
 use crate::broker::{
-    BrokerCalculations, BrokerEvent, DividendPayment, EventLog, ExecutesOrder, PositionInfo, Trade,
-    TransferCash,
+    BacktestBroker, BrokerCalculations, DividendPayment, EventLog, Trade, TransferCash, BrokerCashEvent,
 };
 use crate::clock::Clock;
 use crate::input::DataSource;
-use crate::perf::{PerfStruct, StrategyPerformance, StrategySnapshot};
 use crate::schedule::{DefaultTradingSchedule, TradingSchedule};
-use crate::sim::broker::SimulatedBroker;
-use crate::types::{CashValue, DateTime, PortfolioAllocation, PortfolioWeight};
+use crate::sim::SimulatedBroker;
+use crate::types::{CashValue, PortfolioAllocation, StrategySnapshot};
 
 ///Strategies define an a set of operations that should be performed on some schedule to bring the
 ///broker passed to the strategy into the desired state.
@@ -24,7 +22,7 @@ use crate::types::{CashValue, DateTime, PortfolioAllocation, PortfolioWeight};
 ///not matter how these orders are created.
 ///
 ///The `StaticWeightStrategy` implementation has a reference to `Clock` but a direct reference is
-///not required to run the strategy, it is only used to update `StrategyPerformance`. Strategy
+///not required to run the strategy, it is only used to record the state for performance calcs. Strategy
 ///implementations should run idempotently, although some with a dependence on external data which
 ///has it's own state, without much additional state
 
@@ -35,10 +33,14 @@ use crate::types::{CashValue, DateTime, PortfolioAllocation, PortfolioWeight};
 ///`SimContext`.
 pub trait Strategy: TransferTo + Clone {
     fn update(&mut self) -> CashValue;
-    fn init(&mut self, initial_cash: &CashValue);
-    fn get_perf(&self) -> PerfStruct;
+    fn init(&mut self, initial_cash: &f64);
 }
 
+///Defines events that can be triggered by the client that modify the internal state of the
+///strategy somehow. This doesn't refer to internally-generated events such as order creation but
+///only events that the client can trigger at the start or during a simulation run.
+///
+///Only used for clients that implement [TransferTo] and/or [TransferFrom] traits.
 pub enum StrategyEvent {
     //Mirrors BrokerEvent
     WithdrawSuccess(CashValue),
@@ -46,29 +48,43 @@ pub enum StrategyEvent {
     DepositSuccess(CashValue),
 }
 
-pub trait TransferTo {
-    fn deposit_cash(&mut self, cash: &CashValue) -> StrategyEvent;
-}
-
+///Defines a set of functions on a strategy that reports events to clients. This is used
+///practically for tax calculations at the moment. Mirrors methods on broker.
 pub trait Audit {
-    fn trades_between(&self, start: &DateTime, end: &DateTime) -> Vec<Trade>;
-    fn dividends_between(&self, start: &DateTime, end: &DateTime) -> Vec<DividendPayment>;
+    fn trades_between(&self, start: &i64, end: &i64) -> Vec<Trade>;
+    fn dividends_between(&self, start: &i64, end: &i64) -> Vec<DividendPayment>;
 }
 
+///Trait to transfer cash into a strategy either at the start or whilst it is running. This is in a
+///separate trait as some clients may wish to create strategies to wish no further cash can be
+///deposited in the course of a simulation.
+pub trait TransferTo {
+    fn deposit_cash(&mut self, cash: &f64) -> StrategyEvent;
+}
+
+///Trait to withdraw cash from a strategy, typically whilst it is running. This is a separate trait
+///as some clients may wish to create strategies from which no cash can be withdrawn whilst the
+///simulation is running.
 pub trait TransferFrom {
-    fn withdraw_cash(&mut self, cash: &CashValue) -> StrategyEvent;
-    fn withdraw_cash_with_liquidation(&mut self, cash: &CashValue) -> StrategyEvent;
+    fn withdraw_cash(&mut self, cash: &f64) -> StrategyEvent;
+    fn withdraw_cash_with_liquidation(&mut self, cash: &f64) -> StrategyEvent;
+}
+
+///Strategy records and can return history to client. This history is used for performance
+///calculations. [StrategySnapshot] is a struct defined in the perf module.
+pub trait History {
+    fn get_history(&self) -> Vec<StrategySnapshot>;
 }
 
 pub struct StaticWeightStrategyBuilder<T: DataSource> {
     //If missing either field, we cannot run this strategy
     brkr: Option<SimulatedBroker<T>>,
-    weights: Option<PortfolioAllocation<PortfolioWeight>>,
+    weights: Option<PortfolioAllocation>,
     clock: Option<Clock>,
 }
 
 impl<T: DataSource> StaticWeightStrategyBuilder<T> {
-    pub fn daily(&self) -> StaticWeightStrategy<T> {
+    pub fn default(&self) -> StaticWeightStrategy<T> {
         if self.brkr.is_none() || self.weights.is_none() || self.clock.is_none() {
             panic!("Strategy must have broker, weights, and clock");
         }
@@ -76,23 +92,9 @@ impl<T: DataSource> StaticWeightStrategyBuilder<T> {
         StaticWeightStrategy {
             brkr: self.brkr.clone().unwrap(),
             target_weights: self.weights.clone().unwrap(),
-            perf: StrategyPerformance::daily(),
             net_cash_flow: 0.0.into(),
             clock: Rc::clone(self.clock.as_ref().unwrap()),
-        }
-    }
-
-    pub fn yearly(&self) -> StaticWeightStrategy<T> {
-        if self.brkr.is_none() || self.weights.is_none() || self.clock.is_none() {
-            panic!("Strategy must have broker, weights, and clock");
-        }
-
-        StaticWeightStrategy {
-            brkr: self.brkr.clone().unwrap(),
-            target_weights: self.weights.clone().unwrap(),
-            perf: StrategyPerformance::yearly(),
-            net_cash_flow: 0.0.into(),
-            clock: Rc::clone(self.clock.as_ref().unwrap()),
+            history: Vec::new(),
         }
     }
 
@@ -106,7 +108,7 @@ impl<T: DataSource> StaticWeightStrategyBuilder<T> {
         self
     }
 
-    pub fn with_weights(&mut self, weights: PortfolioAllocation<PortfolioWeight>) -> &mut Self {
+    pub fn with_weights(&mut self, weights: PortfolioAllocation) -> &mut Self {
         self.weights = Some(weights);
         self
     }
@@ -131,90 +133,102 @@ impl<T: DataSource> Default for StaticWeightStrategyBuilder<T> {
 #[derive(Clone)]
 pub struct StaticWeightStrategy<T: DataSource> {
     brkr: SimulatedBroker<T>,
-    target_weights: PortfolioAllocation<PortfolioWeight>,
-    perf: StrategyPerformance,
+    target_weights: PortfolioAllocation,
     net_cash_flow: CashValue,
     clock: Clock,
+    history: Vec<StrategySnapshot>,
 }
 
 impl<T: DataSource> StaticWeightStrategy<T> {
     pub fn get_snapshot(&mut self) -> StrategySnapshot {
         StrategySnapshot {
             date: self.clock.borrow().now(),
-            value: self.brkr.get_total_value(),
-            net_cash_flow: self.net_cash_flow,
+            portfolio_value: self.brkr.get_total_value(),
+            net_cash_flow: self.net_cash_flow.clone(),
         }
     }
 }
 
 impl<T: DataSource> Strategy for StaticWeightStrategy<T> {
-    fn init(&mut self, initital_cash: &CashValue) {
+    fn init(&mut self, initital_cash: &f64) {
         self.deposit_cash(initital_cash);
-        let state = self.get_snapshot();
-        self.perf.update(&state);
-    }
-
-    fn update(&mut self) -> CashValue {
         if DefaultTradingSchedule::should_trade(&self.clock.borrow().now()) {
             let orders = BrokerCalculations::diff_brkr_against_target_weights(
                 &self.target_weights,
                 &mut self.brkr,
             );
             if !orders.is_empty() {
-                self.brkr.execute_orders(orders);
+                self.brkr.send_orders(orders);
             }
         }
-        self.brkr.check();
-        let state = self.get_snapshot();
-        self.perf.update(&state);
-        self.brkr.get_total_value()
+        self.brkr.finish();
     }
 
-    fn get_perf(&self) -> PerfStruct {
-        self.perf.get_output()
+    fn update(&mut self) -> CashValue {
+        self.brkr.check();
+        if DefaultTradingSchedule::should_trade(&self.clock.borrow().now()) {
+            let orders = BrokerCalculations::diff_brkr_against_target_weights(
+                &self.target_weights,
+                &mut self.brkr,
+            );
+            if !orders.is_empty() {
+                self.brkr.send_orders(orders);
+            }
+        }
+        self.brkr.finish();
+        let snap = self.get_snapshot();
+        self.history.push(snap);
+
+        self.brkr.get_total_value()
     }
 }
 
 impl<T: DataSource> TransferTo for StaticWeightStrategy<T> {
-    fn deposit_cash(&mut self, cash: &CashValue) -> StrategyEvent {
+    fn deposit_cash(&mut self, cash: &f64) -> StrategyEvent {
         info!("STRATEGY: Depositing {:?} into strategy", cash);
-        self.brkr.deposit_cash(*cash);
-        self.net_cash_flow += *cash;
-        StrategyEvent::DepositSuccess(*cash)
+        self.brkr.deposit_cash(cash);
+        self.net_cash_flow = CashValue::from(cash + *self.net_cash_flow);
+        StrategyEvent::DepositSuccess(CashValue::from(*cash))
     }
 }
 
 impl<T: DataSource> TransferFrom for StaticWeightStrategy<T> {
-    fn withdraw_cash(&mut self, cash: &CashValue) -> StrategyEvent {
-        if let BrokerEvent::WithdrawSuccess(withdrawn) = self.brkr.withdraw_cash(*cash) {
+    fn withdraw_cash(&mut self, cash: &f64) -> StrategyEvent {
+        if let BrokerCashEvent::WithdrawSuccess(withdrawn) = self.brkr.withdraw_cash(cash) {
             info!("STRATEGY: Succesfully withdrew {:?} from strategy", cash);
-            self.net_cash_flow -= withdrawn;
-            return StrategyEvent::WithdrawSuccess(*cash);
+            self.net_cash_flow = CashValue::from(*self.net_cash_flow - *withdrawn);
+            return StrategyEvent::WithdrawSuccess(CashValue::from(*cash));
         }
         info!("STRATEGY: Failed to withdraw {:?} from strategy", cash);
-        StrategyEvent::WithdrawFailure(*cash)
+        StrategyEvent::WithdrawFailure(CashValue::from(*cash))
     }
 
-    fn withdraw_cash_with_liquidation(&mut self, cash: &CashValue) -> StrategyEvent {
-        if let BrokerEvent::WithdrawSuccess(withdrawn) =
+    fn withdraw_cash_with_liquidation(&mut self, cash: &f64) -> StrategyEvent {
+        if let BrokerCashEvent::WithdrawSuccess(withdrawn) =
             //No logging here because the implementation is fully logged due to the greater
             //complexity of this task vs standard withdraw
             BrokerCalculations::withdraw_cash_with_liquidation(cash, &mut self.brkr)
         {
-            self.net_cash_flow -= withdrawn;
-            return StrategyEvent::WithdrawSuccess(*cash);
+            self.net_cash_flow = CashValue::from(*self.net_cash_flow - *withdrawn);
+            return StrategyEvent::WithdrawSuccess(CashValue::from(*cash));
         }
-        StrategyEvent::WithdrawFailure(*cash)
+        StrategyEvent::WithdrawFailure(CashValue::from(*cash))
     }
 }
 
 impl<T: DataSource> Audit for StaticWeightStrategy<T> {
-    fn trades_between(&self, start: &DateTime, end: &DateTime) -> Vec<Trade> {
+    fn trades_between(&self, start: &i64, end: &i64) -> Vec<Trade> {
         self.brkr.trades_between(start, end)
     }
 
-    fn dividends_between(&self, start: &DateTime, end: &DateTime) -> Vec<DividendPayment> {
+    fn dividends_between(&self, start: &i64, end: &i64) -> Vec<DividendPayment> {
         self.brkr.dividends_between(start, end)
+    }
+}
+
+impl<T: DataSource> History for StaticWeightStrategy<T> {
+    fn get_history(&self) -> Vec<StrategySnapshot> {
+        self.history.clone()
     }
 }
 
@@ -228,35 +242,22 @@ mod tests {
     use crate::broker::{BrokerCost, Quote};
     use crate::clock::{Clock, ClockBuilder};
     use crate::input::{HashMapInput, HashMapInputBuilder};
-    use crate::sim::broker::{SimulatedBroker, SimulatedBrokerBuilder};
-    use crate::types::{DateTime, PortfolioAllocation};
+    use crate::sim::{SimulatedBroker, SimulatedBrokerBuilder};
+    use crate::types::{DateTime, Frequency, PortfolioAllocation};
 
     fn setup() -> (SimulatedBroker<HashMapInput>, Clock) {
         let mut prices: HashMap<DateTime, Vec<Quote>> = HashMap::new();
 
-        let quote = Quote {
-            bid: 100.00.into(),
-            ask: 101.00.into(),
-            date: 100.into(),
-            symbol: String::from("ABC"),
-        };
-        let quote2 = Quote {
-            bid: 104.00.into(),
-            ask: 105.00.into(),
-            date: 101.into(),
-            symbol: String::from("ABC"),
-        };
-        let quote4 = Quote {
-            bid: 95.00.into(),
-            ask: 96.00.into(),
-            date: 102.into(),
-            symbol: String::from("ABC"),
-        };
+        let quote = Quote::new(100.00, 101.00, 100, "ABC");
+        let quote2 = Quote::new(104.00, 105.00, 101, "ABC");
+        let quote4 = Quote::new(95.00, 96.00, 102, "ABC");
         prices.insert(100.into(), vec![quote]);
         prices.insert(101.into(), vec![quote2]);
         prices.insert(102.into(), vec![quote4]);
 
-        let clock = ClockBuilder::from_fixed(100.into(), 102.into()).every_second();
+        let clock = ClockBuilder::with_length_in_dates(100, 102)
+            .with_frequency(&Frequency::Second)
+            .build();
 
         let source = HashMapInputBuilder::new()
             .with_quotes(prices)
@@ -265,7 +266,7 @@ mod tests {
 
         let brkr = SimulatedBrokerBuilder::<HashMapInput>::new()
             .with_data(source)
-            .with_trade_costs(vec![BrokerCost::Flat(0.1.into())])
+            .with_trade_costs(vec![BrokerCost::flat(0.1)])
             .build();
         (brkr, clock)
     }
@@ -277,7 +278,7 @@ mod tests {
         let _strat = StaticWeightStrategyBuilder::<HashMapInput>::new()
             .with_brkr(comp.0)
             .with_clock(Rc::clone(&comp.1))
-            .daily();
+            .default();
     }
 
     #[test]
@@ -288,7 +289,7 @@ mod tests {
         let _strat = StaticWeightStrategyBuilder::<HashMapInput>::new()
             .with_weights(weights)
             .with_clock(Rc::clone(&comp.1))
-            .daily();
+            .default();
     }
 
     #[test]
@@ -299,6 +300,6 @@ mod tests {
         let _strat = StaticWeightStrategyBuilder::<HashMapInput>::new()
             .with_weights(weights)
             .with_brkr(comp.0)
-            .daily();
+            .default();
     }
 }

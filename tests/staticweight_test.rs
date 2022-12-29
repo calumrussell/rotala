@@ -1,4 +1,5 @@
 use alator::clock::{Clock, ClockBuilder};
+use alator::exchange::DefaultExchangeBuilder;
 use alator::input::HashMapInputBuilder;
 use alator::strategy::StaticWeightStrategyBuilder;
 use rand::distributions::{Distribution, Uniform};
@@ -8,9 +9,9 @@ use std::rc::Rc;
 
 use alator::broker::{BrokerCost, Quote};
 use alator::input::HashMapInput;
-use alator::sim::broker::SimulatedBrokerBuilder;
+use alator::sim::SimulatedBrokerBuilder;
 use alator::simcontext::SimContextBuilder;
-use alator::types::{CashValue, DateTime, PortfolioAllocation, PortfolioWeight};
+use alator::types::{CashValue, DateTime, Frequency, PortfolioAllocation};
 
 fn build_data(clock: Clock) -> HashMapInput {
     let price_dist = Uniform::new(90.0, 100.0);
@@ -18,19 +19,19 @@ fn build_data(clock: Clock) -> HashMapInput {
 
     let mut raw_data: HashMap<DateTime, Vec<Quote>> = HashMap::new();
     for date in clock.borrow().peek() {
-        let q1 = Quote {
-            bid: price_dist.sample(&mut rng).into(),
-            ask: price_dist.sample(&mut rng).into(),
-            date: i64::from(date).into(),
-            symbol: "ABC".to_string(),
-        };
-        let q2 = Quote {
-            bid: price_dist.sample(&mut rng).into(),
-            ask: price_dist.sample(&mut rng).into(),
-            date: i64::from(date).into(),
-            symbol: "BCD".to_string(),
-        };
-        raw_data.insert(i64::from(date).into(), vec![q1, q2]);
+        let q1 = Quote::new(
+            price_dist.sample(&mut rng),
+            price_dist.sample(&mut rng),
+            date.clone(),
+            "ABC",
+        );
+        let q2 = Quote::new(
+            price_dist.sample(&mut rng),
+            price_dist.sample(&mut rng),
+            date.clone(),
+            "BCD",
+        );
+        raw_data.insert(DateTime::from(date), vec![q1, q2]);
     }
 
     let source = HashMapInputBuilder::new()
@@ -46,16 +47,24 @@ fn staticweight_integration_test() {
     let initial_cash: CashValue = 100_000.0.into();
     let length_in_days: i64 = 200;
     let start_date: i64 = 1609750800; //Date - 4/1/21 9:00:0000
-    let clock = ClockBuilder::from_length_days(&start_date.into(), length_in_days).daily();
+    let clock = ClockBuilder::with_length_in_days(start_date, length_in_days)
+        .with_frequency(&Frequency::Daily)
+        .build();
 
     let data = build_data(Rc::clone(&clock));
 
-    let mut weights: PortfolioAllocation<PortfolioWeight> = PortfolioAllocation::new();
-    weights.insert(&String::from("ABC"), &0.5.into());
-    weights.insert(&String::from("BCD"), &0.5.into());
+    let mut weights: PortfolioAllocation = PortfolioAllocation::new();
+    weights.insert("ABC", 0.5);
+    weights.insert("BCD", 0.5);
+
+    let exchange = DefaultExchangeBuilder::new()
+        .with_data_source(data.clone())
+        .with_clock(Rc::clone(&clock))
+        .build();
 
     let simbrkr = SimulatedBrokerBuilder::new()
         .with_data(data)
+        .with_exchange(exchange)
         .with_trade_costs(vec![BrokerCost::Flat(1.0.into())])
         .build();
 
@@ -63,7 +72,7 @@ fn staticweight_integration_test() {
         .with_brkr(simbrkr)
         .with_weights(weights)
         .with_clock(Rc::clone(&clock))
-        .daily();
+        .default();
 
     let mut sim = SimContextBuilder::new()
         .with_clock(Rc::clone(&clock))
