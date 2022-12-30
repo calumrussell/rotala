@@ -322,14 +322,14 @@ impl<D: DataSource> Exchange for DefaultExchange<D> {
             match order.get_order_type() {
                 OrderType::MarketBuy | OrderType::MarketSell => {
                     if order.get_symbol() == symbol {
-                        to_remove.push(key.clone());
+                        to_remove.push(*key);
                     }
-                },
+                }
                 _ => {}
             }
         }
         for key in to_remove {
-            self.delete_order(key.clone());
+            self.delete_order(key);
         }
     }
 }

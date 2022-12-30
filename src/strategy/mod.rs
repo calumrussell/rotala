@@ -2,7 +2,8 @@ use log::info;
 use std::rc::Rc;
 
 use crate::broker::{
-    BacktestBroker, BrokerCalculations, DividendPayment, EventLog, Trade, TransferCash, BrokerCashEvent,
+    BacktestBroker, BrokerCalculations, BrokerCashEvent, DividendPayment, EventLog, Trade,
+    TransferCash,
 };
 use crate::clock::Clock;
 use crate::input::DataSource;

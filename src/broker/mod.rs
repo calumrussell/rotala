@@ -474,37 +474,117 @@ impl BrokerCost {
 ///Clients should not be able to call debit or credit themselves. Deposits or withdrawals are
 ///implemented through [TransferCash] trait.
 pub trait BacktestBroker {
+    fn get_position_profit(&self, symbol: &str) -> Option<CashValue> {
+        if let Some(cost) = self.get_position_cost(symbol) {
+            if let Some(position_value) = self.get_position_value(symbol) {
+                if let Some(qty) = self.get_position_qty(symbol) {
+                    let price = *position_value / *qty.clone();
+                    let value = CashValue::from(*qty.clone() * (price - *cost));
+                    return Some(value);
+                }
+            }
+        }
+        None
+    }
+
+    fn get_position_liquidation_value(&self, symbol: &str) -> Option<CashValue> {
+        //TODO: we need to introduce some kind of distinction between short and long
+        //      positions.
+        if let Some(position_value) = self.get_position_value(symbol) {
+            if let Some(qty) = self.get_position_qty(symbol) {
+                let price = Price::from(*position_value / *qty.clone());
+                let (value_after_costs, _price_after_costs) =
+                    self.calc_trade_impact(&position_value, &price, false);
+                return Some(value_after_costs);
+            }
+        }
+        None
+    }
+    fn get_total_value(&self) -> CashValue {
+        let assets = self.get_positions();
+        let mut value = self.get_cash_balance();
+        for a in assets {
+            if let Some(position_value) = self.get_position_value(&a) {
+                value = CashValue::from(*value + *position_value);
+            }
+        }
+        value
+    }
+
+    fn get_liquidation_value(&self) -> CashValue {
+        let mut value = self.get_cash_balance();
+        for asset in self.get_positions() {
+            if let Some(asset_value) = self.get_position_liquidation_value(&asset) {
+                value = CashValue::from(*value + *asset_value);
+            }
+        }
+        value
+    }
+
+    fn get_values(&self) -> PortfolioValues {
+        let mut holdings = PortfolioValues::new();
+        let assets = self.get_positions();
+        for a in assets {
+            let value = self.get_position_value(&a);
+            if let Some(v) = value {
+                holdings.insert(&a, &v);
+            }
+        }
+        holdings
+    }
+
+    fn get_cash_balance(&self) -> CashValue;
+    //TODO: Position qty can always return a value, if we don't have the position then qty is 0
+    fn get_position_qty(&self, symbol: &str) -> Option<&PortfolioQty>;
+    //TODO: Position value can always return a value, if we don't have a position then value is 0
+    fn get_position_value(&self, symbol: &str) -> Option<CashValue>;
+    fn get_position_cost(&self, symbol: &str) -> Option<Price>;
+    fn get_positions(&self) -> Vec<String>;
+    fn get_holdings(&self) -> PortfolioHoldings;
+    //This should only be called internally
+    fn get_trade_costs(&self, trade: &Trade) -> CashValue;
+    fn calc_trade_impact(&self, budget: &f64, price: &f64, is_buy: bool) -> (CashValue, Price);
+    fn update_holdings(&mut self, symbol: &str, change: PortfolioQty);
+    fn pay_dividends(&mut self);
+    fn send_order(&mut self, order: Order) -> BrokerEvent;
+    fn send_orders(&mut self, order: Vec<Order>) -> Vec<BrokerEvent>;
+    fn clear_pending_market_orders_by_symbol(&mut self, symbol: &str);
     fn debit(&mut self, value: &f64) -> BrokerCashEvent;
     fn credit(&mut self, value: &f64) -> BrokerCashEvent;
     //Can leave the client with a negative cash balance
     fn debit_force(&mut self, value: &f64) -> BrokerCashEvent;
-    fn get_cash_balance(&self) -> CashValue;
-    //TODO: Position qty can always return a value, if we don't have the position then qty is 0
-    fn get_position_qty(&self, symbol: &str) -> Option<&PortfolioQty>;
-    fn get_position_value(&self, symbol: &str) -> Option<CashValue>;
-    fn get_position_cost(&self, symbol: &str) -> Option<Price>;
-    fn get_position_liquidation_value(&self, symbol: &str) -> Option<CashValue>;
-    fn get_position_profit(&self, symbol: &str) -> Option<CashValue>;
-    fn get_liquidation_value(&self) -> CashValue;
-    fn get_total_value(&self) -> CashValue;
-    fn get_positions(&self) -> Vec<String>;
-    fn get_values(&self) -> PortfolioValues;
-    fn get_holdings(&self) -> PortfolioHoldings;
-    //This should only be called internally
-    fn update_holdings(&mut self, symbol: &str, change: PortfolioQty);
-    fn pay_dividends(&mut self);
-    fn get_trade_costs(&self, trade: &Trade) -> CashValue;
-    fn calc_trade_impact(&self, budget: &f64, price: &f64, is_buy: bool) -> (CashValue, Price);
-    fn send_order(&mut self, order: Order) -> BrokerEvent;
-    fn send_orders(&mut self, order: Vec<Order>) -> Vec<BrokerEvent>;
-    fn clear_pending_market_orders_by_symbol(&mut self, symbol: &str);
 }
 
 ///Implementation allows clients to alter the cash balance through withdrawing or depositing cash.
 ///This does not come with base implementation because clients may wish to restrict this behaviour.
-pub trait TransferCash {
-    fn withdraw_cash(&mut self, cash: &f64) -> BrokerCashEvent;
-    fn deposit_cash(&mut self, cash: &f64) -> BrokerCashEvent;
+pub trait TransferCash: BacktestBroker {
+    fn withdraw_cash(&mut self, cash: &f64) -> BrokerCashEvent {
+        if cash > &self.get_cash_balance() {
+            info!(
+                "BROKER: Attempted cash withdraw of {:?} but only have {:?}",
+                cash,
+                self.get_cash_balance()
+            );
+            return BrokerCashEvent::WithdrawFailure(CashValue::from(*cash));
+        }
+        info!(
+            "BROKER: Successful cash withdraw of {:?}, {:?} left in cash",
+            cash,
+            self.get_cash_balance()
+        );
+        self.debit(cash);
+        BrokerCashEvent::WithdrawSuccess(CashValue::from(*cash))
+    }
+
+    fn deposit_cash(&mut self, cash: &f64) -> BrokerCashEvent {
+        info!(
+            "BROKER: Deposited {:?} cash, current balance of {:?}",
+            cash,
+            self.get_cash_balance()
+        );
+        self.credit(cash);
+        BrokerCashEvent::DepositSuccess(CashValue::from(*cash))
+    }
 }
 
 //Implementation allows clients to retrieve prices. This trait may be used to retrieve prices
@@ -559,7 +639,10 @@ impl BrokerCalculations {
             //There is no way for the portfolio to recover, we leave the portfolio in an invalid
             //state because the client may be able to recover later
             brkr.debit(cash);
-            info!("BROKER: Failed to withdraw {:?} with liquidation. Deducting value from cash.", cash);
+            info!(
+                "BROKER: Failed to withdraw {:?} with liquidation. Deducting value from cash.",
+                cash
+            );
             BrokerCashEvent::WithdrawFailure(CashValue::from(*cash))
         } else {
             //This holds how much we have left to generate from the portfolio to produce the cash
@@ -607,7 +690,10 @@ impl BrokerCalculations {
                 //the cash. Don't send any orders, leave portfolio in invalid state for client to
                 //potentially recover.
                 brkr.debit(cash);
-                info!("BROKER: Failed to withdraw {:?} with liquidation. Deducting value from cash.", cash);
+                info!(
+                    "BROKER: Failed to withdraw {:?} with liquidation. Deducting value from cash.",
+                    cash
+                );
                 BrokerCashEvent::WithdrawFailure(CashValue::from(*cash))
             }
         }
@@ -635,20 +721,18 @@ impl BrokerCalculations {
 
         //This returns a positive number for buy and negative for sell, this is necessary because
         //of calculations made later to find the net position of orders on the exchange.
-        let calc_required_shares_with_costs =
-            |diff_val: &f64, quote: &Quote, brkr: &T| -> f64 {
-                if diff_val.lt(&0.0) {
-                    let price = quote.bid.clone();
-                    let costs = brkr.calc_trade_impact(&diff_val.abs(), &price, false);
-                    let total = (*costs.0 / *costs.1).floor();
-                    -total
-                } else {
-                    let price = quote.ask.clone();
-                    let costs = brkr.calc_trade_impact(&diff_val.abs(), &price, true);
-                    let total = (*costs.0 / *costs.1).floor();
-                    total
-                }
-            };
+        let calc_required_shares_with_costs = |diff_val: &f64, quote: &Quote, brkr: &T| -> f64 {
+            if diff_val.lt(&0.0) {
+                let price = quote.bid.clone();
+                let costs = brkr.calc_trade_impact(&diff_val.abs(), &price, false);
+                let total = (*costs.0 / *costs.1).floor();
+                -total
+            } else {
+                let price = quote.ask.clone();
+                let costs = brkr.calc_trade_impact(&diff_val.abs(), &price, true);
+                (*costs.0 / *costs.1).floor()
+            }
+        };
 
         for symbol in target_weights.keys() {
             let curr_val = brkr.get_position_value(&symbol).unwrap_or_default();
@@ -764,12 +848,12 @@ mod tests {
     use crate::exchange::DefaultExchangeBuilder;
     use crate::input::{fake_data_generator, HashMapInputBuilder};
     use crate::sim::SimulatedBrokerBuilder;
-    use crate::types::{PortfolioAllocation, DateTime};
+    use crate::types::{DateTime, PortfolioAllocation};
     use crate::{clock::ClockBuilder, types::Frequency};
     use std::collections::HashMap;
     use std::rc::Rc;
 
-    use super::{BrokerCalculations, BrokerCost, TransferCash, Quote};
+    use super::{BrokerCalculations, BrokerCost, Quote, TransferCash};
 
     #[test]
     fn diff_direction_correct_if_need_to_buy() {
@@ -939,7 +1023,7 @@ mod tests {
         //It is possible for the client to issue orders for infinitely increasing numbers of shares
         //if there is a gap between orders being issued and executed. For example, if we are
         //missing price data the client could think we need 100 shares, that order doesn't get
-        //executed on the next tick, and the client then issues orders for another 100 shares. 
+        //executed on the next tick, and the client then issues orders for another 100 shares.
         //
         //This is not possible without earlier price data either. If there is no price data then
         //the diff will be unable to work out how many shares are required. So the test case is
@@ -987,14 +1071,16 @@ mod tests {
         let mut target_weights = PortfolioAllocation::new();
         target_weights.insert("ABC", 0.9);
 
-        let orders = BrokerCalculations::diff_brkr_against_target_weights(&target_weights, &mut brkr);
+        let orders =
+            BrokerCalculations::diff_brkr_against_target_weights(&target_weights, &mut brkr);
         brkr.send_orders(orders);
         brkr.finish();
 
         clock.borrow_mut().tick();
         brkr.check();
 
-        let orders1 = BrokerCalculations::diff_brkr_against_target_weights(&target_weights, &mut brkr);
+        let orders1 =
+            BrokerCalculations::diff_brkr_against_target_weights(&target_weights, &mut brkr);
 
         brkr.send_orders(orders1);
         brkr.finish();
@@ -1042,7 +1128,8 @@ mod tests {
         brkr.deposit_cash(&100_000.0);
         let mut target_weights = PortfolioAllocation::new();
         target_weights.insert("ABC", 0.9);
-        let orders = BrokerCalculations::diff_brkr_against_target_weights(&target_weights, &mut brkr);
+        let orders =
+            BrokerCalculations::diff_brkr_against_target_weights(&target_weights, &mut brkr);
         println!("{:?}", orders);
         brkr.send_orders(orders);
         brkr.finish();
@@ -1058,7 +1145,8 @@ mod tests {
 
         clock.borrow_mut().tick();
         brkr.check();
-        let orders1 = BrokerCalculations::diff_brkr_against_target_weights(&target_weights, &mut brkr);
+        let orders1 =
+            BrokerCalculations::diff_brkr_against_target_weights(&target_weights, &mut brkr);
         println!("{:?}", orders1);
 
         brkr.send_orders(orders1);
