@@ -19,17 +19,17 @@ pub trait DataSource: Clone {
     fn get_dividends(&self) -> Option<&Vec<Dividend>>;
 }
 
-pub type QuotesHashMap = HashMap<DateTime, Vec<Quote>>;
-pub type DividendsHashMap = HashMap<DateTime, Vec<Dividend>>;
-
-///Data structure that implements DataSouce trait. Used to store Quote and Dividend data. Stores
-///a reference to Clock which tracks the date inside simulation.
+///Implementation of [DataSource trait that wraps around a HashMap. Time is kept with reference to
+///[Clock].
 #[derive(Clone, Debug)]
 pub struct HashMapInput {
     quotes: QuotesHashMap,
     dividends: DividendsHashMap,
     clock: Clock,
 }
+
+pub type QuotesHashMap = HashMap<DateTime, Vec<Quote>>;
+pub type DividendsHashMap = HashMap<DateTime, Vec<Dividend>>;
 
 impl DataSource for HashMapInput {
     fn get_quote(&self, symbol: &str) -> Option<Quote> {
@@ -111,18 +111,18 @@ pub fn fake_data_generator(clock: Clock) -> HashMapInput {
 
     let mut raw_data: HashMap<DateTime, Vec<Quote>> = HashMap::new();
     for date in clock.borrow().peek() {
-        let q1 = Quote {
-            bid: price_dist.sample(&mut rng).into(),
-            ask: price_dist.sample(&mut rng).into(),
-            date: i64::from(date).into(),
-            symbol: "ABC".to_string(),
-        };
-        let q2 = Quote {
-            bid: price_dist.sample(&mut rng).into(),
-            ask: price_dist.sample(&mut rng).into(),
-            date: i64::from(date).into(),
-            symbol: "BCD".to_string(),
-        };
+        let q1 = Quote::new(
+            price_dist.sample(&mut rng),
+            price_dist.sample(&mut rng),
+            date.clone(),
+            "ABC",
+        );
+        let q2 = Quote::new(
+            price_dist.sample(&mut rng),
+            price_dist.sample(&mut rng),
+            date.clone(),
+            "BCD",
+        );
         raw_data.insert(i64::from(date).into(), vec![q1, q2]);
     }
 

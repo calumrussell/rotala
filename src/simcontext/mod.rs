@@ -1,12 +1,11 @@
 use crate::clock::Clock;
-use crate::perf::PerfStruct;
 use crate::strategy::Strategy;
 use crate::types::CashValue;
 
 ///Provides context for a single run of a simulation. Once a run has started, all communication
 ///with the components of a simulation should happen through this context.
 ///
-///This occurs because there is no seperation between components: the context must hold the
+///This occurs because there is no separation between components: the context must hold the
 ///reference to a `Strategy` to run it. Passing references around with smart pointers would
 ///introduce a level of complexity beyond the requirements of current use-cases. The cost of this
 ///is that `SimContext` is tightly-bound to `Strategy`.
@@ -25,10 +24,6 @@ impl<T: Strategy> SimContext<T> {
 
     pub fn init(&mut self, initial_cash: &CashValue) {
         self.strategy.init(initial_cash);
-    }
-
-    pub fn calculate_perf(&mut self) -> PerfStruct {
-        self.strategy.get_perf()
     }
 }
 

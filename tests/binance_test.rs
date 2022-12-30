@@ -2,16 +2,14 @@ use std::collections::HashMap;
 use std::io::{Cursor, Write};
 use std::rc::Rc;
 
-use alator::broker::{
-    ExecutesOrder, GetsQuote, Order, OrderType, PositionInfo, Quote, TransferCash,
-};
+use alator::broker::{BacktestBroker, GetsQuote, Order, OrderType, Quote, TransferCash};
 use alator::clock::ClockBuilder;
+use alator::exchange::DefaultExchangeBuilder;
 use alator::input::{HashMapInput, HashMapInputBuilder, QuotesHashMap};
-use alator::perf::PerfStruct;
-use alator::sim::broker::{SimulatedBroker, SimulatedBrokerBuilder};
+use alator::sim::{SimulatedBroker, SimulatedBrokerBuilder};
 use alator::simcontext::SimContextBuilder;
 use alator::strategy::{Strategy, StrategyEvent, TransferTo};
-use alator::types::CashValue;
+use alator::types::{CashValue, Frequency};
 
 /* Get the data from Binance, build quote from open and close of candle, insert the quotes into
  * QuotesHashMap using those dates.
@@ -26,7 +24,7 @@ fn build_data() -> (QuotesHashMap, (i64, i64)) {
     if let Ok(resp) = reqwest::blocking::get(url) {
         if let Ok(contents) = resp.bytes() {
             let mut c = Cursor::new(Vec::new());
-            c.write(&contents);
+            let _res = c.write(&contents);
 
             if let Ok(mut zip) = zip::ZipArchive::new(c) {
                 for i in 0..zip.len() {
@@ -105,10 +103,10 @@ impl MovingAverage {
         if self.full() {
             let (_first, values) = self.data.split_first().unwrap();
             let mut without_first = values.to_vec();
-            without_first.push(f64::from(quote.ask));
+            without_first.push(f64::from(quote.ask.clone()));
             self.data = without_first;
         } else {
-            self.data.push(f64::from(quote.ask));
+            self.data.push(f64::from(quote.ask.clone()));
         }
     }
 
@@ -139,18 +137,14 @@ struct MovingAverageStrategy {
 }
 
 impl TransferTo for MovingAverageStrategy {
-    fn deposit_cash(&mut self, cash: &CashValue) -> StrategyEvent {
-        self.brkr.deposit_cash(cash.clone());
-        StrategyEvent::DepositSuccess(*cash)
+    fn deposit_cash(&mut self, cash: &f64) -> StrategyEvent {
+        self.brkr.deposit_cash(&cash);
+        StrategyEvent::DepositSuccess(CashValue::from(*cash))
     }
 }
 
 impl Strategy for MovingAverageStrategy {
-    fn get_perf(&self) -> PerfStruct {
-        unimplemented!("Strategy doesn't track performance");
-    }
-
-    fn init(&mut self, initial_cash: &CashValue) {
+    fn init(&mut self, initial_cash: &f64) {
         self.deposit_cash(initial_cash);
     }
 
@@ -193,20 +187,20 @@ impl Strategy for MovingAverageStrategy {
             //added in the future but it adds dependencies on the underlying asset which is not
             //ideal currently.
             if self.ten.avg() > self.fifty.avg() {
-                if let None = self.brkr.get_position_qty("BTC".into()) {
+                if let None = self.brkr.get_position_qty("BTC") {
                     let value = self.brkr.get_liquidation_value();
-                    let pct_value = CashValue::from(value * 0.1);
+                    let pct_value = CashValue::from(*value * 0.1);
                     //All this casting is required because, at the moment, we haven't moved fully
                     //away from positions reqpresented in whole numbers. Strategies should work but
                     //I am not sure if the result is correct.
                     let qty = (f64::from(pct_value) / f64::from(quote.ask)).floor();
-                    let order = Order::new(OrderType::MarketBuy, "BTC".into(), qty.into(), None);
-                    self.brkr.execute_order(&order);
+                    let order = Order::market(OrderType::MarketBuy, "BTC", qty.clone());
+                    self.brkr.send_order(order);
                 }
             } else {
-                if let Some(qty) = self.brkr.get_position_qty("BTC".into()) {
-                    let order = Order::new(OrderType::MarketSell, "BTC".into(), *qty, None);
-                    self.brkr.execute_order(&order);
+                if let Some(qty) = self.brkr.get_position_qty("BTC") {
+                    let order = Order::market(OrderType::MarketSell, "BTC", qty.clone());
+                    self.brkr.send_order(order);
                 }
             }
         }
@@ -241,13 +235,25 @@ fn binance_test() {
     let (quotes, dates) = build_data();
     //Clock is the only shared reference between backtesting components: it keeps the time inside
     //the simulation and should guard against the accidental use of future data.
-    let clock = ClockBuilder::from_fixed(dates.0.into(), dates.1.into()).every_second();
+    let clock = ClockBuilder::with_length_in_dates(dates.0, dates.1)
+        .with_frequency(&Frequency::Second)
+        .build();
 
     let data = HashMapInputBuilder::new()
         .with_clock(Rc::clone(&clock))
         .with_quotes(quotes)
         .build();
-    let simbrkr = SimulatedBrokerBuilder::new().with_data(data).build();
+
+    let exchange = DefaultExchangeBuilder::new()
+        .with_clock(Rc::clone(&clock))
+        .with_data_source(data.clone())
+        .build();
+
+    let simbrkr = SimulatedBrokerBuilder::new()
+        .with_data(data)
+        .with_exchange(exchange)
+        .build();
+
     let strat = MovingAverageStrategy::new(simbrkr);
     let mut sim = SimContextBuilder::new()
         .with_clock(Rc::clone(&clock))

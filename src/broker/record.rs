@@ -38,20 +38,20 @@ impl BrokerLog {
         dividends
     }
 
-    pub fn dividends_between(&self, start: &DateTime, stop: &DateTime) -> Vec<DividendPayment> {
+    pub fn dividends_between(&self, start: &i64, stop: &i64) -> Vec<DividendPayment> {
         let dividends = self.dividends();
         dividends
             .iter()
-            .filter(|v| v.date >= *start && v.date <= *stop)
+            .filter(|v| v.date >= DateTime::from(*start) && v.date <= DateTime::from(*stop))
             .cloned()
             .collect_vec()
     }
 
-    pub fn trades_between(&self, start: &DateTime, stop: &DateTime) -> Vec<Trade> {
+    pub fn trades_between(&self, start: &i64, stop: &i64) -> Vec<Trade> {
         let trades = self.trades();
         trades
             .iter()
-            .filter(|v| v.date >= *start && v.date <= *stop)
+            .filter(|v| v.date >= DateTime::from(*start) && v.date <= DateTime::from(*stop))
             .cloned()
             .collect_vec()
     }
@@ -64,25 +64,25 @@ impl BrokerLog {
                 if trade.symbol.eq(symbol) {
                     match trade.typ {
                         TradeType::Buy => {
-                            cum_qty += trade.quantity;
-                            cum_val += trade.value;
+                            cum_qty = PortfolioQty::from(*cum_qty + *trade.quantity.clone());
+                            cum_val = CashValue::from(*cum_val + *trade.value.clone());
                         }
                         TradeType::Sell => {
-                            cum_qty -= trade.quantity;
-                            cum_val -= trade.value;
+                            cum_qty = PortfolioQty::from(*cum_qty - *trade.quantity.clone());
+                            cum_val = CashValue::from(*cum_val - *trade.value.clone());
                         }
                     }
                     //reset the value if we are back to zero
-                    if cum_qty == 0.0 {
+                    if (*cum_qty).eq(&0.0) {
                         cum_val = CashValue::default();
                     }
                 }
             }
         }
-        if cum_qty == 0.0 {
+        if (*cum_qty).eq(&0.0) {
             return None;
         }
-        Some(cum_val / cum_qty)
+        Some(Price::from(*cum_val / *cum_qty))
     }
 }
 
@@ -107,41 +107,11 @@ mod tests {
     fn setup() -> BrokerLog {
         let mut rec = BrokerLog::new();
 
-        let t1 = Trade {
-            symbol: String::from("ABC"),
-            quantity: 10.00.into(),
-            value: 100.0.into(),
-            date: 100.into(),
-            typ: TradeType::Buy,
-        };
-        let t2 = Trade {
-            symbol: String::from("ABC"),
-            quantity: 90.00.into(),
-            value: 500.0.into(),
-            date: 101.into(),
-            typ: TradeType::Buy,
-        };
-        let t3 = Trade {
-            symbol: String::from("BCD"),
-            quantity: 100.00.into(),
-            value: 100.0.into(),
-            date: 102.into(),
-            typ: TradeType::Buy,
-        };
-        let t4 = Trade {
-            symbol: String::from("BCD"),
-            quantity: 100.00.into(),
-            value: 500.0.into(),
-            date: 103.into(),
-            typ: TradeType::Sell,
-        };
-        let t5 = Trade {
-            symbol: String::from("BCD"),
-            quantity: 50.00.into(),
-            value: 50.0.into(),
-            date: 104.into(),
-            typ: TradeType::Buy,
-        };
+        let t1 = Trade::new("ABC", 100.0, 10.00, 100, TradeType::Buy);
+        let t2 = Trade::new("ABC", 500.0, 90.00, 101, TradeType::Buy);
+        let t3 = Trade::new("BCD", 100.0, 100.0, 102, TradeType::Buy);
+        let t4 = Trade::new("BCD", 500.0, 100.00, 103, TradeType::Sell);
+        let t5 = Trade::new("BCD", 50.0, 50.00, 104, TradeType::Buy);
 
         rec.record(t1);
         rec.record(t2);
@@ -161,10 +131,10 @@ mod tests {
     #[test]
     fn test_that_log_calculates_the_cost_basis() {
         let log = setup();
-        let abc_cost = log.cost_basis(&String::from("ABC")).unwrap();
-        let bcd_cost = log.cost_basis(&String::from("BCD")).unwrap();
+        let abc_cost = log.cost_basis("ABC").unwrap();
+        let bcd_cost = log.cost_basis("BCD").unwrap();
 
-        assert_eq!(abc_cost, 6.0);
-        assert_eq!(bcd_cost, 1.0);
+        assert_eq!(*abc_cost, 6.0);
+        assert_eq!(*bcd_cost, 1.0);
     }
 }

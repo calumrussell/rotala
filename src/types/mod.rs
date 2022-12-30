@@ -1,23 +1,19 @@
 use itertools::Itertools;
 use std::collections::HashMap;
-use std::iter::Sum;
-use std::ops::{Add, AddAssign, Div, DivAssign, Mul, MulAssign, Sub, SubAssign};
+use std::hash::Hash;
+use std::ops::Deref;
 use time::OffsetDateTime;
 
 ///Defines a set of base types that are used by multiple components.
 
-#[derive(Clone, Copy, Debug, PartialOrd, PartialEq)]
+#[derive(Clone, Debug, PartialEq, PartialOrd)]
 pub struct CashValue(f64);
 
-impl CashValue {
-    pub const MAX: f64 = f64::MAX;
+impl Deref for CashValue {
+    type Target = f64;
 
-    pub fn abs(&self) -> Self {
-        if self.0 > 0.0 {
-            Self(self.0)
-        } else {
-            Self(self.0 * -1.0)
-        }
+    fn deref(&self) -> &Self::Target {
+        &self.0
     }
 }
 
@@ -36,164 +32,6 @@ impl From<CashValue> for f64 {
 impl From<f64> for CashValue {
     fn from(v: f64) -> Self {
         CashValue(v)
-    }
-}
-
-impl PartialEq<f64> for CashValue {
-    fn eq(&self, other: &f64) -> bool {
-        self.0 == *other
-    }
-}
-
-impl PartialOrd<f64> for CashValue {
-    fn partial_cmp(&self, other: &f64) -> Option<std::cmp::Ordering> {
-        self.0.partial_cmp(other)
-    }
-}
-
-impl Mul for CashValue {
-    type Output = Self;
-
-    fn mul(self, rhs: Self) -> Self {
-        Self(self.0 * rhs.0)
-    }
-}
-
-impl Mul<f64> for CashValue {
-    type Output = Self;
-
-    fn mul(self, rhs: f64) -> Self {
-        Self(self.0 * rhs)
-    }
-}
-
-impl Div for CashValue {
-    type Output = Self;
-
-    fn div(self, rhs: Self) -> Self {
-        Self(self.0 / rhs.0)
-    }
-}
-
-impl Div<f64> for CashValue {
-    type Output = Self;
-
-    fn div(self, rhs: f64) -> Self {
-        Self(self.0 / rhs)
-    }
-}
-
-impl Div<Price> for CashValue {
-    type Output = PortfolioQty;
-
-    fn div(self, rhs: Price) -> Self::Output {
-        PortfolioQty(self.0 / rhs.0)
-    }
-}
-
-impl Div<PortfolioQty> for CashValue {
-    type Output = Price;
-
-    fn div(self, rhs: PortfolioQty) -> Self::Output {
-        Price(self.0 / rhs.0)
-    }
-}
-
-impl Mul<PortfolioWeight> for CashValue {
-    type Output = Self;
-
-    fn mul(self, rhs: PortfolioWeight) -> Self {
-        Self(self.0 * rhs.0)
-    }
-}
-
-impl Add for CashValue {
-    type Output = Self;
-
-    fn add(self, rhs: Self) -> Self {
-        Self(self.0 + rhs.0)
-    }
-}
-
-impl Add<f64> for CashValue {
-    type Output = Self;
-
-    fn add(self, rhs: f64) -> Self {
-        Self(self.0 + rhs)
-    }
-}
-
-impl Sub for CashValue {
-    type Output = Self;
-
-    fn sub(self, rhs: Self) -> Self {
-        Self(self.0 - rhs.0)
-    }
-}
-
-impl Sub<f64> for CashValue {
-    type Output = Self;
-
-    fn sub(self, rhs: f64) -> Self {
-        Self(self.0 - rhs)
-    }
-}
-
-impl AddAssign for CashValue {
-    fn add_assign(&mut self, rhs: Self) {
-        self.0 += rhs.0
-    }
-}
-
-impl AddAssign<f64> for CashValue {
-    fn add_assign(&mut self, rhs: f64) {
-        self.0 += rhs
-    }
-}
-
-impl SubAssign for CashValue {
-    fn sub_assign(&mut self, rhs: Self) {
-        self.0 -= rhs.0
-    }
-}
-
-impl SubAssign<f64> for CashValue {
-    fn sub_assign(&mut self, rhs: f64) {
-        self.0 -= rhs
-    }
-}
-
-impl MulAssign for CashValue {
-    fn mul_assign(&mut self, rhs: Self) {
-        self.0 *= rhs.0
-    }
-}
-
-impl MulAssign<f64> for CashValue {
-    fn mul_assign(&mut self, rhs: f64) {
-        self.0 *= rhs
-    }
-}
-
-impl DivAssign for CashValue {
-    fn div_assign(&mut self, rhs: Self) {
-        self.0 /= rhs.0
-    }
-}
-
-impl DivAssign<f64> for CashValue {
-    fn div_assign(&mut self, rhs: f64) {
-        self.0 /= rhs
-    }
-}
-
-impl Sum for CashValue {
-    fn sum<I: Iterator<Item = Self>>(iter: I) -> Self {
-        let mut res = CashValue::default();
-        for v in iter {
-            res += v.0
-        }
-        res
     }
 }
 
@@ -274,23 +112,37 @@ impl From<Month> for u8 {
     }
 }
 
-#[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+///[DateTime] is a wrapper around the epoch time as i64. This type also functions as a wrapper
+///around the time package which offers some of the more useful datetime functionality that is
+///required in the schedule module.
+//The internal representation with the time package should remain hidden from clients. Whilst this
+//results in some duplication of the API, this retains the option to get rid of the dependency on
+//time or change individual functions later.
+#[derive(Clone, Debug, Hash, Eq, PartialEq, PartialOrd)]
 pub struct DateTime(i64);
 
 impl DateTime {
     pub fn day(&self) -> u8 {
-        let date: OffsetDateTime = (*self).into();
+        let date: OffsetDateTime = self.clone().into();
         date.day()
     }
 
     pub fn weekday(&self) -> Weekday {
-        let date: OffsetDateTime = (*self).into();
+        let date: OffsetDateTime = self.clone().into();
         date.weekday().into()
     }
 
     pub fn month(&self) -> Month {
-        let date: OffsetDateTime = (*self).into();
+        let date: OffsetDateTime = self.clone().into();
         date.month().into()
+    }
+}
+
+impl Deref for DateTime {
+    type Target = i64;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
     }
 }
 
@@ -316,78 +168,14 @@ impl From<i64> for DateTime {
     }
 }
 
-impl PartialEq<i64> for DateTime {
-    fn eq(&self, other: &i64) -> bool {
-        self.0 == *other
-    }
-}
-
-impl Add for DateTime {
-    type Output = Self;
-
-    fn add(self, rhs: Self) -> Self {
-        Self(self.0 + rhs.0)
-    }
-}
-
-impl Add<i64> for DateTime {
-    type Output = Self;
-
-    fn add(self, rhs: i64) -> Self {
-        Self(self.0 + rhs)
-    }
-}
-
-impl AddAssign for DateTime {
-    fn add_assign(&mut self, rhs: DateTime) {
-        self.0 += rhs.0
-    }
-}
-
-impl AddAssign<i64> for DateTime {
-    fn add_assign(&mut self, rhs: i64) {
-        self.0 += rhs
-    }
-}
-
-impl Sub for DateTime {
-    type Output = Self;
-
-    fn sub(self, rhs: Self) -> Self {
-        Self(self.0 - rhs.0)
-    }
-}
-
-impl SubAssign for DateTime {
-    fn sub_assign(&mut self, rhs: DateTime) {
-        self.0 -= rhs.0
-    }
-}
-
-impl Sub<i64> for DateTime {
-    type Output = Self;
-
-    fn sub(self, rhs: i64) -> Self {
-        Self(self.0 - rhs)
-    }
-}
-
-impl SubAssign<i64> for DateTime {
-    fn sub_assign(&mut self, rhs: i64) {
-        self.0 -= rhs
-    }
-}
-
-#[derive(Clone, Copy, Debug, PartialEq, PartialOrd)]
+#[derive(Clone, Debug, PartialEq, PartialOrd)]
 pub struct PortfolioQty(f64);
 
-impl PortfolioQty {
-    pub fn ceil(&self) -> Self {
-        Self(f64::ceil(self.0))
-    }
+impl Deref for PortfolioQty {
+    type Target = f64;
 
-    pub fn floor(&self) -> Self {
-        Self(f64::floor(self.0))
+    fn deref(&self) -> &Self::Target {
+        &self.0
     }
 }
 
@@ -397,51 +185,9 @@ impl From<f64> for PortfolioQty {
     }
 }
 
-impl Mul<Price> for PortfolioQty {
-    type Output = CashValue;
-
-    fn mul(self, rhs: Price) -> Self::Output {
-        CashValue(self.0 * rhs.0)
-    }
-}
-
-impl Add for PortfolioQty {
-    type Output = Self;
-
-    fn add(self, rhs: Self) -> Self {
-        Self(self.0 + rhs.0)
-    }
-}
-
-impl Sub for PortfolioQty {
-    type Output = Self;
-
-    fn sub(self, rhs: Self) -> Self {
-        Self(self.0 - rhs.0)
-    }
-}
-
-impl AddAssign for PortfolioQty {
-    fn add_assign(&mut self, rhs: Self) {
-        self.0 += rhs.0
-    }
-}
-
-impl SubAssign for PortfolioQty {
-    fn sub_assign(&mut self, rhs: Self) {
-        self.0 -= rhs.0
-    }
-}
-
-impl PartialEq<f64> for PortfolioQty {
-    fn eq(&self, other: &f64) -> bool {
-        self.0 == *other
-    }
-}
-
-impl PartialOrd<f64> for PortfolioQty {
-    fn partial_cmp(&self, other: &f64) -> Option<std::cmp::Ordering> {
-        self.0.partial_cmp(other)
+impl From<PortfolioQty> for f64 {
+    fn from(v: PortfolioQty) -> Self {
+        *v
     }
 }
 
@@ -451,14 +197,16 @@ impl Default for PortfolioQty {
     }
 }
 
-impl Default for &PortfolioQty {
-    fn default() -> Self {
-        &PortfolioQty(0.0)
+#[derive(Clone, Debug, PartialEq, PartialOrd)]
+pub struct Price(f64);
+
+impl Deref for Price {
+    type Target = f64;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
     }
 }
-
-#[derive(Clone, Copy, Debug, PartialEq, PartialOrd)]
-pub struct Price(f64);
 
 impl Default for Price {
     fn default() -> Self {
@@ -478,55 +226,8 @@ impl From<f64> for Price {
     }
 }
 
-impl PartialEq<f64> for Price {
-    fn eq(&self, other: &f64) -> bool {
-        self.0 == *other
-    }
-}
-
-impl AddAssign for Price {
-    fn add_assign(&mut self, rhs: Self) {
-        self.0 += rhs.0
-    }
-}
-
-impl SubAssign for Price {
-    fn sub_assign(&mut self, rhs: Self) {
-        self.0 -= rhs.0
-    }
-}
-
-impl PartialOrd<f64> for Price {
-    fn partial_cmp(&self, other: &f64) -> Option<std::cmp::Ordering> {
-        self.0.partial_cmp(other)
-    }
-}
-
-impl Mul for Price {
-    type Output = Self;
-
-    fn mul(self, rhs: Self) -> Self {
-        Price(self.0 * rhs.0)
-    }
-}
-
-impl Mul<PortfolioQty> for Price {
-    type Output = CashValue;
-
-    fn mul(self, rhs: PortfolioQty) -> Self::Output {
-        CashValue(self.0 * rhs.0)
-    }
-}
-
-impl Sub for Price {
-    type Output = Self;
-
-    fn sub(self, rhs: Self) -> Self {
-        Price(self.0 - rhs.0)
-    }
-}
-
-//Represents the current state of a portfolio in terms of the number of shares held
+///Portfolio state in terms of the qty held (for example, shares) for each position. Postions are
+///represented by the string name/ticker.
 //TODO: this is fairly unclear, we also have values which should be computable from holdings so at
 //least one of these structures is not needed.
 #[derive(Clone, Debug)]
@@ -546,7 +247,7 @@ impl PortfolioHoldings {
     }
 
     pub fn insert(&mut self, ticker: &str, value: &PortfolioQty) {
-        self.0.insert(ticker.to_string(), *value);
+        self.0.insert(ticker.to_string(), value.clone());
     }
 
     pub fn new() -> Self {
@@ -561,13 +262,14 @@ impl Default for PortfolioHoldings {
     }
 }
 
-//Represents the current state of a portfolio in terms of the value of each position
+///Portfolio state in terms of cash allocation to each position. Position is represented by string
+///name/ticker.
 #[derive(Clone, Debug)]
 pub struct PortfolioValues(pub HashMap<String, CashValue>);
 
 impl PortfolioValues {
     pub fn insert(&mut self, ticker: &str, value: &CashValue) {
-        self.0.insert(ticker.to_string(), *value);
+        self.0.insert(ticker.to_string(), value.clone());
     }
 
     pub fn new() -> Self {
@@ -582,12 +284,17 @@ impl Default for PortfolioValues {
     }
 }
 
-pub trait Weight: Mul<CashValue, Output = CashValue> + Into<f64> {}
-
-#[derive(Clone, Copy, Debug)]
+///Size of a position in a portfolio in percentage terms.
+#[derive(Clone, Debug, PartialEq, PartialOrd)]
 pub struct PortfolioWeight(f64);
 
-impl Weight for PortfolioWeight {}
+impl Deref for PortfolioWeight {
+    type Target = f64;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
 
 impl From<PortfolioWeight> for f64 {
     fn from(v: PortfolioWeight) -> Self {
@@ -601,26 +308,20 @@ impl From<f64> for PortfolioWeight {
     }
 }
 
-impl Mul<CashValue> for PortfolioWeight {
-    type Output = CashValue;
-
-    fn mul(self, rhs: CashValue) -> Self::Output {
-        CashValue(self.0 * rhs.0)
-    }
-}
-
-//Represents the state of the portfolio in terms of the percentage of total value assigned to each
-//ticker
+///Portfolio state in terms of percentage weight allocated to a stock represented by string name.
 #[derive(Clone, Debug)]
-pub struct PortfolioAllocation<T: Weight>(pub HashMap<String, T>);
+//Previous version of this type was generic, saw no need for this because there are no cases where
+//we need an allocation over some generic weighting. We are using a plain wrapper around HashMap
+//because there may come a point when we need to add specific functionality.
+pub struct PortfolioAllocation(HashMap<String, PortfolioWeight>);
 
-impl PortfolioAllocation<PortfolioWeight> {
-    pub fn get(&self, ticker: &str) -> Option<&PortfolioWeight> {
-        self.0.get(ticker)
+impl PortfolioAllocation {
+    pub fn get(&self, ticker: impl AsRef<str>) -> Option<&PortfolioWeight> {
+        self.0.get(ticker.as_ref())
     }
 
-    pub fn insert(&mut self, ticker: &str, value: &PortfolioWeight) {
-        self.0.insert(ticker.to_string(), *value);
+    pub fn insert(&mut self, ticker: impl AsRef<str>, value: impl Into<PortfolioWeight>) {
+        self.0.insert(ticker.as_ref().to_string(), value.into());
     }
 
     pub fn keys(&self) -> Vec<String> {
@@ -633,8 +334,43 @@ impl PortfolioAllocation<PortfolioWeight> {
     }
 }
 
-impl Default for PortfolioAllocation<PortfolioWeight> {
+impl Default for PortfolioAllocation {
     fn default() -> Self {
         Self::new()
     }
+}
+
+///The frequency of a process.
+#[derive(Clone, Debug)]
+pub enum Frequency {
+    Second,
+    Daily,
+    Monthly,
+    Yearly,
+}
+
+///A point=in-time representation of the current state of a strategy. These statistics are currently
+///recorded for use within performance calculations after the simulation has concluded. They are
+///distinct from the transaction logging performed by brokers.
+///
+///net_cash_flow variable is a sum, not a measure of flow within the period. To get flows, we have
+///to diff each value with the previous one.
+#[derive(Clone, Debug)]
+pub struct StrategySnapshot {
+    pub date: DateTime,
+    pub portfolio_value: CashValue,
+    pub net_cash_flow: CashValue,
+}
+
+///Performance output from a single backtest run.
+#[derive(Clone, Debug)]
+pub struct BacktestOutput {
+    pub ret: f64,
+    pub cagr: f64,
+    pub vol: f64,
+    pub mdd: f64,
+    pub sharpe: f64,
+    pub values: Vec<f64>,
+    pub returns: Vec<f64>,
+    pub dates: Vec<i64>,
 }
