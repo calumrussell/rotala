@@ -10,6 +10,12 @@ The primary development goal is providing a simple, flexible backtesting library
 
 Most of the logic lies within `Strategy` and `Broker`: a strategy tells the broker what trades to execute, and a broker executes them. Dependencies on outside data are not shared, as there are many cases when components require different data. The only shared dependence is `Clock` which tells other components the current point in a backtest.
 
+`Broker` holds a reference to an `Exchange`. The exchange holds the execution logic and supports multiple `OrderType`. 
+
+Orders are not executed instaneously. Versions up to v.0.1.7 offered instaneous execution but this feature was changed to sequential execution (i.e. an order does not execute until the next period). This change adds complexity to the `Broker` (which then has to be reconciled against `Exchange`) but offers better separation of concerns and eliminates lookahead-bias.
+
+Because orders are not executed instanteously, it is not advisable to use data with frequencies longer than a month. Reconciliation of cash happens automatically (it is not something that is left to `Strategy`) but the level of volatility at frequencies greater than monthly would mean `Broker` rebalancing significantly on every step and deviation of expected performance. Instaneous execution may be added back for these cases.
+
 A conscious choice was made not to completely split `Strategy` and `Broker`, as is common in event-driven architectures having each component communicate with the other through messages. This approach would provide superior horizontal scalability in a live HFT environment but at the cost of some duplication of code/responsibility and complexity. Whilst this library could be used in production, and some components (for example, `Clock`) are designed with this in mind, it is not a primary focus, so there is no need to think about scalability beyond the confines of a single backtest run. And, hopefully, the code is easier to understand too.
 
 An example backtest (with data creation excluded):
@@ -18,17 +24,23 @@ An example backtest (with data creation excluded):
     let initial_cash: CashValue = 100_000.0.into();
     let length_in_days: i64 = 200;
     let start_date: i64 = 1609750800; //Date - 4/1/21 9:00:0000
-    let clock = ClockBuilder::from_length(&start_date.into(), length_in_days).daily();
+    let clock = ClockBuilder::from_length(start_date, length_in_days).daily();
 
     let data = build_data(Rc::clone(&clock));
 
     let mut weights: PortfolioAllocation<PortfolioWeight> = PortfolioAllocation::new();
-    weights.insert(&String::from("ABC"), &0.5.into());
-    weights.insert(&String::from("BCD"), &0.5.into());
+    weights.insert(ABC, 0.5);
+    weights.insert(BCD, 0.5);
+
+    let exchange = DefaultExchangeBuilder::new()
+        .with_data_source(data.clone())
+        .with_clock(Rc::clone(&clock))
+        .build();
 
     let simbrkr = SimulatedBrokerBuilder::new()
         .with_data(data)
-        .with_trade_costs(vec![BrokerCost::Flat(1.0.into())])
+        .with_exchange(exchange)
+        .with_trade_costs(vec![BrokerCost::Flat(1.0)])
         .build();
 
     let strat = StaticWeightStrategyBuilder::new()
@@ -55,7 +67,7 @@ In the tests folder, we have provided an implementation of a simple moving avera
 # Missing features that you may expect
 
 * Leverage
-* Multi-currency/Multi-exchange support
+* Multi-currency
 * Shorting 
 * Performance benchmarks
 * Concurrency
@@ -63,6 +75,8 @@ In the tests folder, we have provided an implementation of a simple moving avera
 The main priority in the near future, given the existing uses of the library, is support for multiple currencies and performance.
 
 # Change Log
+
+v0.2.0 - `Exchange` added onto `Broker` struct. Significant changes to core data structures to improve readability. More documentation. Simplification of performance calculations.
 
 v0.1.7 - `Series` offers a set of stateless calcluations over values (f64, because we need to consistently support log). `PortfolioCalculations` now separate within perf, also stateless but includes those operations that relate to an underlying portfolio. Some portfolio calculations were incorrect when the underlying portfolio had significant numbers of cash transactions, this has been fixed as `PortfolioCalculations` now calculate returns after cashflows.
 
