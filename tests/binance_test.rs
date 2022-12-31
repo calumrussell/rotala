@@ -3,12 +3,12 @@ use std::io::{Cursor, Write};
 use std::rc::Rc;
 
 use alator::broker::{BacktestBroker, GetsQuote, Order, OrderType, Quote, TransferCash};
-use alator::clock::{ClockBuilder, Clock};
+use alator::clock::{Clock, ClockBuilder};
 use alator::exchange::DefaultExchangeBuilder;
 use alator::input::{HashMapInput, HashMapInputBuilder, QuotesHashMap};
 use alator::sim::{SimulatedBroker, SimulatedBrokerBuilder};
 use alator::simcontext::SimContextBuilder;
-use alator::strategy::{Strategy, StrategyEvent, TransferTo, History};
+use alator::strategy::{History, Strategy, StrategyEvent, TransferTo};
 use alator::types::{CashValue, Frequency, StrategySnapshot};
 
 /* Get the data from Binance, build quote from open and close of candle, insert the quotes into
@@ -231,7 +231,13 @@ impl MovingAverageStrategy {
         let ten = MovingAverage::new(10);
         let fifty = MovingAverage::new(50);
         let history = Vec::new();
-        Self { brkr, ten, fifty, clock, history }
+        Self {
+            brkr,
+            ten,
+            fifty,
+            clock,
+            history,
+        }
     }
 }
 

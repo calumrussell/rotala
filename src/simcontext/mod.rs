@@ -1,7 +1,7 @@
 use crate::clock::Clock;
 use crate::perf::PerformanceCalculator;
-use crate::strategy::{Strategy, History};
-use crate::types::{CashValue, BacktestOutput, Frequency};
+use crate::strategy::{History, Strategy};
+use crate::types::{BacktestOutput, CashValue, Frequency};
 
 ///Provides context for a single run of a simulation. Once a run has started, all communication
 ///with the components of a simulation should happen through this context.
@@ -27,7 +27,6 @@ impl<T: Strategy + History> SimContext<T> {
         //Intended to be called at end of simulation
         let hist = self.strategy.get_history();
         PerformanceCalculator::calculate(freq, hist)
-
     }
 
     pub fn init(&mut self, initial_cash: &CashValue) {
