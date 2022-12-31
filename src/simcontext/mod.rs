@@ -1,6 +1,7 @@
 use crate::clock::Clock;
-use crate::strategy::Strategy;
-use crate::types::CashValue;
+use crate::perf::PerformanceCalculator;
+use crate::strategy::{Strategy, History};
+use crate::types::{CashValue, BacktestOutput, Frequency};
 
 ///Provides context for a single run of a simulation. Once a run has started, all communication
 ///with the components of a simulation should happen through this context.
@@ -9,12 +10,12 @@ use crate::types::CashValue;
 ///reference to a `Strategy` to run it. Passing references around with smart pointers would
 ///introduce a level of complexity beyond the requirements of current use-cases. The cost of this
 ///is that `SimContext` is tightly-bound to `Strategy`.
-pub struct SimContext<T: Strategy> {
+pub struct SimContext<T: Strategy + History> {
     clock: Clock,
     strategy: T,
 }
 
-impl<T: Strategy> SimContext<T> {
+impl<T: Strategy + History> SimContext<T> {
     pub fn run(&mut self) {
         while self.clock.borrow().has_next() {
             self.clock.borrow_mut().tick();
@@ -22,17 +23,24 @@ impl<T: Strategy> SimContext<T> {
         }
     }
 
+    pub fn perf(&self, freq: Frequency) -> BacktestOutput {
+        //Intended to be called at end of simulation
+        let hist = self.strategy.get_history();
+        PerformanceCalculator::calculate(freq, hist)
+
+    }
+
     pub fn init(&mut self, initial_cash: &CashValue) {
         self.strategy.init(initial_cash);
     }
 }
 
-pub struct SimContextBuilder<T: Strategy> {
+pub struct SimContextBuilder<T: Strategy + History> {
     clock: Option<Clock>,
     strategy: Option<T>,
 }
 
-impl<T: Strategy> SimContextBuilder<T> {
+impl<T: Strategy + History> SimContextBuilder<T> {
     pub fn with_strategy(&mut self, strategy: T) -> &mut Self {
         self.strategy = Some(strategy);
         self
@@ -67,7 +75,7 @@ impl<T: Strategy> SimContextBuilder<T> {
     }
 }
 
-impl<T: Strategy> Default for SimContextBuilder<T> {
+impl<T: Strategy + History> Default for SimContextBuilder<T> {
     fn default() -> Self {
         Self::new()
     }

@@ -3,13 +3,13 @@ use std::io::{Cursor, Write};
 use std::rc::Rc;
 
 use alator::broker::{BacktestBroker, GetsQuote, Order, OrderType, Quote, TransferCash};
-use alator::clock::ClockBuilder;
+use alator::clock::{ClockBuilder, Clock};
 use alator::exchange::DefaultExchangeBuilder;
 use alator::input::{HashMapInput, HashMapInputBuilder, QuotesHashMap};
 use alator::sim::{SimulatedBroker, SimulatedBrokerBuilder};
 use alator::simcontext::SimContextBuilder;
-use alator::strategy::{Strategy, StrategyEvent, TransferTo};
-use alator::types::{CashValue, Frequency};
+use alator::strategy::{Strategy, StrategyEvent, TransferTo, History};
+use alator::types::{CashValue, Frequency, StrategySnapshot};
 
 /* Get the data from Binance, build quote from open and close of candle, insert the quotes into
  * QuotesHashMap using those dates.
@@ -131,15 +131,23 @@ impl MovingAverage {
 //We also do not implement performance tracking. `StaticWeightStrategy` shows you how to hook this
 //tracking into the simulation lifecycle.
 struct MovingAverageStrategy {
+    clock: Clock,
     brkr: SimulatedBroker<HashMapInput>,
     ten: MovingAverage,
     fifty: MovingAverage,
+    history: Vec<StrategySnapshot>,
 }
 
 impl TransferTo for MovingAverageStrategy {
     fn deposit_cash(&mut self, cash: &f64) -> StrategyEvent {
         self.brkr.deposit_cash(&cash);
         StrategyEvent::DepositSuccess(CashValue::from(*cash))
+    }
+}
+
+impl History for MovingAverageStrategy {
+    fn get_history(&self) -> Vec<alator::types::StrategySnapshot> {
+        self.history.clone()
     }
 }
 
@@ -204,16 +212,26 @@ impl Strategy for MovingAverageStrategy {
                 }
             }
         }
-        //We return the current portfolio value on each iteration.
-        self.brkr.get_total_value()
+
+        let val = self.brkr.get_total_value();
+
+        let snap = StrategySnapshot {
+            date: self.clock.borrow().now(),
+            portfolio_value: val.clone(),
+            net_cash_flow: CashValue::from(0.0),
+        };
+
+        self.history.push(snap);
+        val
     }
 }
 
 impl MovingAverageStrategy {
-    fn new(brkr: SimulatedBroker<HashMapInput>) -> Self {
+    fn new(brkr: SimulatedBroker<HashMapInput>, clock: Clock) -> Self {
         let ten = MovingAverage::new(10);
         let fifty = MovingAverage::new(50);
-        Self { brkr, ten, fifty }
+        let history = Vec::new();
+        Self { brkr, ten, fifty, clock, history }
     }
 }
 
@@ -254,7 +272,8 @@ fn binance_test() {
         .with_exchange(exchange)
         .build();
 
-    let strat = MovingAverageStrategy::new(simbrkr);
+    let strat = MovingAverageStrategy::new(simbrkr, Rc::clone(&clock));
+
     let mut sim = SimContextBuilder::new()
         .with_clock(Rc::clone(&clock))
         .with_strategy(strat)
