@@ -80,4 +80,6 @@ fn staticweight_integration_test() {
         .init(&initial_cash);
 
     sim.run();
+
+    let _perf = sim.perf(Frequency::Daily);
 }
