@@ -76,6 +76,8 @@ The main priority in the near future, given the existing uses of the library, is
 
 # Change Log
 
+v0.2.1 - Performance now runs against `SimContext` due to issue with borrow check on `Strategy` in full simulation.
+
 v0.2.0 - `Exchange` added onto `Broker` struct. Significant changes to core data structures to improve readability. More documentation. Simplification of performance calculations.
 
 v0.1.7 - `Series` offers a set of stateless calcluations over values (f64, because we need to consistently support log). `PortfolioCalculations` now separate within perf, also stateless but includes those operations that relate to an underlying portfolio. Some portfolio calculations were incorrect when the underlying portfolio had significant numbers of cash transactions, this has been fixed as `PortfolioCalculations` now calculate returns after cashflows.
