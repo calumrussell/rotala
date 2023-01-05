@@ -2,7 +2,7 @@ use itertools::Itertools;
 use std::collections::HashMap;
 use std::hash::Hash;
 use std::ops::Deref;
-use time::OffsetDateTime;
+use time::{OffsetDateTime, format_description};
 
 ///Defines a set of base types that are used by multiple components.
 
@@ -136,6 +136,12 @@ impl DateTime {
         let date: OffsetDateTime = self.clone().into();
         date.month().into()
     }
+
+    pub fn from_string(val: &str, date_fmt: &str) -> Self {
+        let format = format_description::parse(date_fmt).unwrap();
+        let parsed_date = OffsetDateTime::parse(&val, &format).unwrap();
+        Self::from(parsed_date)
+    }
 }
 
 impl Deref for DateTime {
@@ -143,6 +149,12 @@ impl Deref for DateTime {
 
     fn deref(&self) -> &Self::Target {
         &self.0
+    }
+}
+
+impl From<OffsetDateTime> for DateTime {
+    fn from(value: OffsetDateTime) -> Self {
+        value.unix_timestamp().into()
     }
 }
 
