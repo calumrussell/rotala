@@ -2,7 +2,7 @@ use itertools::Itertools;
 use std::collections::HashMap;
 use std::hash::Hash;
 use std::ops::Deref;
-use time::{OffsetDateTime, format_description};
+use time::{format_description, Date, OffsetDateTime};
 
 ///Defines a set of base types that are used by multiple components.
 
@@ -137,10 +137,11 @@ impl DateTime {
         date.month().into()
     }
 
-    pub fn from_string(val: &str, date_fmt: &str) -> Self {
+    pub fn from_date_string(val: &str, date_fmt: &str) -> Self {
         let format = format_description::parse(date_fmt).unwrap();
-        let parsed_date = OffsetDateTime::parse(&val, &format).unwrap();
-        Self::from(parsed_date)
+        let parsed_date = Date::parse(val, &format).unwrap();
+        let parsed_time = parsed_date.with_time(time::macros::time!(09:00));
+        Self::from(parsed_time.assume_utc().unix_timestamp())
     }
 }
 

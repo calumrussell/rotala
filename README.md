@@ -76,7 +76,7 @@ The main priority in the near future, given the existing uses of the library, is
 
 # Change Log
 
-v0.2.2 - Added `DateTime` parser from string.
+v0.2.3 - Added `DateTime` parser from date string.
 
 v0.2.1 - Performance now runs against `SimContext` due to issue with borrow check on `Strategy` in full simulation.
 
