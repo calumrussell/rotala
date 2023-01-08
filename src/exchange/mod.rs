@@ -157,7 +157,7 @@ impl<D: DataSource> Exchange for DefaultExchange<D> {
     }
 
     fn get_quotes(&self) -> Option<Vec<Quote>> {
-        self.data_source.get_quotes().cloned()
+        self.data_source.get_quotes()
     }
 
     fn flush_buffer(&mut self) -> Vec<Trade> {

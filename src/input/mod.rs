@@ -15,8 +15,8 @@ use crate::types::DateTime;
 ///this pattern reduces runtime errors.
 pub trait DataSource: Clone {
     fn get_quote(&self, symbol: &str) -> Option<Quote>;
-    fn get_quotes(&self) -> Option<&Vec<Quote>>;
-    fn get_dividends(&self) -> Option<&Vec<Dividend>>;
+    fn get_quotes(&self) -> Option<Vec<Quote>>;
+    fn get_dividends(&self) -> Option<Vec<Dividend>>;
 }
 
 ///Implementation of [DataSource trait that wraps around a HashMap. Time is kept with reference to
@@ -44,14 +44,14 @@ impl DataSource for HashMapInput {
         None
     }
 
-    fn get_quotes(&self) -> Option<&Vec<Quote>> {
+    fn get_quotes(&self) -> Option<Vec<Quote>> {
         let curr_date = self.clock.borrow().now();
-        self.quotes.get(&curr_date)
+        self.quotes.get(&curr_date).cloned()
     }
 
-    fn get_dividends(&self) -> Option<&Vec<Dividend>> {
+    fn get_dividends(&self) -> Option<Vec<Dividend>> {
         let curr_date = self.clock.borrow().now();
-        self.dividends.get(&curr_date)
+        self.dividends.get(&curr_date).cloned()
     }
 }
 
