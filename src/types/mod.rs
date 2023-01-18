@@ -1,5 +1,5 @@
 use itertools::Itertools;
-use std::collections::HashMap;
+use std::{collections::HashMap, ops::Add};
 use std::hash::Hash;
 use std::ops::Deref;
 use time::{format_description, Date, OffsetDateTime};
@@ -32,6 +32,14 @@ impl From<CashValue> for f64 {
 impl From<f64> for CashValue {
     fn from(v: f64) -> Self {
         CashValue(v)
+    }
+}
+
+impl Add<CashValue> for CashValue {
+    type Output = CashValue;
+
+    fn add(self, rhs: CashValue) -> Self::Output {
+        CashValue::from(*self + *rhs)
     }
 }
 
