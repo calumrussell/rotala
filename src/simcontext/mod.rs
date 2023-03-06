@@ -1,7 +1,7 @@
 use crate::clock::Clock;
-use crate::perf::PerformanceCalculator;
+use crate::perf::{BacktestOutput, PerformanceCalculator};
 use crate::strategy::{History, Strategy};
-use crate::types::{BacktestOutput, CashValue, Frequency};
+use crate::types::{CashValue, Frequency};
 
 ///Provides context for a single run of a simulation. Once a run has started, all communication
 ///with the components of a simulation should happen through this context.

@@ -1,5 +1,18 @@
-use crate::types::{BacktestOutput, Frequency, StrategySnapshot};
+use crate::types::{Frequency, StrategySnapshot};
 use itertools::Itertools;
+
+///Performance output from a single backtest run.
+#[derive(Clone, Debug)]
+pub struct BacktestOutput {
+    pub ret: f64,
+    pub cagr: f64,
+    pub vol: f64,
+    pub mdd: f64,
+    pub sharpe: f64,
+    pub values: Vec<f64>,
+    pub returns: Vec<f64>,
+    pub dates: Vec<i64>,
+}
 
 struct CalculationAlgos;
 
