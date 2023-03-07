@@ -370,6 +370,17 @@ pub enum Frequency {
     Yearly,
 }
 
+impl Frequency {
+    pub fn to_str(&self) -> String {
+        match self {
+            Self::Second => String::from("Second"),
+            Self::Daily => String::from("Daily"),
+            Self::Monthly => String::from("Monthly"),
+            Self::Yearly => String::from("Yearly"),
+        }
+    }
+}
+
 ///A point=in-time representation of the current state of a strategy. These statistics are currently
 ///recorded for use within performance calculations after the simulation has concluded. They are
 ///distinct from the transaction logging performed by brokers.

@@ -19,6 +19,7 @@ pub struct BacktestOutput {
     pub dd_end_date: i64,
     pub best_return: f64,
     pub worst_return: f64,
+    pub frequency: String,
 }
 
 struct CalculationAlgos;
@@ -221,6 +222,7 @@ impl PerformanceCalculator {
             dd_end_date,
             best_return,
             worst_return,
+            frequency: freq.to_str(),
         }
     }
 }
