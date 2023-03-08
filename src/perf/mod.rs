@@ -106,6 +106,13 @@ impl PortfolioCalculations {
     fn get_sharpe(rets: &Vec<f64>, log_rets: &Vec<f64>, days: i32, freq: &Frequency) -> f64 {
         let vol = PortfolioCalculations::get_vol(rets, freq);
         let ret = PortfolioCalculations::get_cagr(log_rets, days, freq);
+        if vol == 0.0 {
+            if ret != 0.0 {
+                return ret;
+            } else {
+                return 0.0;
+            }
+        }
         ret / vol
     }
 
