@@ -1,28 +1,57 @@
-use crate::types::{BacktestOutput, Frequency, StrategySnapshot};
+use crate::types::{Frequency, StrategySnapshot};
 use itertools::Itertools;
+
+///Performance output from a single backtest run.
+#[derive(Clone, Debug)]
+pub struct BacktestOutput {
+    pub ret: f64,
+    pub cagr: f64,
+    pub vol: f64,
+    pub mdd: f64,
+    pub sharpe: f64,
+    pub values: Vec<f64>,
+    pub returns: Vec<f64>,
+    pub dates: Vec<i64>,
+    pub cash_flows: Vec<f64>,
+    pub first_date: i64,
+    pub last_date: i64,
+    pub dd_start_date: i64,
+    pub dd_end_date: i64,
+    pub best_return: f64,
+    pub worst_return: f64,
+    pub frequency: String,
+}
 
 struct CalculationAlgos;
 
 impl CalculationAlgos {
-    fn maxdd(values: &Vec<f64>) -> f64 {
+    ///Returns a tuple containing (max drawdown, position of drawdown start, end position)
+    fn maxdd(values: &Vec<f64>) -> (f64, usize, usize) {
         let mut maxdd = 0.0;
         let mut peak = 0.0;
+        let mut peak_pos: usize = 0;
         let mut trough = 0.0;
+        let mut trough_pos: usize = 0;
         let mut t2;
+        let mut pos: usize = 0;
 
         for t1 in values {
             if t1 > &peak {
                 peak = *t1;
+                peak_pos = pos.clone();
                 trough = peak;
+                trough_pos = peak_pos.clone();
             } else if t1 < &trough {
                 trough = *t1;
+                trough_pos = pos.clone();
                 t2 = (trough / peak) - 1.0;
                 if t2 < maxdd {
                     maxdd = t2
                 }
             }
+            pos += 1;
         }
-        maxdd
+        (maxdd, peak_pos, trough_pos)
     }
 
     fn var(values: &Vec<f64>) -> f64 {
@@ -69,23 +98,19 @@ impl PortfolioCalculations {
         }
     }
 
-    fn get_vol(portfolio_values: &Vec<f64>, cash_flows: &[f64], freq: &Frequency) -> f64 {
-        let rets =
-            PortfolioCalculations::get_returns_with_cashflows(portfolio_values, cash_flows, false);
+    fn get_vol(rets: &Vec<f64>, freq: &Frequency) -> f64 {
         let vol = CalculationAlgos::vol(&rets);
         PortfolioCalculations::annualize_volatility(vol, freq)
     }
 
-    fn get_sharpe(portfolio_values: &Vec<f64>, cash_flows: &[f64], freq: &Frequency) -> f64 {
-        let vol = PortfolioCalculations::get_vol(portfolio_values, cash_flows, freq);
-        let ret = PortfolioCalculations::get_portfolio_return(portfolio_values, cash_flows);
+    fn get_sharpe(rets: &Vec<f64>, log_rets: &Vec<f64>, days: i32, freq: &Frequency) -> f64 {
+        let vol = PortfolioCalculations::get_vol(rets, freq);
+        let ret = PortfolioCalculations::get_cagr(log_rets, days, freq);
         ret / vol
     }
 
-    fn get_maxdd(portfolio_values: &Vec<f64>, cash_flows: &[f64]) -> f64 {
+    fn get_maxdd(rets: &Vec<f64>) -> (f64, usize, usize) {
         //Adds N to the runtime, can run faster but it isn't worth the time atm
-        let rets =
-            PortfolioCalculations::get_returns_with_cashflows(portfolio_values, cash_flows, false);
         let mut values_with_cashflows = vec![100_000.0];
         for i in rets {
             //Because we add one value on creation, we can always unwrap safely
@@ -96,22 +121,20 @@ impl PortfolioCalculations {
         CalculationAlgos::maxdd(&values_with_cashflows)
     }
 
-    fn get_cagr(portfolio_values: &Vec<f64>, cash_flows: &[f64], freq: &Frequency) -> f64 {
-        let ret = PortfolioCalculations::get_portfolio_return(portfolio_values, cash_flows);
-        let days = portfolio_values.len() as i32;
+    fn get_cagr(log_rets: &Vec<f64>, days: i32, freq: &Frequency) -> f64 {
+        let ret = PortfolioCalculations::get_portfolio_return(log_rets);
         PortfolioCalculations::annualize_returns(ret, days, freq)
     }
 
-    fn get_portfolio_return(portfolio_values: &Vec<f64>, cash_flows: &[f64]) -> f64 {
-        let log_rets =
-            PortfolioCalculations::get_returns_with_cashflows(portfolio_values, cash_flows, true);
+    fn get_portfolio_return(log_rets: &Vec<f64>) -> f64 {
         let sum_log_rets: f64 = log_rets.iter().sum();
         sum_log_rets.exp() - 1.0
     }
 
-    fn get_returns_with_cashflows(
+    fn get_returns(
         portfolio_values: &Vec<f64>,
         cash_flows: &[f64],
+        inflation: &[f64],
         is_log: bool,
     ) -> Vec<f64> {
         let count = portfolio_values.len();
@@ -124,9 +147,12 @@ impl PortfolioCalculations {
 
                 let cash_flow = cash_flows.get(i).unwrap();
 
-                let gain = end - start - *cash_flow;
+                let gain = end - (start + *cash_flow);
                 let capital = start + *cash_flow;
-                let ret = gain / capital;
+
+                let inflation_value = inflation.get(i).unwrap();
+                let ret = ((1.0 + (gain / capital)) / (1.0 + *inflation_value)) - 1.0;
+
                 if is_log {
                     let log_ret = (1.0 + ret).ln();
                     rets.push(log_ret);
@@ -152,6 +178,7 @@ impl PerformanceCalculator {
         let mut dates: Vec<i64> = Vec::new();
         let mut total_values: Vec<f64> = Vec::new();
         cash_flows.push(0.0);
+
         for i in 0..states.len() {
             dates.push(*states.get(i).unwrap().date);
             total_values.push(*states.get(i).unwrap().portfolio_value);
@@ -162,19 +189,52 @@ impl PerformanceCalculator {
                 cash_flows.push(diff)
             }
         }
+
+        let inflation: Vec<f64> = states.iter().map(|v| v.inflation.clone()).collect();
+
+        let returns =
+            PortfolioCalculations::get_returns(&total_values, &cash_flows, &inflation, false);
+
+        let log_returns =
+            PortfolioCalculations::get_returns(&total_values, &cash_flows, &inflation, true);
+
+        let (mdd, drawdown_start_pos, drawdown_end_pos) =
+            PortfolioCalculations::get_maxdd(&returns);
+        //This can error but shouldn't because we are querying into the same-length array
+        let dd_start_date = dates[drawdown_start_pos];
+        let dd_end_date = dates[drawdown_end_pos];
+
+        let best_return = *returns
+            .iter()
+            .min_by(|x, y| x.partial_cmp(y).unwrap())
+            .unwrap();
+        let worst_return = *returns
+            .iter()
+            .max_by(|x, y| x.partial_cmp(y).unwrap())
+            .unwrap();
+
         BacktestOutput {
-            ret: PortfolioCalculations::get_portfolio_return(&total_values, &cash_flows),
-            cagr: PortfolioCalculations::get_cagr(&total_values, &cash_flows, &freq),
-            vol: PortfolioCalculations::get_vol(&total_values, &cash_flows, &freq),
-            mdd: PortfolioCalculations::get_maxdd(&total_values, &cash_flows),
-            sharpe: PortfolioCalculations::get_sharpe(&total_values, &cash_flows, &freq),
-            values: total_values.clone(),
-            returns: PortfolioCalculations::get_returns_with_cashflows(
-                &total_values,
-                &cash_flows,
-                false,
+            ret: PortfolioCalculations::get_portfolio_return(&log_returns),
+            cagr: PortfolioCalculations::get_cagr(&log_returns, dates.len() as i32, &freq),
+            vol: PortfolioCalculations::get_vol(&returns, &freq),
+            mdd,
+            sharpe: PortfolioCalculations::get_sharpe(
+                &returns,
+                &log_returns,
+                dates.len() as i32,
+                &freq,
             ),
+            values: total_values.clone(),
+            returns,
             dates: dates.clone(),
+            cash_flows,
+            first_date: dates.first().unwrap().clone(),
+            last_date: dates.last().unwrap().clone(),
+            dd_start_date,
+            dd_end_date,
+            best_return,
+            worst_return,
+            frequency: freq.to_str(),
         }
     }
 }
@@ -275,7 +335,7 @@ mod tests {
     }
 
     #[test]
-    fn test_that_portfolio_calculates_performance_accuratelj() {
+    fn test_that_portfolio_calculates_performance_accurately() {
         let (brkr, clock) = setup();
         //We use less than 100% because some bugs become possible when you are allocating the full
         //portfolio which perturb the order of operations leading to different perf outputs.
@@ -321,35 +381,53 @@ mod tests {
             date: 100.into(),
             portfolio_value: 100.0.into(),
             net_cash_flow: 0.0.into(),
+            inflation: 0.0.into(),
         };
         let snap1 = StrategySnapshot {
             date: 101.into(),
             portfolio_value: 121.0.into(),
             net_cash_flow: 10.0.into(),
+            inflation: 0.0.into(),
         };
         let snap2 = StrategySnapshot {
             date: 102.into(),
-            portfolio_value: 144.1.into(),
-            net_cash_flow: 20.0.into(),
+            portfolio_value: 126.9.into(),
+            net_cash_flow: 30.0.into(),
+            inflation: 0.0.into(),
         };
-        let with_cash_flows = vec![snap0, snap1, snap2];
+        let snap3 = StrategySnapshot {
+            date: 103.into(),
+            portfolio_value: 150.59.into(),
+            net_cash_flow: 40.0.into(),
+            inflation: 0.0.into(),
+        };
+        let with_cash_flows = vec![snap0, snap1, snap2, snap3];
 
         let snap3 = StrategySnapshot {
             date: 100.into(),
             portfolio_value: 100.0.into(),
             net_cash_flow: 0.0.into(),
+            inflation: 0.0.into(),
         };
         let snap4 = StrategySnapshot {
             date: 101.into(),
             portfolio_value: 110.0.into(),
             net_cash_flow: 0.0.into(),
+            inflation: 0.0.into(),
         };
         let snap5 = StrategySnapshot {
             date: 102.into(),
-            portfolio_value: 121.0.into(),
+            portfolio_value: 99.0.into(),
             net_cash_flow: 0.0.into(),
+            inflation: 0.0.into(),
         };
-        let without_cash_flows = vec![snap3, snap4, snap5];
+        let snap6 = StrategySnapshot {
+            date: 103.into(),
+            portfolio_value: 108.9.into(),
+            net_cash_flow: 0.0.into(),
+            inflation: 0.0.into(),
+        };
+        let without_cash_flows = vec![snap3, snap4, snap5, snap6];
 
         let perf0 = PerformanceCalculator::calculate(Frequency::Yearly, with_cash_flows);
         let perf1 = PerformanceCalculator::calculate(Frequency::Yearly, without_cash_flows);
@@ -357,8 +435,37 @@ mod tests {
         let ret0 = f64::round(perf0.ret * 100.0);
         let ret1 = f64::round(perf1.ret * 100.0);
 
-        println!("{:?}", ret0);
-        println!("{:?}", ret1);
+        println!("{:?}", perf0);
+        println!("{:?}", perf1);
         assert_eq!(ret0, ret1);
+    }
+
+    #[test]
+    fn test_that_returns_with_inflation_correct() {
+        let snap1 = StrategySnapshot {
+            date: 100.into(),
+            portfolio_value: 100.0.into(),
+            net_cash_flow: 0.0.into(),
+            inflation: 0.0.into(),
+        };
+        let snap2 = StrategySnapshot {
+            date: 101.into(),
+            portfolio_value: 110.0.into(),
+            net_cash_flow: 0.0.into(),
+            inflation: 0.10.into(),
+        };
+        let snap3 = StrategySnapshot {
+            date: 102.into(),
+            portfolio_value: 121.0.into(),
+            net_cash_flow: 0.0.into(),
+            inflation: 0.10.into(),
+        };
+
+        let with_inflation = vec![snap1, snap2, snap3];
+
+        let perf = PerformanceCalculator::calculate(Frequency::Yearly, with_inflation);
+
+        dbg!(&perf.returns);
+        assert!(perf.returns == vec![0.0, 0.0])
     }
 }

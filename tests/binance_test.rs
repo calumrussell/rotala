@@ -219,6 +219,7 @@ impl Strategy for MovingAverageStrategy {
             date: self.clock.borrow().now(),
             portfolio_value: val.clone(),
             net_cash_flow: CashValue::from(0.0),
+            inflation: 0.0,
         };
 
         self.history.push(snap);

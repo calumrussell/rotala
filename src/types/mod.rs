@@ -1,7 +1,7 @@
 use itertools::Itertools;
-use std::{collections::HashMap, ops::Add};
 use std::hash::Hash;
 use std::ops::Deref;
+use std::{collections::HashMap, ops::Add};
 use time::{format_description, Date, OffsetDateTime};
 
 ///Defines a set of base types that are used by multiple components.
@@ -370,28 +370,55 @@ pub enum Frequency {
     Yearly,
 }
 
-///A point=in-time representation of the current state of a strategy. These statistics are currently
-///recorded for use within performance calculations after the simulation has concluded. They are
-///distinct from the transaction logging performed by brokers.
+impl Frequency {
+    pub fn to_str(&self) -> String {
+        match self {
+            Self::Second => String::from("Second"),
+            Self::Daily => String::from("Daily"),
+            Self::Monthly => String::from("Monthly"),
+            Self::Yearly => String::from("Yearly"),
+        }
+    }
+}
+
+/// A point=in-time representation of the current state of a strategy. These statistics are currently
+/// recorded for use within performance calculations after the simulation has concluded. They are
+/// distinct from the transaction logging performed by brokers.
 ///
-///net_cash_flow variable is a sum, not a measure of flow within the period. To get flows, we have
-///to diff each value with the previous one.
+/// Inflation is calculated over the snapshot period. No manipulation of the value is conducted to
+/// change the frequency.
+///
+/// net_cash_flow variable is a sum, not a measure of flow within the period. To get flows, we have
+/// to diff each value with the previous one.
 #[derive(Clone, Debug)]
 pub struct StrategySnapshot {
     pub date: DateTime,
     pub portfolio_value: CashValue,
     pub net_cash_flow: CashValue,
+    pub inflation: f64,
 }
 
-///Performance output from a single backtest run.
-#[derive(Clone, Debug)]
-pub struct BacktestOutput {
-    pub ret: f64,
-    pub cagr: f64,
-    pub vol: f64,
-    pub mdd: f64,
-    pub sharpe: f64,
-    pub values: Vec<f64>,
-    pub returns: Vec<f64>,
-    pub dates: Vec<i64>,
+impl StrategySnapshot {
+    pub fn nominal(date: DateTime, portfolio_value: CashValue, net_cash_flow: CashValue) -> Self {
+        Self {
+            date,
+            portfolio_value,
+            net_cash_flow,
+            inflation: 0.0,
+        }
+    }
+
+    pub fn real(
+        date: DateTime,
+        portfolio_value: CashValue,
+        net_cash_flow: CashValue,
+        inflation: f64,
+    ) -> Self {
+        Self {
+            date,
+            portfolio_value,
+            net_cash_flow,
+            inflation,
+        }
+    }
 }
