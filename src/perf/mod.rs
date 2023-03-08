@@ -131,7 +131,12 @@ impl PortfolioCalculations {
         sum_log_rets.exp() - 1.0
     }
 
-    fn get_returns(portfolio_values: &Vec<f64>, cash_flows: &[f64], is_log: bool) -> Vec<f64> {
+    fn get_returns(
+        portfolio_values: &Vec<f64>,
+        cash_flows: &[f64],
+        inflation: &[f64],
+        is_log: bool,
+    ) -> Vec<f64> {
         let count = portfolio_values.len();
         let mut rets: Vec<f64> = Vec::new();
 
@@ -144,7 +149,10 @@ impl PortfolioCalculations {
 
                 let gain = end - (start + *cash_flow);
                 let capital = start + *cash_flow;
-                let ret = gain / capital;
+
+                let inflation_value = inflation.get(i).unwrap();
+                let ret = ((1.0 + (gain / capital)) / (1.0 + *inflation_value)) - 1.0;
+
                 if is_log {
                     let log_ret = (1.0 + ret).ln();
                     rets.push(log_ret);
@@ -182,9 +190,13 @@ impl PerformanceCalculator {
             }
         }
 
-        let returns = PortfolioCalculations::get_returns(&total_values, &cash_flows, false);
+        let inflation: Vec<f64> = states.iter().map(|v| v.inflation.clone()).collect();
 
-        let log_returns = PortfolioCalculations::get_returns(&total_values, &cash_flows, true);
+        let returns =
+            PortfolioCalculations::get_returns(&total_values, &cash_flows, &inflation, false);
+
+        let log_returns =
+            PortfolioCalculations::get_returns(&total_values, &cash_flows, &inflation, true);
 
         let (mdd, drawdown_start_pos, drawdown_end_pos) =
             PortfolioCalculations::get_maxdd(&returns);
@@ -369,21 +381,25 @@ mod tests {
             date: 100.into(),
             portfolio_value: 100.0.into(),
             net_cash_flow: 0.0.into(),
+            inflation: 0.0.into(),
         };
         let snap1 = StrategySnapshot {
             date: 101.into(),
             portfolio_value: 121.0.into(),
             net_cash_flow: 10.0.into(),
+            inflation: 0.0.into(),
         };
         let snap2 = StrategySnapshot {
             date: 102.into(),
             portfolio_value: 126.9.into(),
             net_cash_flow: 30.0.into(),
+            inflation: 0.0.into(),
         };
         let snap3 = StrategySnapshot {
             date: 103.into(),
             portfolio_value: 150.59.into(),
             net_cash_flow: 40.0.into(),
+            inflation: 0.0.into(),
         };
         let with_cash_flows = vec![snap0, snap1, snap2, snap3];
 
@@ -391,21 +407,25 @@ mod tests {
             date: 100.into(),
             portfolio_value: 100.0.into(),
             net_cash_flow: 0.0.into(),
+            inflation: 0.0.into(),
         };
         let snap4 = StrategySnapshot {
             date: 101.into(),
             portfolio_value: 110.0.into(),
             net_cash_flow: 0.0.into(),
+            inflation: 0.0.into(),
         };
         let snap5 = StrategySnapshot {
             date: 102.into(),
             portfolio_value: 99.0.into(),
             net_cash_flow: 0.0.into(),
+            inflation: 0.0.into(),
         };
         let snap6 = StrategySnapshot {
             date: 103.into(),
             portfolio_value: 108.9.into(),
             net_cash_flow: 0.0.into(),
+            inflation: 0.0.into(),
         };
         let without_cash_flows = vec![snap3, snap4, snap5, snap6];
 
@@ -418,5 +438,34 @@ mod tests {
         println!("{:?}", perf0);
         println!("{:?}", perf1);
         assert_eq!(ret0, ret1);
+    }
+
+    #[test]
+    fn test_that_returns_with_inflation_correct() {
+        let snap1 = StrategySnapshot {
+            date: 100.into(),
+            portfolio_value: 100.0.into(),
+            net_cash_flow: 0.0.into(),
+            inflation: 0.0.into(),
+        };
+        let snap2 = StrategySnapshot {
+            date: 101.into(),
+            portfolio_value: 110.0.into(),
+            net_cash_flow: 0.0.into(),
+            inflation: 0.10.into(),
+        };
+        let snap3 = StrategySnapshot {
+            date: 102.into(),
+            portfolio_value: 121.0.into(),
+            net_cash_flow: 0.0.into(),
+            inflation: 0.10.into(),
+        };
+
+        let with_inflation = vec![snap1, snap2, snap3];
+
+        let perf = PerformanceCalculator::calculate(Frequency::Yearly, with_inflation);
+
+        dbg!(&perf.returns);
+        assert!(perf.returns == vec![0.0, 0.0])
     }
 }
