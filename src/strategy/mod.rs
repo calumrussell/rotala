@@ -142,10 +142,13 @@ pub struct StaticWeightStrategy<T: DataSource> {
 
 impl<T: DataSource> StaticWeightStrategy<T> {
     pub fn get_snapshot(&mut self) -> StrategySnapshot {
+        // Defaults to zero inflation because most users probably aren't looking
+        // for real returns calcs
         StrategySnapshot {
             date: self.clock.borrow().now(),
             portfolio_value: self.brkr.get_total_value(),
             net_cash_flow: self.net_cash_flow.clone(),
+            inflation: 0.0,
         }
     }
 }
