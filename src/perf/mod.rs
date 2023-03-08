@@ -151,7 +151,13 @@ impl PortfolioCalculations {
                 let capital = start + *cash_flow;
 
                 let inflation_value = inflation.get(i).unwrap();
-                let ret = ((1.0 + (gain / capital)) / (1.0 + *inflation_value)) - 1.0;
+
+                let ret: f64;
+                if capital == 0.0 {
+                    ret = 0.0
+                } else {
+                    ret = ((1.0 + (gain / capital)) / (1.0 + *inflation_value)) - 1.0;
+                }
 
                 if is_log {
                     let log_ret = (1.0 + ret).ln();
@@ -464,6 +470,35 @@ mod tests {
         let with_inflation = vec![snap1, snap2, snap3];
 
         let perf = PerformanceCalculator::calculate(Frequency::Yearly, with_inflation);
+
+        dbg!(&perf.returns);
+        assert!(perf.returns == vec![0.0, 0.0])
+    }
+
+    #[test]
+    fn test_that_perf_completes_with_zeros() {
+        let snap1 = StrategySnapshot {
+            date: 100.into(),
+            portfolio_value: 0.0.into(),
+            net_cash_flow: 0.0.into(),
+            inflation: 0.0.into(),
+        };
+        let snap2 = StrategySnapshot {
+            date: 101.into(),
+            portfolio_value: 0.0.into(),
+            net_cash_flow: 0.0.into(),
+            inflation: 0.0.into(),
+        };
+        let snap3 = StrategySnapshot {
+            date: 102.into(),
+            portfolio_value: 0.0.into(),
+            net_cash_flow: 0.0.into(),
+            inflation: 0.0.into(),
+        };
+
+        let with_zeros= vec![snap1, snap2, snap3];
+
+        let perf = PerformanceCalculator::calculate(Frequency::Yearly, with_zeros);
 
         dbg!(&perf.returns);
         assert!(perf.returns == vec![0.0, 0.0])
