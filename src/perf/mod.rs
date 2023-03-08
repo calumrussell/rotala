@@ -219,11 +219,11 @@ impl PerformanceCalculator {
 
         let best_return = *returns
             .iter()
-            .min_by(|x, y| x.partial_cmp(y).unwrap())
+            .max_by(|x, y| x.partial_cmp(y).unwrap())
             .unwrap();
         let worst_return = *returns
             .iter()
-            .max_by(|x, y| x.partial_cmp(y).unwrap())
+            .min_by(|x, y| x.partial_cmp(y).unwrap())
             .unwrap();
 
         BacktestOutput {
@@ -509,5 +509,32 @@ mod tests {
 
         dbg!(&perf.returns);
         assert!(perf.returns == vec![0.0, 0.0])
+    }
+
+    #[test]
+    fn test_that_perf_orders_best_and_worst() {
+        let snap1 = StrategySnapshot {
+            date: 100.into(),
+            portfolio_value: 110.0.into(),
+            net_cash_flow: 0.0.into(),
+            inflation: 0.0.into(),
+        };
+        let snap2 = StrategySnapshot {
+            date: 101.into(),
+            portfolio_value: 90.0.into(),
+            net_cash_flow: 0.0.into(),
+            inflation: 0.0.into(),
+        };
+        let snap3 = StrategySnapshot {
+            date: 102.into(),
+            portfolio_value: 110.0.into(),
+            net_cash_flow: 0.0.into(),
+            inflation: 0.0.into(),
+        };
+
+        let snaps = vec![snap1, snap2, snap3];
+
+        let perf = PerformanceCalculator::calculate(Frequency::Yearly, snaps);
+        assert!(perf.best_return > perf.worst_return);
     }
 }
