@@ -326,20 +326,20 @@ pub struct Order {
 
 impl Order {
     //TODO: should this be a trait?
-    pub fn get_symbol(&self) -> String {
-        self.symbol.clone()
+    pub fn get_symbol(&self) -> &String {
+        &self.symbol
     }
 
-    pub fn get_shares(&self) -> PortfolioQty {
-        self.shares.clone()
+    pub fn get_shares(&self) -> &PortfolioQty {
+        &self.shares
     }
 
-    pub fn get_price(&self) -> Option<Price> {
-        self.price.clone()
+    pub fn get_price(&self) -> &Option<Price> {
+        &self.price
     }
 
-    pub fn get_order_type(&self) -> OrderType {
-        self.order_type
+    pub fn get_order_type(&self) -> &OrderType {
+        &self.order_type
     }
 
     pub fn market(
@@ -492,7 +492,7 @@ pub trait BacktestBroker {
         //      positions.
         if let Some(position_value) = self.get_position_value(symbol) {
             if let Some(qty) = self.get_position_qty(symbol) {
-                let price = Price::from(*position_value / *qty.clone());
+                let price = Price::from(*position_value / **qty);
                 let (value_after_costs, _price_after_costs) =
                     self.calc_trade_impact(&position_value, &price, false);
                 return Some(value_after_costs);
@@ -591,8 +591,8 @@ pub trait TransferCash: BacktestBroker {
 //internally too, and this confusion comes from broker implementations being both a consumer and
 //source of data. So this trait is seperated out now but may disappear in future versions.
 pub trait GetsQuote {
-    fn get_quote(&self, symbol: &str) -> Option<Quote>;
-    fn get_quotes(&self) -> Option<Vec<Quote>>;
+    fn get_quote(&self, symbol: &str) -> Option<&Quote>;
+    fn get_quotes(&self) -> Option<&Vec<Quote>>;
 }
 
 ///Implementation allows clients to query properties of the transaction history of the broker.
@@ -670,8 +670,8 @@ impl BrokerCalculations {
                     //Create orders to sell 100% of position, don't continue to next stock
                     //
                     //Cannot be called without quote existing so unwrap
-                    let price = brkr.get_quote(&ticker).unwrap().bid;
-                    let shares_req = PortfolioQty::from((total_sold / *price).ceil());
+                    let price = &brkr.get_quote(&ticker).unwrap().bid;
+                    let shares_req = PortfolioQty::from((total_sold / **price).ceil());
                     let order = Order::market(OrderType::MarketSell, ticker, shares_req);
                     info!("BROKER: Withdrawing {:?} with liquidation, queueing sale of {:?} shares of {:?}", cash, order.get_shares(), order.get_symbol());
                     sell_orders.push(order);
@@ -723,12 +723,12 @@ impl BrokerCalculations {
         //of calculations made later to find the net position of orders on the exchange.
         let calc_required_shares_with_costs = |diff_val: &f64, quote: &Quote, brkr: &T| -> f64 {
             if diff_val.lt(&0.0) {
-                let price = quote.bid.clone();
+                let price = &quote.bid;
                 let costs = brkr.calc_trade_impact(&diff_val.abs(), &price, false);
                 let total = (*costs.0 / *costs.1).floor();
                 -total
             } else {
-                let price = quote.ask.clone();
+                let price = &quote.ask;
                 let costs = brkr.calc_trade_impact(&diff_val.abs(), &price, true);
                 (*costs.0 / *costs.1).floor()
             }
@@ -738,7 +738,7 @@ impl BrokerCalculations {
             let curr_val = brkr.get_position_value(&symbol).unwrap_or_default();
             //Iterating over target_weights so will always find value
             let target_val = CashValue::from(
-                *total_value.clone() * *target_weights.get(&symbol).unwrap().clone(),
+                *total_value * **target_weights.get(&symbol).unwrap(),
             );
             let diff_val = CashValue::from(*target_val - *curr_val);
             if (*diff_val).eq(&0.0) {
@@ -782,7 +782,7 @@ impl BrokerCalculations {
         brkr: &impl BacktestBroker,
     ) -> Result<(), InsufficientCashError> {
         let shares = order.get_shares();
-        let value = CashValue::from(*shares * *price.clone());
+        let value = CashValue::from(**shares * **price);
         match order.get_order_type() {
             OrderType::MarketBuy => {
                 if brkr.get_cash_balance() > value {
@@ -812,7 +812,8 @@ impl BrokerCalculations {
     }
 
     pub fn client_is_issuing_nonsense_order(order: &Order) -> Result<(), UnexecutableOrderError> {
-        if (*order.get_shares()).eq(&0.0) {
+        let shares = **order.get_shares();
+        if shares == 0.0 {
             return Err(UnexecutableOrderError);
         }
         Ok(())

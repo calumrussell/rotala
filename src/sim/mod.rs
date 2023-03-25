@@ -165,8 +165,8 @@ impl<T: DataSource> SimulatedBroker<T> {
             let curr_position = self.get_position_qty(&trade.symbol).unwrap_or(&default);
 
             let updated = match trade.typ {
-                TradeType::Buy => *curr_position.clone() + *trade.quantity,
-                TradeType::Sell => *curr_position.clone() - *trade.quantity,
+                TradeType::Buy => **curr_position + *trade.quantity,
+                TradeType::Sell => **curr_position - *trade.quantity,
             };
 
             self.update_holdings(&trade.symbol, PortfolioQty::from(updated));
@@ -280,9 +280,9 @@ impl<T: DataSource> BacktestBroker for SimulatedBroker<T> {
 
         if let Some(quote) = self.get_quote(symbol) {
             //We only have long positions so we only need to look at the bid
-            let price = quote.bid;
+            let price = &quote.bid;
             if let Some(qty) = self.get_position_qty(symbol) {
-                let val = *price * *qty.clone();
+                let val = **price * **qty;
                 return Some(CashValue::from(val));
             }
         }
@@ -382,8 +382,8 @@ impl<T: DataSource> BacktestBroker for SimulatedBroker<T> {
 
                 let quote = self.get_quote(&order.get_symbol()).unwrap();
                 let price = match order.get_order_type() {
-                    OrderType::MarketBuy | OrderType::LimitBuy | OrderType::StopBuy => quote.ask,
-                    OrderType::MarketSell | OrderType::LimitSell | OrderType::StopSell => quote.bid,
+                    OrderType::MarketBuy | OrderType::LimitBuy | OrderType::StopBuy => &quote.ask,
+                    OrderType::MarketSell | OrderType::LimitSell | OrderType::StopSell => &quote.bid,
                 };
 
                 if let Err(_err) =
@@ -450,11 +450,11 @@ impl<T: DataSource> BacktestBroker for SimulatedBroker<T> {
 impl<T: DataSource> TransferCash for SimulatedBroker<T> {}
 
 impl<T: DataSource> GetsQuote for SimulatedBroker<T> {
-    fn get_quote(&self, symbol: &str) -> Option<Quote> {
+    fn get_quote(&self, symbol: &str) -> Option<&Quote> {
         self.exchange.get_quote(symbol)
     }
 
-    fn get_quotes(&self) -> Option<Vec<Quote>> {
+    fn get_quotes(&self) -> Option<&Vec<Quote>> {
         self.exchange.get_quotes()
     }
 }
@@ -803,7 +803,7 @@ mod tests {
         let quote1 = Quote::new(10.00, 11.00, 100, "BCD");
 
         let quote2 = Quote::new(100.00, 101.00, 101, "ABC");
-        let quote3 = Quote::new(10.00, 11.00, 100, "BCD");
+        let quote3 = Quote::new(10.00, 11.00, 101, "BCD");
 
         let quote4 = Quote::new(104.00, 105.00, 102, "ABC");
 

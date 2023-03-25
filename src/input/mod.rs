@@ -14,9 +14,9 @@ use crate::types::DateTime;
 ///(in this case, a reference to `Clock`). Callers should not have to store time state themselves,
 ///this pattern reduces runtime errors.
 pub trait DataSource: Clone {
-    fn get_quote(&self, symbol: &str) -> Option<Quote>;
-    fn get_quotes(&self) -> Option<Vec<Quote>>;
-    fn get_dividends(&self) -> Option<Vec<Dividend>>;
+    fn get_quote(&self, symbol: &str) -> Option<&Quote>;
+    fn get_quotes(&self) -> Option<&Vec<Quote>>;
+    fn get_dividends(&self) -> Option<&Vec<Dividend>>;
 }
 
 ///Implementation of [DataSource trait that wraps around a HashMap. Time is kept with reference to
@@ -32,26 +32,26 @@ pub type QuotesHashMap = HashMap<DateTime, Vec<Quote>>;
 pub type DividendsHashMap = HashMap<DateTime, Vec<Dividend>>;
 
 impl DataSource for HashMapInput {
-    fn get_quote(&self, symbol: &str) -> Option<Quote> {
+    fn get_quote(&self, symbol: &str) -> Option<&Quote> {
         let curr_date = self.clock.borrow().now();
         if let Some(quotes) = self.quotes.get(&curr_date) {
             for quote in quotes {
                 if quote.symbol.eq(symbol) {
-                    return Some(quote.clone());
+                    return Some(quote);
                 }
             }
         }
         None
     }
 
-    fn get_quotes(&self) -> Option<Vec<Quote>> {
+    fn get_quotes(&self) -> Option<&Vec<Quote>> {
         let curr_date = self.clock.borrow().now();
-        self.quotes.get(&curr_date).cloned()
+        self.quotes.get(&curr_date)
     }
 
-    fn get_dividends(&self) -> Option<Vec<Dividend>> {
+    fn get_dividends(&self) -> Option<&Vec<Dividend>> {
         let curr_date = self.clock.borrow().now();
-        self.dividends.get(&curr_date).cloned()
+        self.dividends.get(&curr_date)
     }
 }
 

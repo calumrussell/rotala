@@ -34,8 +34,8 @@ pub trait Exchange {
     //Represents size of orders in orderbook
     fn orderbook_size(&self) -> usize;
     fn flush_buffer(&mut self) -> Vec<Trade>;
-    fn get_quote(&self, symbol: &str) -> Option<Quote>;
-    fn get_quotes(&self) -> Option<Vec<Quote>>;
+    fn get_quote(&self, symbol: &str) -> Option<&Quote>;
+    fn get_quotes(&self) -> Option<&Vec<Quote>>;
     fn clear(&mut self);
     fn clear_pending_market_orders_by_symbol(&mut self, symbol: &str);
 }
@@ -145,18 +145,18 @@ impl<D: DataSource> DefaultExchange<D> {
 }
 
 impl<D: DataSource> Exchange for DefaultExchange<D> {
-    fn get_quote(&self, symbol: &str) -> Option<Quote> {
+    fn get_quote(&self, symbol: &str) -> Option<&Quote> {
         if let Some(quote) = self.data_source.get_quote(symbol) {
             Some(quote)
         } else {
             if let Some(quote) = self.last_seen_quote.get(symbol) {
-                return Some(quote.clone());
+                return Some(quote);
             }
             None
         }
     }
 
-    fn get_quotes(&self) -> Option<Vec<Quote>> {
+    fn get_quotes(&self) -> Option<&Vec<Quote>> {
         self.data_source.get_quotes()
     }
 
@@ -199,12 +199,12 @@ impl<D: DataSource> Exchange for DefaultExchange<D> {
 
         let execute_buy = |quote: &Quote, order: &Order| -> Trade {
             let trade_price = &quote.ask;
-            let value = CashValue::from(*trade_price.clone() * *order.get_shares());
+            let value = CashValue::from(**trade_price * **order.get_shares());
             let date = self.clock.borrow().now();
             Trade::new(
                 order.get_symbol(),
                 value,
-                order.get_shares(),
+                *order.get_shares().clone(),
                 date,
                 TradeType::Buy,
             )
@@ -212,12 +212,12 @@ impl<D: DataSource> Exchange for DefaultExchange<D> {
 
         let execute_sell = |quote: &Quote, order: &Order| -> Trade {
             let trade_price = &quote.bid;
-            let value = CashValue::from(*trade_price.clone() * *order.get_shares());
+            let value = CashValue::from(**trade_price * **order.get_shares());
             let date = self.clock.borrow().now();
             Trade::new(
                 order.get_symbol(),
                 value,
-                order.get_shares(),
+                *order.get_shares().clone(),
                 date,
                 TradeType::Sell,
             )
@@ -231,8 +231,8 @@ impl<D: DataSource> Exchange for DefaultExchange<D> {
                     OrderType::MarketSell => Some(execute_sell(&quote, order)),
                     OrderType::LimitBuy => {
                         //Unwrap is safe because LimitBuy will always have a price
-                        let order_price = order.get_price().unwrap();
-                        if order_price < quote.ask {
+                        let order_price = order.get_price().as_ref().unwrap();
+                        if *order_price < quote.ask {
                             Some(execute_buy(&quote, order))
                         } else {
                             None
@@ -240,8 +240,8 @@ impl<D: DataSource> Exchange for DefaultExchange<D> {
                     }
                     OrderType::LimitSell => {
                         //Unwrap is safe because LimitSell will always have a price
-                        let order_price = order.get_price().unwrap();
-                        if order_price > quote.bid {
+                        let order_price = order.get_price().as_ref().unwrap();
+                        if *order_price > quote.bid {
                             Some(execute_sell(&quote, order))
                         } else {
                             None
@@ -249,8 +249,8 @@ impl<D: DataSource> Exchange for DefaultExchange<D> {
                     }
                     OrderType::StopBuy => {
                         //Unwrap is safe because StopBuy will always have a price
-                        let order_price = order.get_price().unwrap();
-                        if quote.ask > order_price {
+                        let order_price = order.get_price().as_ref().unwrap();
+                        if quote.ask > *order_price {
                             Some(execute_buy(&quote, order))
                         } else {
                             None
@@ -258,8 +258,8 @@ impl<D: DataSource> Exchange for DefaultExchange<D> {
                     }
                     OrderType::StopSell => {
                         //Unwrap is safe because StopSell will always have a price
-                        let order_price = order.get_price().unwrap();
-                        if quote.bid < order_price {
+                        let order_price = order.get_price().as_ref().unwrap();
+                        if quote.bid < *order_price {
                             Some(execute_sell(&quote, order))
                         } else {
                             None

@@ -1,7 +1,7 @@
 use alator::strategy::StaticWeightStrategyBuilder;
 use alator::simcontext::SimContextBuilder;
 use alator::sim::SimulatedBrokerBuilder;
-use alator::broker::{BrokerCost, Quote, Dividend, TransferCash, BacktestBroker, Order, OrderType};
+use alator::broker::{BrokerCost, Quote, TransferCash, BacktestBroker, Order, OrderType};
 use alator::types::{CashValue, DateTime, Frequency, PortfolioAllocation};
 use alator::exchange::DefaultExchangeBuilder;
 use alator::clock::ClockBuilder;
