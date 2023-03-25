@@ -501,7 +501,7 @@ mod tests {
     use crate::exchange::DefaultExchangeBuilder;
     use crate::input::{HashMapInput, HashMapInputBuilder};
     use crate::types::{DateTime, Frequency};
-
+  
     use std::collections::HashMap;
     use std::rc::Rc;
 
@@ -927,4 +927,6 @@ mod tests {
         let cash1 = brkr.get_cash_balance();
         assert!(*cash1 > 0.0);
     }
+
+    
 }
