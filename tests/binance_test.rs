@@ -201,7 +201,7 @@ impl Strategy for MovingAverageStrategy {
                     //All this casting is required because, at the moment, we haven't moved fully
                     //away from positions reqpresented in whole numbers. Strategies should work but
                     //I am not sure if the result is correct.
-                    let qty = (f64::from(pct_value) / f64::from(quote.ask)).floor();
+                    let qty = (f64::from(pct_value) / f64::from(*quote.ask)).floor();
                     let order = Order::market(OrderType::MarketBuy, "BTC", qty.clone());
                     self.brkr.send_order(order);
                 }
