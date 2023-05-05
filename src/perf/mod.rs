@@ -82,7 +82,7 @@ pub struct PortfolioCalculations;
 impl PortfolioCalculations {
     fn annualize_returns(ret: f64, periods: i32, frequency: &Frequency) -> f64 {
         match frequency {
-            Frequency::Daily => ((1.0 + ret).powf(252_f64 / periods as f64)) - 1.0,
+            Frequency::Daily => ((1.0 + ret).powf(365_f64 / periods as f64)) - 1.0,
             Frequency::Monthly => ((1.0 + ret).powf(1.0 / (periods as f64 / 12_f64))) - 1.0,
             Frequency::Yearly => ((1.0 + ret).powf(1.0 / (periods as f64 / 1.0))) - 1.0,
             Frequency::Second => panic!("No performance stats by second"),
