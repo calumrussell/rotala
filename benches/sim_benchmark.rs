@@ -1,19 +1,19 @@
-use alator::strategy::StaticWeightStrategyBuilder;
-use alator::simcontext::SimContextBuilder;
-use alator::sim::SimulatedBrokerBuilder;
-use alator::broker::{BrokerCost, Quote, TransferCash, BacktestBroker, Order, OrderType};
-use alator::types::{CashValue, DateTime, Frequency, PortfolioAllocation};
-use alator::exchange::DefaultExchangeBuilder;
+use alator::broker::{BacktestBroker, BrokerCost, Order, OrderType, Quote, TransferCash};
 use alator::clock::ClockBuilder;
+use alator::exchange::DefaultExchangeBuilder;
 use alator::input::HashMapInputBuilder;
+use alator::sim::SimulatedBrokerBuilder;
+use alator::simcontext::SimContextBuilder;
+use alator::strategy::StaticWeightStrategyBuilder;
+use alator::types::{CashValue, DateTime, Frequency, PortfolioAllocation};
 
-use rand::thread_rng;
-use rand::distributions::Uniform;
-use rand_distr::Distribution;
 use criterion::{criterion_group, criterion_main, Criterion};
+use rand::distributions::Uniform;
+use rand::thread_rng;
+use rand_distr::Distribution;
 
-use std::rc::Rc;
 use std::collections::HashMap;
+use std::rc::Rc;
 
 pub fn full_backtest_random_data() {
     let price_dist = Uniform::new(90.0, 100.0);
