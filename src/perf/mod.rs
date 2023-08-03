@@ -34,16 +34,15 @@ impl CalculationAlgos {
         let mut trough_pos: usize = 0;
         let mut t2;
         let mut pos: usize = 0;
-
         for t1 in values {
             if t1 > &peak {
                 peak = *t1;
-                peak_pos = pos.clone();
+                peak_pos = pos;
                 trough = peak;
-                trough_pos = peak_pos.clone();
+                trough_pos = peak_pos;
             } else if t1 < &trough {
                 trough = *t1;
-                trough_pos = pos.clone();
+                trough_pos = pos;
                 t2 = (trough / peak) - 1.0;
                 if t2 < maxdd {
                     maxdd = t2
@@ -99,11 +98,11 @@ impl PortfolioCalculations {
     }
 
     fn get_vol(rets: &Vec<f64>, freq: &Frequency) -> f64 {
-        let vol = CalculationAlgos::vol(&rets);
+        let vol = CalculationAlgos::vol(rets);
         PortfolioCalculations::annualize_volatility(vol, freq)
     }
 
-    fn get_sharpe(rets: &Vec<f64>, log_rets: &Vec<f64>, days: i32, freq: &Frequency) -> f64 {
+    fn get_sharpe(rets: &Vec<f64>, log_rets: &[f64], days: i32, freq: &Frequency) -> f64 {
         let vol = PortfolioCalculations::get_vol(rets, freq);
         let ret = PortfolioCalculations::get_cagr(log_rets, days, freq);
         if vol == 0.0 {
@@ -128,12 +127,12 @@ impl PortfolioCalculations {
         CalculationAlgos::maxdd(&values_with_cashflows)
     }
 
-    fn get_cagr(log_rets: &Vec<f64>, days: i32, freq: &Frequency) -> f64 {
+    fn get_cagr(log_rets: &[f64], days: i32, freq: &Frequency) -> f64 {
         let ret = PortfolioCalculations::get_portfolio_return(log_rets);
         PortfolioCalculations::annualize_returns(ret, days, freq)
     }
 
-    fn get_portfolio_return(log_rets: &Vec<f64>) -> f64 {
+    fn get_portfolio_return(log_rets: &[f64]) -> f64 {
         let sum_log_rets: f64 = log_rets.iter().sum();
         sum_log_rets.exp() - 1.0
     }
@@ -159,12 +158,11 @@ impl PortfolioCalculations {
 
                 let inflation_value = inflation.get(i).unwrap();
 
-                let ret: f64;
-                if capital == 0.0 {
-                    ret = 0.0
+                let ret: f64 = if capital == 0.0 {
+                    0.0
                 } else {
-                    ret = ((1.0 + (gain / capital)) / (1.0 + *inflation_value)) - 1.0;
-                }
+                    ((1.0 + (gain / capital)) / (1.0 + *inflation_value)) - 1.0
+                };
 
                 if is_log {
                     let log_ret = (1.0 + ret).ln();
@@ -203,7 +201,7 @@ impl PerformanceCalculator {
             }
         }
 
-        let inflation: Vec<f64> = states.iter().map(|v| v.inflation.clone()).collect();
+        let inflation: Vec<f64> = states.iter().map(|v| v.inflation).collect();
 
         let returns =
             PortfolioCalculations::get_returns(&total_values, &cash_flows, &inflation, false);
@@ -241,8 +239,8 @@ impl PerformanceCalculator {
             returns,
             dates: dates.clone(),
             cash_flows,
-            first_date: dates.first().unwrap().clone(),
-            last_date: dates.last().unwrap().clone(),
+            first_date: *dates.first().unwrap(),
+            last_date: *dates.last().unwrap(),
             dd_start_date,
             dd_end_date,
             best_return,

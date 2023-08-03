@@ -380,7 +380,7 @@ impl<T: DataSource> BacktestBroker for SimulatedBroker<T> {
                     order.get_symbol()
                 );
 
-                let quote = self.get_quote(&order.get_symbol()).unwrap();
+                let quote = self.get_quote(order.get_symbol()).unwrap();
                 let price = match order.get_order_type() {
                     OrderType::MarketBuy | OrderType::LimitBuy | OrderType::StopBuy => &quote.ask,
                     OrderType::MarketSell | OrderType::LimitSell | OrderType::StopSell => {
@@ -389,7 +389,7 @@ impl<T: DataSource> BacktestBroker for SimulatedBroker<T> {
                 };
 
                 if let Err(_err) =
-                    BrokerCalculations::client_has_sufficient_cash(&order, &price, self)
+                    BrokerCalculations::client_has_sufficient_cash(&order, price, self)
                 {
                     info!(
                         "BROKER: Unable to send {:?} order for {:?} shares of {:?} to exchange",
