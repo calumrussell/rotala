@@ -737,9 +737,7 @@ impl BrokerCalculations {
         for symbol in target_weights.keys() {
             let curr_val = brkr.get_position_value(&symbol).unwrap_or_default();
             //Iterating over target_weights so will always find value
-            let target_val = CashValue::from(
-                *total_value * **target_weights.get(&symbol).unwrap(),
-            );
+            let target_val = CashValue::from(*total_value * **target_weights.get(&symbol).unwrap());
             let diff_val = CashValue::from(*target_val - *curr_val);
             if (*diff_val).eq(&0.0) {
                 break;

@@ -503,7 +503,7 @@ mod tests {
             inflation: 0.0.into(),
         };
 
-        let with_zeros= vec![snap1, snap2, snap3];
+        let with_zeros = vec![snap1, snap2, snap3];
 
         let perf = PerformanceCalculator::calculate(Frequency::Yearly, with_zeros);
 

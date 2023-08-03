@@ -383,7 +383,9 @@ impl<T: DataSource> BacktestBroker for SimulatedBroker<T> {
                 let quote = self.get_quote(&order.get_symbol()).unwrap();
                 let price = match order.get_order_type() {
                     OrderType::MarketBuy | OrderType::LimitBuy | OrderType::StopBuy => &quote.ask,
-                    OrderType::MarketSell | OrderType::LimitSell | OrderType::StopSell => &quote.bid,
+                    OrderType::MarketSell | OrderType::LimitSell | OrderType::StopSell => {
+                        &quote.bid
+                    }
                 };
 
                 if let Err(_err) =
@@ -501,7 +503,7 @@ mod tests {
     use crate::exchange::DefaultExchangeBuilder;
     use crate::input::{HashMapInput, HashMapInputBuilder};
     use crate::types::{DateTime, Frequency};
-  
+
     use std::collections::HashMap;
     use std::rc::Rc;
 
@@ -927,6 +929,4 @@ mod tests {
         let cash1 = brkr.get_cash_balance();
         assert!(*cash1 > 0.0);
     }
-
-    
 }
