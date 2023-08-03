@@ -31,7 +31,7 @@ fn build_data(clock: Clock) -> HashMapInput {
             date.clone(),
             "BCD",
         );
-        raw_data.insert(DateTime::from(date), vec![q1, q2]);
+        raw_data.insert(date, vec![q1, q2]);
     }
 
     let source = HashMapInputBuilder::new()

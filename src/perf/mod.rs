@@ -26,15 +26,14 @@ struct CalculationAlgos;
 
 impl CalculationAlgos {
     ///Returns a tuple containing (max drawdown, position of drawdown start, end position)
-    fn maxdd(values: &Vec<f64>) -> (f64, usize, usize) {
+    fn maxdd(values: &[f64]) -> (f64, usize, usize) {
         let mut maxdd = 0.0;
         let mut peak = 0.0;
         let mut peak_pos: usize = 0;
         let mut trough = 0.0;
         let mut trough_pos: usize = 0;
         let mut t2;
-        let mut pos: usize = 0;
-        for t1 in values {
+        for (pos, t1) in values.iter().enumerate() {
             if t1 > &peak {
                 peak = *t1;
                 peak_pos = pos;
@@ -48,7 +47,6 @@ impl CalculationAlgos {
                     maxdd = t2
                 }
             }
-            pos += 1;
         }
         (maxdd, peak_pos, trough_pos)
     }
@@ -392,25 +390,25 @@ mod tests {
             date: 100.into(),
             portfolio_value: 100.0.into(),
             net_cash_flow: 0.0.into(),
-            inflation: 0.0.into(),
+            inflation: 0.0,
         };
         let snap1 = StrategySnapshot {
             date: 101.into(),
             portfolio_value: 121.0.into(),
             net_cash_flow: 10.0.into(),
-            inflation: 0.0.into(),
+            inflation: 0.0,
         };
         let snap2 = StrategySnapshot {
             date: 102.into(),
             portfolio_value: 126.9.into(),
             net_cash_flow: 30.0.into(),
-            inflation: 0.0.into(),
+            inflation: 0.0,
         };
         let snap3 = StrategySnapshot {
             date: 103.into(),
             portfolio_value: 150.59.into(),
             net_cash_flow: 40.0.into(),
-            inflation: 0.0.into(),
+            inflation: 0.0,
         };
         let with_cash_flows = vec![snap0, snap1, snap2, snap3];
 
@@ -418,25 +416,25 @@ mod tests {
             date: 100.into(),
             portfolio_value: 100.0.into(),
             net_cash_flow: 0.0.into(),
-            inflation: 0.0.into(),
+            inflation: 0.0,
         };
         let snap4 = StrategySnapshot {
             date: 101.into(),
             portfolio_value: 110.0.into(),
             net_cash_flow: 0.0.into(),
-            inflation: 0.0.into(),
+            inflation: 0.0,
         };
         let snap5 = StrategySnapshot {
             date: 102.into(),
             portfolio_value: 99.0.into(),
             net_cash_flow: 0.0.into(),
-            inflation: 0.0.into(),
+            inflation: 0.0,
         };
         let snap6 = StrategySnapshot {
             date: 103.into(),
             portfolio_value: 108.9.into(),
             net_cash_flow: 0.0.into(),
-            inflation: 0.0.into(),
+            inflation: 0.0,
         };
         let without_cash_flows = vec![snap3, snap4, snap5, snap6];
 
@@ -457,19 +455,19 @@ mod tests {
             date: 100.into(),
             portfolio_value: 100.0.into(),
             net_cash_flow: 0.0.into(),
-            inflation: 0.0.into(),
+            inflation: 0.0,
         };
         let snap2 = StrategySnapshot {
             date: 101.into(),
             portfolio_value: 110.0.into(),
             net_cash_flow: 0.0.into(),
-            inflation: 0.10.into(),
+            inflation: 0.10,
         };
         let snap3 = StrategySnapshot {
             date: 102.into(),
             portfolio_value: 121.0.into(),
             net_cash_flow: 0.0.into(),
-            inflation: 0.10.into(),
+            inflation: 0.10,
         };
 
         let with_inflation = vec![snap1, snap2, snap3];
@@ -486,19 +484,19 @@ mod tests {
             date: 100.into(),
             portfolio_value: 0.0.into(),
             net_cash_flow: 0.0.into(),
-            inflation: 0.0.into(),
+            inflation: 0.0,
         };
         let snap2 = StrategySnapshot {
             date: 101.into(),
             portfolio_value: 0.0.into(),
             net_cash_flow: 0.0.into(),
-            inflation: 0.0.into(),
+            inflation: 0.0,
         };
         let snap3 = StrategySnapshot {
             date: 102.into(),
             portfolio_value: 0.0.into(),
             net_cash_flow: 0.0.into(),
-            inflation: 0.0.into(),
+            inflation: 0.0,
         };
 
         let with_zeros = vec![snap1, snap2, snap3];
@@ -515,19 +513,19 @@ mod tests {
             date: 100.into(),
             portfolio_value: 110.0.into(),
             net_cash_flow: 0.0.into(),
-            inflation: 0.0.into(),
+            inflation: 0.0,
         };
         let snap2 = StrategySnapshot {
             date: 101.into(),
             portfolio_value: 90.0.into(),
             net_cash_flow: 0.0.into(),
-            inflation: 0.0.into(),
+            inflation: 0.0,
         };
         let snap3 = StrategySnapshot {
             date: 102.into(),
             portfolio_value: 110.0.into(),
             net_cash_flow: 0.0.into(),
-            inflation: 0.0.into(),
+            inflation: 0.0,
         };
 
         let snaps = vec![snap1, snap2, snap3];

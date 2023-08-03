@@ -39,7 +39,7 @@ pub fn full_backtest_random_data() {
             date.clone(),
             "BCD",
         );
-        raw_data.insert(DateTime::from(date), vec![q1, q2]);
+        raw_data.insert(date, vec![q1, q2]);
     }
 
     let data = HashMapInputBuilder::new()
@@ -133,8 +133,8 @@ fn trade_execution_logic() {
 }
 
 fn benchmarks(c: &mut Criterion) {
-    c.bench_function("full backtest", |b| b.iter(|| full_backtest_random_data()));
-    c.bench_function("trade test", |b| b.iter(|| trade_execution_logic()));
+    c.bench_function("full backtest", |b| b.iter(full_backtest_random_data));
+    c.bench_function("trade test", |b| b.iter(trade_execution_logic));
 }
 
 criterion_group!(benches, benchmarks);
