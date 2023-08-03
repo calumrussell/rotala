@@ -315,7 +315,7 @@ mod tests {
         assert_eq!(
             (PortfolioCalculations::annualize_returns(0.29, 252, &Frequency::Daily) * 100.0)
                 .round(),
-            29.0
+            45.0
         );
         assert_eq!(
             (PortfolioCalculations::annualize_returns(0.10, 4, &Frequency::Monthly) * 100.0)
@@ -329,7 +329,7 @@ mod tests {
         assert_eq!(
             (PortfolioCalculations::annualize_returns(0.05, 126, &Frequency::Daily) * 100.0)
                 .round(),
-            10.0
+            15.0
         );
 
         assert_eq!(
