@@ -146,11 +146,11 @@ mod tests {
         let clock = ClockBuilder::with_length_in_dates(1, 3)
             .with_frequency(&Frequency::Second)
             .build();
-        assert!(clock.borrow().has_next() == true);
+        assert!(clock.borrow().has_next());
         clock.borrow_mut().tick();
 
         clock.borrow_mut().tick();
-        assert!(clock.borrow().has_next() == false);
+        assert!(!clock.borrow().has_next());
     }
 
     #[test]

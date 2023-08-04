@@ -380,14 +380,16 @@ impl<T: DataSource> BacktestBroker for SimulatedBroker<T> {
                     order.get_symbol()
                 );
 
-                let quote = self.get_quote(&order.get_symbol()).unwrap();
+                let quote = self.get_quote(order.get_symbol()).unwrap();
                 let price = match order.get_order_type() {
                     OrderType::MarketBuy | OrderType::LimitBuy | OrderType::StopBuy => &quote.ask,
-                    OrderType::MarketSell | OrderType::LimitSell | OrderType::StopSell => &quote.bid,
+                    OrderType::MarketSell | OrderType::LimitSell | OrderType::StopSell => {
+                        &quote.bid
+                    }
                 };
 
                 if let Err(_err) =
-                    BrokerCalculations::client_has_sufficient_cash(&order, &price, self)
+                    BrokerCalculations::client_has_sufficient_cash(&order, price, self)
                 {
                     info!(
                         "BROKER: Unable to send {:?} order for {:?} shares of {:?} to exchange",
@@ -501,7 +503,7 @@ mod tests {
     use crate::exchange::DefaultExchangeBuilder;
     use crate::input::{HashMapInput, HashMapInputBuilder};
     use crate::types::{DateTime, Frequency};
-  
+
     use std::collections::HashMap;
     use std::rc::Rc;
 
@@ -927,6 +929,4 @@ mod tests {
         let cash1 = brkr.get_cash_balance();
         assert!(*cash1 > 0.0);
     }
-
-    
 }

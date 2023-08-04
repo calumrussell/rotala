@@ -1,19 +1,19 @@
-use alator::strategy::StaticWeightStrategyBuilder;
-use alator::simcontext::SimContextBuilder;
-use alator::sim::SimulatedBrokerBuilder;
-use alator::broker::{BrokerCost, Quote, TransferCash, BacktestBroker, Order, OrderType};
-use alator::types::{CashValue, DateTime, Frequency, PortfolioAllocation};
-use alator::exchange::DefaultExchangeBuilder;
+use alator::broker::{BacktestBroker, BrokerCost, Order, OrderType, Quote, TransferCash};
 use alator::clock::ClockBuilder;
+use alator::exchange::DefaultExchangeBuilder;
 use alator::input::HashMapInputBuilder;
+use alator::sim::SimulatedBrokerBuilder;
+use alator::simcontext::SimContextBuilder;
+use alator::strategy::StaticWeightStrategyBuilder;
+use alator::types::{CashValue, DateTime, Frequency, PortfolioAllocation};
 
-use rand::thread_rng;
-use rand::distributions::Uniform;
-use rand_distr::Distribution;
 use criterion::{criterion_group, criterion_main, Criterion};
+use rand::distributions::Uniform;
+use rand::thread_rng;
+use rand_distr::Distribution;
 
-use std::rc::Rc;
 use std::collections::HashMap;
+use std::rc::Rc;
 
 pub fn full_backtest_random_data() {
     let price_dist = Uniform::new(90.0, 100.0);
@@ -39,7 +39,7 @@ pub fn full_backtest_random_data() {
             date.clone(),
             "BCD",
         );
-        raw_data.insert(DateTime::from(date), vec![q1, q2]);
+        raw_data.insert(date, vec![q1, q2]);
     }
 
     let data = HashMapInputBuilder::new()
@@ -133,8 +133,8 @@ fn trade_execution_logic() {
 }
 
 fn benchmarks(c: &mut Criterion) {
-    c.bench_function("full backtest", |b| b.iter(|| full_backtest_random_data()));
-    c.bench_function("trade test", |b| b.iter(|| trade_execution_logic()));
+    c.bench_function("full backtest", |b| b.iter(full_backtest_random_data));
+    c.bench_function("trade test", |b| b.iter(trade_execution_logic));
 }
 
 criterion_group!(benches, benchmarks);

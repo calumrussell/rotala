@@ -225,15 +225,15 @@ impl<D: DataSource> Exchange for DefaultExchange<D> {
 
         for (key, order) in &self.orderbook {
             let security_id = order.get_symbol();
-            if let Some(quote) = self.data_source.get_quote(&security_id) {
+            if let Some(quote) = self.data_source.get_quote(security_id) {
                 let result = match order.get_order_type() {
-                    OrderType::MarketBuy => Some(execute_buy(&quote, order)),
-                    OrderType::MarketSell => Some(execute_sell(&quote, order)),
+                    OrderType::MarketBuy => Some(execute_buy(quote, order)),
+                    OrderType::MarketSell => Some(execute_sell(quote, order)),
                     OrderType::LimitBuy => {
                         //Unwrap is safe because LimitBuy will always have a price
                         let order_price = order.get_price().as_ref().unwrap();
                         if *order_price < quote.ask {
-                            Some(execute_buy(&quote, order))
+                            Some(execute_buy(quote, order))
                         } else {
                             None
                         }
@@ -242,7 +242,7 @@ impl<D: DataSource> Exchange for DefaultExchange<D> {
                         //Unwrap is safe because LimitSell will always have a price
                         let order_price = order.get_price().as_ref().unwrap();
                         if *order_price > quote.bid {
-                            Some(execute_sell(&quote, order))
+                            Some(execute_sell(quote, order))
                         } else {
                             None
                         }
@@ -251,7 +251,7 @@ impl<D: DataSource> Exchange for DefaultExchange<D> {
                         //Unwrap is safe because StopBuy will always have a price
                         let order_price = order.get_price().as_ref().unwrap();
                         if quote.ask > *order_price {
-                            Some(execute_buy(&quote, order))
+                            Some(execute_buy(quote, order))
                         } else {
                             None
                         }
@@ -260,7 +260,7 @@ impl<D: DataSource> Exchange for DefaultExchange<D> {
                         //Unwrap is safe because StopSell will always have a price
                         let order_price = order.get_price().as_ref().unwrap();
                         if quote.bid < *order_price {
-                            Some(execute_sell(&quote, order))
+                            Some(execute_sell(quote, order))
                         } else {
                             None
                         }

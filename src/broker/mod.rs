@@ -724,12 +724,12 @@ impl BrokerCalculations {
         let calc_required_shares_with_costs = |diff_val: &f64, quote: &Quote, brkr: &T| -> f64 {
             if diff_val.lt(&0.0) {
                 let price = &quote.bid;
-                let costs = brkr.calc_trade_impact(&diff_val.abs(), &price, false);
+                let costs = brkr.calc_trade_impact(&diff_val.abs(), price, false);
                 let total = (*costs.0 / *costs.1).floor();
                 -total
             } else {
                 let price = &quote.ask;
-                let costs = brkr.calc_trade_impact(&diff_val.abs(), &price, true);
+                let costs = brkr.calc_trade_impact(&diff_val.abs(), price, true);
                 (*costs.0 / *costs.1).floor()
             }
         };
@@ -737,9 +737,7 @@ impl BrokerCalculations {
         for symbol in target_weights.keys() {
             let curr_val = brkr.get_position_value(&symbol).unwrap_or_default();
             //Iterating over target_weights so will always find value
-            let target_val = CashValue::from(
-                *total_value * **target_weights.get(&symbol).unwrap(),
-            );
+            let target_val = CashValue::from(*total_value * **target_weights.get(&symbol).unwrap());
             let diff_val = CashValue::from(*target_val - *curr_val);
             if (*diff_val).eq(&0.0) {
                 break;
@@ -749,7 +747,7 @@ impl BrokerCalculations {
             //eventually prove correct if we are missing quotes for the current time.
             if let Some(quote) = brkr.get_quote(&symbol) {
                 //This will be negative if the net is selling
-                let required_shares = calc_required_shares_with_costs(&diff_val, &quote, brkr);
+                let required_shares = calc_required_shares_with_costs(&diff_val, quote, brkr);
                 //Clear any pending orders on the exchange
                 brkr.clear_pending_market_orders_by_symbol(&symbol);
                 if required_shares.ne(&0.0) {
@@ -800,7 +798,7 @@ impl BrokerCalculations {
         brkr: &impl BacktestBroker,
     ) -> Result<(), UnexecutableOrderError> {
         if let OrderType::MarketSell = order.get_order_type() {
-            if let Some(holding) = brkr.get_position_qty(&order.get_symbol()) {
+            if let Some(holding) = brkr.get_position_qty(order.get_symbol()) {
                 if *holding >= order.shares {
                     return Ok(());
                 }

@@ -140,7 +140,7 @@ struct MovingAverageStrategy {
 
 impl TransferTo for MovingAverageStrategy {
     fn deposit_cash(&mut self, cash: &f64) -> StrategyEvent {
-        self.brkr.deposit_cash(&cash);
+        self.brkr.deposit_cash(cash);
         StrategyEvent::DepositSuccess(CashValue::from(*cash))
     }
 }
@@ -179,8 +179,8 @@ impl Strategy for MovingAverageStrategy {
         //incorrect state, a runtime failure seems most appropriate.
         if let Some(quote) = self.brkr.get_quote("BTC") {
             //Update our moving averages with the latest quote
-            self.ten.update(&quote);
-            self.fifty.update(&quote);
+            self.ten.update(quote);
+            self.fifty.update(quote);
 
             //If we are at the start of the simulation and don't have full data for each moving
             //average then don't trade
@@ -195,21 +195,19 @@ impl Strategy for MovingAverageStrategy {
             //added in the future but it adds dependencies on the underlying asset which is not
             //ideal currently.
             if self.ten.avg() > self.fifty.avg() {
-                if let None = self.brkr.get_position_qty("BTC") {
+                if self.brkr.get_position_qty("BTC").is_none() {
                     let value = self.brkr.get_liquidation_value();
                     let pct_value = CashValue::from(*value * 0.1);
                     //All this casting is required because, at the moment, we haven't moved fully
                     //away from positions reqpresented in whole numbers. Strategies should work but
                     //I am not sure if the result is correct.
-                    let qty = (f64::from(pct_value) / f64::from(*quote.ask)).floor();
-                    let order = Order::market(OrderType::MarketBuy, "BTC", qty.clone());
+                    let qty = (f64::from(pct_value) / (*quote.ask)).floor();
+                    let order = Order::market(OrderType::MarketBuy, "BTC", qty);
                     self.brkr.send_order(order);
                 }
-            } else {
-                if let Some(qty) = self.brkr.get_position_qty("BTC") {
-                    let order = Order::market(OrderType::MarketSell, "BTC", qty.clone());
-                    self.brkr.send_order(order);
-                }
+            } else if let Some(qty) = self.brkr.get_position_qty("BTC") {
+                let order = Order::market(OrderType::MarketSell, "BTC", qty.clone());
+                self.brkr.send_order(order);
             }
         }
 
