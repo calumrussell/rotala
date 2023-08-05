@@ -30,46 +30,44 @@ fn build_data() -> (QuotesHashMap, (i64, i64)) {
                 for i in 0..zip.len() {
                     if let Ok(mut zip_file) = zip.by_index(i) {
                         let mut rdr = csv::Reader::from_reader(&mut zip_file);
-                        for result in rdr.records() {
-                            if let Ok(row) = result {
-                                /*
-                                 * Binance data format:
-                                 * 1607444700000,          // Open time
-                                 * "18879.99",             // Open
-                                 * "18900.00",             // High
-                                 * "18878.98",             // Low
-                                 * "18896.13",             // Close (or latest price)
-                                 * "492.363",              // Volume
-                                 * 1607444759999,          // Close time
-                                 * "9302145.66080",        // Quote asset volume
-                                 * 1874,                   // Number of trades
-                                 * "385.983",              // Taker buy volume
-                                 * "7292402.33267",        // Taker buy quote asset volume
-                                 * "0"                     // Ignore.
-                                 */
-                                let open_date = (row[0].parse::<i64>().unwrap()) / 1000;
-                                if open_date < min_date {
-                                    min_date = open_date;
-                                }
-                                let quote = Quote {
-                                    bid: row[1].parse::<f64>().unwrap().into(),
-                                    ask: row[1].parse::<f64>().unwrap().into(),
-                                    date: open_date.into(),
-                                    symbol: "BTC".into(),
-                                };
-                                quotes.insert(open_date.into(), vec![quote]);
-                                let close_date = (row[6].parse::<i64>().unwrap()) / 1000;
-                                if close_date > max_date {
-                                    max_date = close_date;
-                                }
-                                let quote1 = Quote {
-                                    bid: row[4].parse::<f64>().unwrap().into(),
-                                    ask: row[4].parse::<f64>().unwrap().into(),
-                                    date: close_date.into(),
-                                    symbol: "BTC".into(),
-                                };
-                                quotes.insert(close_date.into(), vec![quote1]);
+                        for row in rdr.records().flatten() {
+                            /*
+                             * Binance data format:
+                             * 1607444700000,          // Open time
+                             * "18879.99",             // Open
+                             * "18900.00",             // High
+                             * "18878.98",             // Low
+                             * "18896.13",             // Close (or latest price)
+                             * "492.363",              // Volume
+                             * 1607444759999,          // Close time
+                             * "9302145.66080",        // Quote asset volume
+                             * 1874,                   // Number of trades
+                             * "385.983",              // Taker buy volume
+                             * "7292402.33267",        // Taker buy quote asset volume
+                             * "0"                     // Ignore.
+                             */
+                            let open_date = (row[0].parse::<i64>().unwrap()) / 1000;
+                            if open_date < min_date {
+                                min_date = open_date;
                             }
+                            let quote = Quote {
+                                bid: row[1].parse::<f64>().unwrap().into(),
+                                ask: row[1].parse::<f64>().unwrap().into(),
+                                date: open_date.into(),
+                                symbol: "BTC".into(),
+                            };
+                            quotes.insert(open_date.into(), vec![quote]);
+                            let close_date = (row[6].parse::<i64>().unwrap()) / 1000;
+                            if close_date > max_date {
+                                max_date = close_date;
+                            }
+                            let quote1 = Quote {
+                                bid: row[4].parse::<f64>().unwrap().into(),
+                                ask: row[4].parse::<f64>().unwrap().into(),
+                                date: close_date.into(),
+                                symbol: "BTC".into(),
+                            };
+                            quotes.insert(close_date.into(), vec![quote1]);
                         }
                     }
                 }
