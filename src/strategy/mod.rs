@@ -162,7 +162,7 @@ impl<T: DataSource> Strategy for StaticWeightStrategy<T> {
                 &mut self.brkr,
             );
             if !orders.is_empty() {
-                self.brkr.send_orders(orders);
+                self.brkr.send_orders(&orders);
             }
         }
         self.brkr.finish();
@@ -176,7 +176,7 @@ impl<T: DataSource> Strategy for StaticWeightStrategy<T> {
                 &mut self.brkr,
             );
             if !orders.is_empty() {
-                self.brkr.send_orders(orders);
+                self.brkr.send_orders(&orders);
             }
         }
         self.brkr.finish();

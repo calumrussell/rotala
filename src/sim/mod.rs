@@ -435,10 +435,10 @@ impl<T: DataSource> BacktestBroker for SimulatedBroker<T> {
         }
     }
 
-    fn send_orders(&mut self, orders: Vec<Order>) -> Vec<BrokerEvent> {
+    fn send_orders(&mut self, orders: &[Order]) -> Vec<BrokerEvent> {
         let mut res = Vec::new();
         for o in orders {
-            let trade = self.send_order(o);
+            let trade = self.send_order(o.clone());
             res.push(trade);
         }
         res
