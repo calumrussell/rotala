@@ -438,7 +438,7 @@ impl BrokerCost {
     }
 
     pub fn trade_impact_total(
-        trade_costs: &Vec<BrokerCost>,
+        trade_costs: &[BrokerCost],
         gross_budget: &f64,
         gross_price: &f64,
         is_buy: bool,
@@ -547,7 +547,7 @@ pub trait BacktestBroker {
     fn update_holdings(&mut self, symbol: &str, change: PortfolioQty);
     fn pay_dividends(&mut self);
     fn send_order(&mut self, order: Order) -> BrokerEvent;
-    fn send_orders(&mut self, order: Vec<Order>) -> Vec<BrokerEvent>;
+    fn send_orders(&mut self, order: &[Order]) -> Vec<BrokerEvent>;
     fn clear_pending_market_orders_by_symbol(&mut self, symbol: &str);
     fn debit(&mut self, value: &f64) -> BrokerCashEvent;
     fn credit(&mut self, value: &f64) -> BrokerCashEvent;
@@ -682,7 +682,7 @@ impl BrokerCalculations {
             if (total_sold).eq(&0.0) {
                 //The portfolio can provide enough cash so we can execute the sell orders
                 //We leave the portfolio in the wrong state for the client to deal with
-                brkr.send_orders(sell_orders);
+                brkr.send_orders(&sell_orders);
                 info!("BROKER: Succesfully withdrew {:?} with liquidation", cash);
                 BrokerCashEvent::WithdrawSuccess(CashValue::from(*cash))
             } else {
@@ -909,7 +909,7 @@ mod tests {
 
         brkr.deposit_cash(&100_000.0);
         let orders = BrokerCalculations::diff_brkr_against_target_weights(&weights, &mut brkr);
-        brkr.send_orders(orders);
+        brkr.send_orders(&orders);
         brkr.finish();
 
         clock.borrow_mut().tick();
@@ -1072,7 +1072,7 @@ mod tests {
 
         let orders =
             BrokerCalculations::diff_brkr_against_target_weights(&target_weights, &mut brkr);
-        brkr.send_orders(orders);
+        brkr.send_orders(&orders);
         brkr.finish();
 
         clock.borrow_mut().tick();
@@ -1081,7 +1081,7 @@ mod tests {
         let orders1 =
             BrokerCalculations::diff_brkr_against_target_weights(&target_weights, &mut brkr);
 
-        brkr.send_orders(orders1);
+        brkr.send_orders(&orders1);
         brkr.finish();
 
         //If the logic isn't correct the orders will have doubled up to 1800
@@ -1130,7 +1130,7 @@ mod tests {
         let orders =
             BrokerCalculations::diff_brkr_against_target_weights(&target_weights, &mut brkr);
         println!("{:?}", orders);
-        brkr.send_orders(orders);
+        brkr.send_orders(&orders);
         brkr.finish();
 
         //No price for security so we haven't diffed correctly
@@ -1148,7 +1148,7 @@ mod tests {
             BrokerCalculations::diff_brkr_against_target_weights(&target_weights, &mut brkr);
         println!("{:?}", orders1);
 
-        brkr.send_orders(orders1);
+        brkr.send_orders(&orders1);
         brkr.finish();
 
         clock.borrow_mut().tick();

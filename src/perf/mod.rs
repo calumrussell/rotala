@@ -51,7 +51,7 @@ impl CalculationAlgos {
         (maxdd, peak_pos, trough_pos)
     }
 
-    fn var(values: &Vec<f64>) -> f64 {
+    fn var(values: &[f64]) -> f64 {
         let count = values.len();
         let mean: f64 = values.iter().sum::<f64>() / (count as f64);
         let squared_diffs: Vec<f64> = values
@@ -63,7 +63,7 @@ impl CalculationAlgos {
         sum_of_diff / (count as f64)
     }
 
-    fn vol(values: &Vec<f64>) -> f64 {
+    fn vol(values: &[f64]) -> f64 {
         //Accepts returns not raw portfolio values
         CalculationAlgos::var(values).sqrt()
     }
@@ -95,12 +95,12 @@ impl PortfolioCalculations {
         }
     }
 
-    fn get_vol(rets: &Vec<f64>, freq: &Frequency) -> f64 {
+    fn get_vol(rets: &[f64], freq: &Frequency) -> f64 {
         let vol = CalculationAlgos::vol(rets);
         PortfolioCalculations::annualize_volatility(vol, freq)
     }
 
-    fn get_sharpe(rets: &Vec<f64>, log_rets: &[f64], days: i32, freq: &Frequency) -> f64 {
+    fn get_sharpe(rets: &[f64], log_rets: &[f64], days: i32, freq: &Frequency) -> f64 {
         let vol = PortfolioCalculations::get_vol(rets, freq);
         let ret = PortfolioCalculations::get_cagr(log_rets, days, freq);
         if vol == 0.0 {
@@ -113,7 +113,7 @@ impl PortfolioCalculations {
         ret / vol
     }
 
-    fn get_maxdd(rets: &Vec<f64>) -> (f64, usize, usize) {
+    fn get_maxdd(rets: &[f64]) -> (f64, usize, usize) {
         //Adds N to the runtime, can run faster but it isn't worth the time atm
         let mut values_with_cashflows = vec![100_000.0];
         for i in rets {
@@ -136,7 +136,7 @@ impl PortfolioCalculations {
     }
 
     fn get_returns(
-        portfolio_values: &Vec<f64>,
+        portfolio_values: &[f64],
         cash_flows: &[f64],
         inflation: &[f64],
         is_log: bool,
