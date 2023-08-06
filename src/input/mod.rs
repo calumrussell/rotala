@@ -13,6 +13,9 @@ use crate::types::DateTime;
 ///in live-trading systems. All system time data is stored within structs implementing this trait
 ///(in this case, a reference to `Clock`). Callers should not have to store time state themselves,
 ///this pattern reduces runtime errors.
+///
+///Dates will be known at runtime so when allocating space for `QuotesHashMap`/`DividendsHashMap`,
+///`HashMap::with_capacity()` should be used using either length of dates or `len()` of `Clock`.
 pub trait DataSource: Clone {
     fn get_quote(&self, symbol: &str) -> Option<&Quote>;
     fn get_quotes(&self) -> Option<&Vec<Quote>>;

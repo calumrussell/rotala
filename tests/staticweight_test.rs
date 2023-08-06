@@ -17,7 +17,7 @@ fn build_data(clock: Clock) -> HashMapInput {
     let price_dist = Uniform::new(90.0, 100.0);
     let mut rng = thread_rng();
 
-    let mut raw_data: HashMap<DateTime, Vec<Quote>> = HashMap::new();
+    let mut raw_data: HashMap<DateTime, Vec<Quote>> = HashMap::with_capacity(clock.borrow().len());
     for date in clock.borrow().peek() {
         let q1 = Quote::new(
             price_dist.sample(&mut rng),
