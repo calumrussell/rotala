@@ -45,6 +45,11 @@ impl ClockInner {
     pub fn peek(&self) -> IntoIter<DateTime> {
         self.dates.clone().into_iter()
     }
+
+    // Get length of clock
+    pub fn len(&self) -> usize {
+        self.dates.len()
+    }
 }
 
 pub struct ClockBuilder {
