@@ -90,4 +90,4 @@ fn staticweight_example() -> PyResult<String> {
 fn snake(_py: Python<'_>, m: &PyModule) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(staticweight_example, m)?)?;
     Ok(())
-
+}
