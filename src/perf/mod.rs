@@ -77,11 +77,16 @@ impl CalculationAlgos {
 pub struct PortfolioCalculations;
 
 impl PortfolioCalculations {
+    //This calculation returns the annualized return from the cumulative return given the number of
+    //daily/monthly/yearly periods.
+    //Most calculations of annualized returns start from a per-period, as opposed to cumulative
+    //return, so the calculations will be more simple. The reason why we need to make additional
+    //calculations with the exponent is because we need to convert from the cumulative return.
     fn annualize_returns(ret: f64, periods: i32, frequency: &Frequency) -> f64 {
         match frequency {
-            Frequency::Daily => ((1.0 + ret).powf(365_f64 / periods as f64)) - 1.0,
-            Frequency::Monthly => ((1.0 + ret).powf(1.0 / (periods as f64 / 12_f64))) - 1.0,
-            Frequency::Yearly => ((1.0 + ret).powf(1.0 / (periods as f64 / 1.0))) - 1.0,
+            Frequency::Daily => ((1_f64 + ret).powf(365_f64 / periods as f64)) - 1_f64,
+            Frequency::Monthly => ((1_f64 + ret).powf(1_f64 / (periods as f64 / 12_f64))) - 1_f64,
+            Frequency::Yearly => ((1_f64 + ret).powf(1_f64 / (periods as f64 / 1_f64))) - 1_f64,
             Frequency::Second => panic!("No performance stats by second"),
         }
     }
