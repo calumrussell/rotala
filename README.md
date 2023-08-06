@@ -76,6 +76,8 @@ The main priority in the near future, given the existing uses of the library, is
 
 # Change Log
 
+v0.2.10 - Added licence/CI. Perf improvements. Bug fix in CAGR calculation and clarifying comments. Updated deps.
+
 v0.2.8 - Bugfixes for perf reporting. Perf improvements.
 
 v0.2.4 - Added more info to `BacktestOutput`. `CashValue` implements `Add`. Fix `DataSource` return values. Added inflation variable to `StrategySnapshot`, breaking change.
