@@ -25,7 +25,8 @@ pub fn full_backtest_random_data() {
         .build();
 
     let initial_cash: CashValue = 100_000.0.into();
-    let mut raw_data: HashMap<DateTime, Vec<Quote>> = HashMap::new();
+
+    let mut raw_data: HashMap<DateTime, Vec<Quote>> = HashMap::with_capacity(clock.borrow().len());
     for date in clock.borrow().peek() {
         let q1 = Quote::new(
             price_dist.sample(&mut rng),
