@@ -46,9 +46,14 @@ impl ClockInner {
         self.dates.clone().into_iter()
     }
 
-    // Get length of clock
+    /// Get length of clock
     pub fn len(&self) -> usize {
         self.dates.len()
+    }
+
+    /// Check to see if dates are empty
+    pub fn is_empty(&self) -> bool {
+        self.dates.is_empty()
     }
 }
 
