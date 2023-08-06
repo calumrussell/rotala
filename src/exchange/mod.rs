@@ -35,7 +35,7 @@ pub trait Exchange {
     fn orderbook_size(&self) -> usize;
     fn flush_buffer(&mut self) -> Vec<Trade>;
     fn get_quote(&self, symbol: &str) -> Option<&Quote>;
-    fn get_quotes(&self) -> Option<&Vec<Quote>>;
+    fn get_quotes(&self) -> Option<&[Quote]>;
     fn clear(&mut self);
     fn clear_pending_market_orders_by_symbol(&mut self, symbol: &str);
 }
@@ -156,7 +156,7 @@ impl<D: DataSource> Exchange for DefaultExchange<D> {
         }
     }
 
-    fn get_quotes(&self) -> Option<&Vec<Quote>> {
+    fn get_quotes(&self) -> Option<&[Quote]> {
         self.data_source.get_quotes()
     }
 

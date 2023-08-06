@@ -40,7 +40,7 @@ impl TradingSchedule for LastBusinessDayTradingSchedule {
         //
         for i in 1..4 {
             let seconds_in_day = 86400;
-            let offset_time = DateTime::from(*date.clone() + (i * seconds_in_day));
+            let offset_time = DateTime::from(**date + (i * seconds_in_day));
             match offset_time.weekday() {
                 Weekday::Saturday | Weekday::Sunday => continue,
                 _ => {

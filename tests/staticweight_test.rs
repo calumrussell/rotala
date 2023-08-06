@@ -22,13 +22,13 @@ fn build_data(clock: Clock) -> HashMapInput {
         let q1 = Quote::new(
             price_dist.sample(&mut rng),
             price_dist.sample(&mut rng),
-            date.clone(),
+            date,
             "ABC",
         );
         let q2 = Quote::new(
             price_dist.sample(&mut rng),
             price_dist.sample(&mut rng),
-            date.clone(),
+            date,
             "BCD",
         );
         raw_data.insert(date, vec![q1, q2]);

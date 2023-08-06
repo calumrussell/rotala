@@ -1,4 +1,5 @@
 use core::panic;
+
 use log::info;
 
 use crate::broker::record::BrokerLog;
@@ -347,7 +348,7 @@ impl<T: DataSource> BacktestBroker for SimulatedBroker<T> {
     fn pay_dividends(&mut self) {
         info!("BROKER: Checking dividends");
         if let Some(dividends) = self.data.get_dividends() {
-            for dividend in dividends.clone() {
+            for dividend in dividends.iter() {
                 //Our dataset can include dividends for stocks we don't own so we need to check
                 //that we own the stock, not performant but can be changed later
                 if let Some(qty) = self.get_position_qty(&dividend.symbol) {
@@ -356,7 +357,7 @@ impl<T: DataSource> BacktestBroker for SimulatedBroker<T> {
                         dividend.value, dividend.symbol
                     );
                     let cash_value = CashValue::from(*qty.clone() * *dividend.value);
-                    self.credit(&cash_value);
+                    self.clone().credit(&cash_value);
                     let dividend_paid = DividendPayment::new(
                         cash_value.clone(),
                         dividend.symbol.clone(),
@@ -456,7 +457,7 @@ impl<T: DataSource> GetsQuote for SimulatedBroker<T> {
         self.exchange.get_quote(symbol)
     }
 
-    fn get_quotes(&self) -> Option<&Vec<Quote>> {
+    fn get_quotes(&self) -> Option<&[Quote]> {
         self.exchange.get_quotes()
     }
 }
