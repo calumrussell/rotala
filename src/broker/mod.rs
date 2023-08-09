@@ -3,10 +3,16 @@ use std::error::Error;
 use std::fmt::Formatter;
 use std::{cmp::Ordering, fmt::Display};
 
+use crate::input::{Dividendable, Quotable};
 use crate::types::{
     CashValue, DateTime, PortfolioAllocation, PortfolioHoldings, PortfolioQty, PortfolioValues,
     Price,
 };
+
+#[cfg(feature = "python")]
+use pyo3::pyclass;
+#[cfg(feature = "python")]
+use pyo3::pymethods;
 
 pub mod record;
 
@@ -69,6 +75,67 @@ impl PartialEq for Quote {
     }
 }
 
+impl Quotable for Quote {
+    fn get_ask(&self) -> &Price {
+        &self.ask
+    }
+
+    fn get_bid(&self) -> &Price {
+        &self.bid
+    }
+
+    fn get_date(&self) -> &DateTime {
+        &self.date
+    }
+
+    fn get_symbol(&self) -> &String {
+        &self.symbol
+    }
+}
+
+#[cfg(feature = "python")]
+#[derive(Clone, Debug)]
+#[pyclass]
+pub struct PyQuote {
+    pub bid: Price,
+    pub ask: Price,
+    pub date: DateTime,
+    pub symbol: String,
+}
+
+#[pymethods]
+impl PyQuote {
+    #[new]
+    fn new(bid: f64, ask: f64, date: i64, symbol: &str) -> Self {
+        Self {
+            bid: bid.into(),
+            ask: ask.into(),
+            date: date.into(),
+            symbol: symbol.to_string(),
+        }
+    }
+}
+
+impl Quotable for PyQuote {
+    fn get_ask(&self) -> &Price {
+        &self.ask
+    }
+
+    fn get_bid(&self) -> &Price {
+        &self.bid
+    }
+
+    fn get_date(&self) -> &DateTime {
+        &self.date
+    }
+
+    fn get_symbol(&self) -> &String {
+        &self.symbol
+    }
+}
+
+unsafe impl Send for PyQuote { }
+
 ///Represents a single dividend payment in per-share terms.
 ///
 ///Equality checked against ticker and date. Ordering against date only.
@@ -117,6 +184,56 @@ impl Eq for Dividend {}
 impl PartialEq for Dividend {
     fn eq(&self, other: &Self) -> bool {
         self.date == other.date && self.symbol == other.symbol
+    }
+}
+
+impl Dividendable for Dividend {
+    fn get_date(&self) -> &DateTime {
+        &self.date
+    }
+
+    fn get_symbol(&self) -> &String {
+        &self.symbol
+    }
+
+    fn get_value(&self) -> &Price {
+        &self.value
+    }
+}
+
+#[cfg(feature = "python")]
+#[derive(Clone, Debug)]
+#[pyclass]
+pub struct PyDividend {
+    //Dividend value is expressed in terms of per share values
+    pub value: Price,
+    pub symbol: String,
+    pub date: DateTime,
+}
+
+#[pymethods]
+impl PyDividend {
+    #[new]
+    fn new (value: f64, symbol: &str, date: i64) -> Self {
+        Self {
+            value: value.into(),
+            symbol: symbol.to_string(),
+            date: date.into(),
+        }
+    }
+}
+
+impl Dividendable for PyDividend {
+    fn get_date(&self) -> &DateTime {
+        &self.date
+    }
+
+    fn get_symbol(&self) -> &String {
+        &self.symbol
+    }
+    
+    fn get_value(&self) -> &Price {
+        &self.value
     }
 }
 

@@ -1,11 +1,25 @@
+use pyo3::types::{PyDict, PyList};
 use rand::distributions::{Distribution, Uniform};
 use rand::thread_rng;
 use std::collections::HashMap;
 use std::rc::Rc;
 
-use crate::broker::{Dividend, Quote};
+use crate::broker::{Dividend, Quote, PyQuote, PyDividend};
 use crate::clock::Clock;
-use crate::types::DateTime;
+use crate::types::{DateTime, Price};
+
+pub trait Quotable {
+    fn get_bid(&self) -> &Price;
+    fn get_ask(&self) -> &Price;
+    fn get_date(&self) -> &DateTime;
+    fn get_symbol(&self) -> &String;
+}
+
+pub trait Dividendable {
+    fn get_symbol(&self) -> &String;
+    fn get_date(&self) -> &DateTime;
+    fn get_value(&self) -> &Price;
+}
 
 ///Retrieves price and dividends for symbol/symbols.
 ///
@@ -16,10 +30,10 @@ use crate::types::DateTime;
 ///
 ///Dates will be known at runtime so when allocating space for `QuotesHashMap`/`DividendsHashMap`,
 ///`HashMap::with_capacity()` should be used using either length of dates or `len()` of `Clock`.
-pub trait DataSource: Clone {
-    fn get_quote(&self, symbol: &str) -> Option<&Quote>;
-    fn get_quotes(&self) -> Option<&Vec<Quote>>;
-    fn get_dividends(&self) -> Option<&Vec<Dividend>>;
+pub trait DataSource<Q: Quotable, D: Dividendable>: Clone {
+    fn get_quote(&self, symbol: &str) -> Option<&Q>;
+    fn get_quotes(&self) -> Option<&Vec<Q>>;
+    fn get_dividends(&self) -> Option<&Vec<D>>;
 }
 
 ///Implementation of [DataSource trait that wraps around a HashMap. Time is kept with reference to
@@ -34,7 +48,7 @@ pub struct HashMapInput {
 pub type QuotesHashMap = HashMap<DateTime, Vec<Quote>>;
 pub type DividendsHashMap = HashMap<DateTime, Vec<Dividend>>;
 
-impl DataSource for HashMapInput {
+impl DataSource<Quote, Dividend> for HashMapInput {
     fn get_quote(&self, symbol: &str) -> Option<&Quote> {
         let curr_date = self.clock.borrow().now();
         if let Some(quotes) = self.quotes.get(&curr_date) {
@@ -105,6 +119,61 @@ impl HashMapInputBuilder {
 impl Default for HashMapInputBuilder {
     fn default() -> Self {
         Self::new()
+    }
+}
+
+#[cfg(feature = "python")]
+#[derive(Clone, Debug)]
+pub struct PyInput<'a> {
+    quotes: &'a PyDict,
+    dividends: &'a PyDict,
+    tickers: &'a PyDict,
+    clock: Clock,
+}
+
+impl<'a> PyInput<'a> {
+    fn get_ticker_by_pos(&self, pos: i32) -> String {
+        let count = 0;
+        for key in self.tickers.keys() {
+            if count == pos {
+                if let Ok(ticker) = key.extract::<String>() {
+                    return ticker;
+                }
+            }
+        }
+        panic!("Can't find position, there is an error in the code");
+    }
+}
+
+#[cfg(feature = "python")]
+impl<'a> DataSource<PyQuote, PyDividend> for PyInput<'a> {
+    fn get_quote(&self, symbol: &str) -> Option<&PyQuote> {
+        if let Some(ticker_pos_any) = self.tickers.get_item(symbol) {
+            let curr_date = self.clock.borrow().now();
+            if let Some(quotes) = self.quotes.get_item(i64::from(curr_date)) {
+                if let Ok(quotes_list ) = quotes.downcast::<PyList>() {
+                    if let Ok(ticker_pos) = ticker_pos_any.extract::<usize>() {
+                        let quote_any = quotes_list[ticker_pos];
+                        if let Ok(quote) = quote_any.downcast::<PyQuote>() {
+                            return Some(quote);
+                        }
+                    }
+                }
+            }
+        }
+        None
+    }
+
+    //TODO: need to implement, can't do this without Python-native types
+    fn get_quotes(&self) -> Option<&Vec<PyQuote>> {
+        let fake = Vec::new();
+        return Some(&fake);
+    }
+
+    //TODO: need to implement, can't do this without Python-native types
+    fn get_dividends(&self) -> Option<&Vec<PyDividend>> {
+        let fake = Vec::new();
+        return Some(&fake);
     }
 }
 
