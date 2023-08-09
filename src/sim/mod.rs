@@ -4,20 +4,22 @@ use log::info;
 use crate::broker::record::BrokerLog;
 use crate::broker::{
     BacktestBroker, BrokerCalculations, BrokerCashEvent, BrokerCost, BrokerEvent, DividendPayment,
-    EventLog, GetsQuote, Order, OrderType, Quote, Trade, TradeType, TransferCash,
+    EventLog, GetsQuote, Order, OrderType, Quote, Trade, TradeType, TransferCash, Dividend,
 };
 use crate::exchange::{DefaultExchange, Exchange};
 use crate::input::DataSource;
 use crate::types::{CashValue, PortfolioHoldings, PortfolioQty, Price};
 
-pub struct SimulatedBrokerBuilder<T: DataSource> {
+pub struct SimulatedBrokerBuilder<T> where 
+ T: DataSource<Quote, Dividend> {
     //Cannot run without data but can run with empty trade_costs
     data: Option<T>,
     trade_costs: Vec<BrokerCost>,
     exchange: Option<DefaultExchange<T>>,
 }
 
-impl<T: DataSource> SimulatedBrokerBuilder<T> {
+impl<T> SimulatedBrokerBuilder<T> where
+ T: DataSource<Quote, Dividend> {
     pub fn build(&self) -> SimulatedBroker<T> {
         if self.data.is_none() {
             panic!("Cannot build broker without data");
@@ -67,7 +69,8 @@ impl<T: DataSource> SimulatedBrokerBuilder<T> {
     }
 }
 
-impl<T: DataSource> Default for SimulatedBrokerBuilder<T> {
+impl<T> Default for SimulatedBrokerBuilder<T> where
+ T: DataSource<Quote, Dividend> {
     fn default() -> Self {
         Self::new()
     }
@@ -98,7 +101,8 @@ impl<T: DataSource> Default for SimulatedBrokerBuilder<T> {
 ///Keeps an internal log of trades executed and dividends received/paid. The events supported by
 ///the `BrokerLog` are stored in the `BrokerRecordedEvent` enum in broker/mod.rs.
 #[derive(Clone, Debug)]
-pub struct SimulatedBroker<T: DataSource> {
+pub struct SimulatedBroker<T> where 
+ T: DataSource<Quote, Dividend> {
     //We have overlapping functionality because we are storing
     data: T,
     holdings: PortfolioHoldings,
@@ -109,7 +113,8 @@ pub struct SimulatedBroker<T: DataSource> {
     ready_state: SimulatedBrokerReadyState,
 }
 
-impl<T: DataSource> SimulatedBroker<T> {
+impl<T> SimulatedBroker<T> where
+ T: DataSource<Quote, Dividend> {
     pub fn cost_basis(&self, symbol: &str) -> Option<Price> {
         self.log.cost_basis(symbol)
     }
@@ -191,7 +196,8 @@ impl<T: DataSource> SimulatedBroker<T> {
     }
 }
 
-impl<T: DataSource> BacktestBroker for SimulatedBroker<T> {
+impl<T> BacktestBroker for SimulatedBroker<T> where
+ T: DataSource<Quote, Dividend> {
     //Identical to deposit_cash but is seperated to distinguish internal cash
     //transactions from external with no value returned to client
     fn credit(&mut self, value: &f64) -> BrokerCashEvent {
@@ -449,9 +455,13 @@ impl<T: DataSource> BacktestBroker for SimulatedBroker<T> {
     }
 }
 
-impl<T: DataSource> TransferCash for SimulatedBroker<T> {}
+impl<T> TransferCash for SimulatedBroker<T> where 
+ T: DataSource<Quote, Dividend> {
 
-impl<T: DataSource> GetsQuote for SimulatedBroker<T> {
+}
+
+impl<T> GetsQuote for SimulatedBroker<T> where
+ T: DataSource<Quote, Dividend> {
     fn get_quote(&self, symbol: &str) -> Option<&Quote> {
         self.exchange.get_quote(symbol)
     }
@@ -461,7 +471,8 @@ impl<T: DataSource> GetsQuote for SimulatedBroker<T> {
     }
 }
 
-impl<T: DataSource> EventLog for SimulatedBroker<T> {
+impl<T> EventLog for SimulatedBroker<T> where
+ T: DataSource<Quote, Dividend> {
     fn trades_between(&self, start: &i64, end: &i64) -> Vec<Trade> {
         self.log.trades_between(start, end)
     }

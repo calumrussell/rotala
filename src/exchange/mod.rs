@@ -1,9 +1,9 @@
 use std::collections::HashMap;
 use std::rc::Rc;
 
-use crate::broker::{Order, OrderType, Quote, Trade, TradeType};
+use crate::broker::{Order, OrderType, Quote, Trade, TradeType, Dividend};
 use crate::clock::Clock;
-use crate::input::DataSource;
+use crate::input::{DataSource, Quotable};
 use crate::types::CashValue;
 
 ///Exchanges accept orders for securities, store them on an internal order book, and then execute
@@ -24,7 +24,7 @@ use crate::types::CashValue;
 ///the client should not insert new orders into the book, check them, and then insert more orders.
 ///Clients must check, then insert new orders, then finish; ordering of operations should be
 ///maintained through state in the implementation.
-pub trait Exchange {
+pub trait Exchange<Q: Quotable> {
     fn insert_order(&mut self, order: Order) -> DefaultExchangeOrderId;
     fn delete_order(&mut self, order_id: DefaultExchangeOrderId);
     fn get_order(&self, order_id: &DefaultExchangeOrderId) -> Option<&Order>;
@@ -34,8 +34,8 @@ pub trait Exchange {
     //Represents size of orders in orderbook
     fn orderbook_size(&self) -> usize;
     fn flush_buffer(&mut self) -> Vec<Trade>;
-    fn get_quote(&self, symbol: &str) -> Option<&Quote>;
-    fn get_quotes(&self) -> Option<&Vec<Quote>>;
+    fn get_quote(&self, symbol: &str) -> Option<&Q>;
+    fn get_quotes(&self) -> Option<&Vec<Q>>;
     fn clear(&mut self);
     fn clear_pending_market_orders_by_symbol(&mut self, symbol: &str);
 }
@@ -56,13 +56,15 @@ enum DefaultExchangeState {
 
 type DefaultExchangeOrderId = u32;
 
-pub struct DefaultExchangeBuilder<D: DataSource> {
-    data_source: Option<D>,
+pub struct DefaultExchangeBuilder<T> where
+ T: DataSource<Quote, Dividend> {
+    data_source: Option<T>,
     clock: Option<Clock>,
 }
 
-impl<D: DataSource> DefaultExchangeBuilder<D> {
-    pub fn build(&self) -> DefaultExchange<D> {
+impl<T> DefaultExchangeBuilder<T> where
+ T: DataSource<Quote, Dividend> {
+    pub fn build(&self) -> DefaultExchange<T> {
         if self.data_source.is_none() {
             panic!("Exchange must have data source");
         }
@@ -82,7 +84,7 @@ impl<D: DataSource> DefaultExchangeBuilder<D> {
         self
     }
 
-    pub fn with_data_source(&mut self, data_source: D) -> &mut Self {
+    pub fn with_data_source(&mut self, data_source: T) -> &mut Self {
         self.data_source = Some(data_source);
         self
     }
@@ -95,7 +97,8 @@ impl<D: DataSource> DefaultExchangeBuilder<D> {
     }
 }
 
-impl<D: DataSource> Default for DefaultExchangeBuilder<D> {
+impl<T> Default for DefaultExchangeBuilder<T> where
+ T: DataSource<Quote, Dividend> {
     fn default() -> Self {
         Self::new()
     }
@@ -114,19 +117,21 @@ impl<D: DataSource> Default for DefaultExchangeBuilder<D> {
 ///In both cases, we are potentially creating silent errors but this more closely represents the
 ///execution model that would exist in reality.
 #[derive(Clone, Debug)]
-pub struct DefaultExchange<D: DataSource> {
+pub struct DefaultExchange<T> where
+ T: DataSource<Quote, Dividend> {
     clock: Clock,
     orderbook: HashMap<DefaultExchangeOrderId, Order>,
     last: DefaultExchangeOrderId,
-    data_source: D,
+    data_source: T,
     trade_log: Vec<Trade>,
     trade_buffer: Vec<Trade>,
     ready_state: DefaultExchangeState,
     last_seen_quote: HashMap<String, Quote>,
 }
 
-impl<D: DataSource> DefaultExchange<D> {
-    pub fn new(clock: Clock, data_source: D) -> Self {
+impl<T> DefaultExchange<T> where
+ T: DataSource<Quote, Dividend> {
+    pub fn new(clock: Clock, data_source: T) -> Self {
         Self {
             clock,
             orderbook: HashMap::new(),
@@ -144,7 +149,8 @@ impl<D: DataSource> DefaultExchange<D> {
     }
 }
 
-impl<D: DataSource> Exchange for DefaultExchange<D> {
+impl<T> Exchange<Quote> for DefaultExchange<T> where
+ T: DataSource<Quote, Dividend> {
     fn get_quote(&self, symbol: &str) -> Option<&Quote> {
         if let Some(quote) = self.data_source.get_quote(symbol) {
             Some(quote)
