@@ -9,6 +9,7 @@ use alator::input::HashMapInput;
 use alator::sim::SimulatedBrokerBuilder;
 use alator::simcontext::SimContextBuilder;
 use alator::types::{CashValue, DateTime, Frequency, PortfolioAllocation};
+use pyo3::types::{PyDict, PyList};
 use rand::distributions::{Distribution, Uniform};
 use rand::thread_rng;
 use std::collections::HashMap;
@@ -43,7 +44,10 @@ fn build_data(clock: Clock) -> HashMapInput {
 }
 
 #[pyfunction]
-fn staticweight_example() -> PyResult<String> {
+fn staticweight_example(quotes_any: &PyAny, tickers_any: &PyAny) -> PyResult<String> {
+    let quotes: &PyDict = quotes_any.downcast()?;
+    let tickers: &PyList = tickers_any.downcast()?;
+
     let initial_cash: CashValue = 100_000.0.into();
     let length_in_days: i64 = 1000;
     let start_date: i64 = 1609750800; //Date - 4/1/21 9:00:0000

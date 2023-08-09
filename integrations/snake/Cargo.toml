@@ -10,6 +10,6 @@ crate-type = ["cdylib"]
 
 [dependencies]
 pyo3 = "0.19.0"
-alator = { "path"="../../" }
+alator = { path = "../../", features = ["python"] }
 rand = "0.8.4"
 rand_distr = "0.4.1"
