@@ -2,8 +2,8 @@ use log::info;
 use std::rc::Rc;
 
 use crate::broker::{
-    BacktestBroker, BrokerCalculations, BrokerCashEvent, DividendPayment, EventLog, Trade,
-    TransferCash, Quote, Dividend,
+    BacktestBroker, BrokerCalculations, BrokerCashEvent, Dividend, DividendPayment, EventLog,
+    Quote, Trade, TransferCash,
 };
 use crate::clock::Clock;
 use crate::input::DataSource;
@@ -77,16 +77,20 @@ pub trait History {
     fn get_history(&self) -> Vec<StrategySnapshot>;
 }
 
-pub struct StaticWeightStrategyBuilder<T> where 
- T: DataSource<Quote, Dividend> {
+pub struct StaticWeightStrategyBuilder<T>
+where
+    T: DataSource<Quote, Dividend>,
+{
     //If missing either field, we cannot run this strategy
     brkr: Option<SimulatedBroker<T>>,
     weights: Option<PortfolioAllocation>,
     clock: Option<Clock>,
 }
 
-impl<T> StaticWeightStrategyBuilder<T> where
- T: DataSource<Quote, Dividend> {
+impl<T> StaticWeightStrategyBuilder<T>
+where
+    T: DataSource<Quote, Dividend>,
+{
     pub fn default(&self) -> StaticWeightStrategy<T> {
         if self.brkr.is_none() || self.weights.is_none() || self.clock.is_none() {
             panic!("Strategy must have broker, weights, and clock");
@@ -125,8 +129,10 @@ impl<T> StaticWeightStrategyBuilder<T> where
     }
 }
 
-impl<T> Default for StaticWeightStrategyBuilder<T> where
- T: DataSource<Quote, Dividend> {
+impl<T> Default for StaticWeightStrategyBuilder<T>
+where
+    T: DataSource<Quote, Dividend>,
+{
     fn default() -> Self {
         Self::new()
     }
@@ -135,8 +141,10 @@ impl<T> Default for StaticWeightStrategyBuilder<T> where
 ///Basic implementation of an investment strategy which takes a set of fixed-weight allocations and
 ///rebalances over time towards those weights.
 #[derive(Clone)]
-pub struct StaticWeightStrategy<T> where
- T: DataSource<Quote, Dividend> {
+pub struct StaticWeightStrategy<T>
+where
+    T: DataSource<Quote, Dividend>,
+{
     brkr: SimulatedBroker<T>,
     target_weights: PortfolioAllocation,
     net_cash_flow: CashValue,
@@ -144,8 +152,10 @@ pub struct StaticWeightStrategy<T> where
     history: Vec<StrategySnapshot>,
 }
 
-impl<T> StaticWeightStrategy<T> where
- T: DataSource<Quote, Dividend> {
+impl<T> StaticWeightStrategy<T>
+where
+    T: DataSource<Quote, Dividend>,
+{
     pub fn get_snapshot(&mut self) -> StrategySnapshot {
         // Defaults to zero inflation because most users probably aren't looking
         // for real returns calcs
@@ -158,8 +168,10 @@ impl<T> StaticWeightStrategy<T> where
     }
 }
 
-impl<T> Strategy for StaticWeightStrategy<T> where
- T: DataSource<Quote, Dividend> {
+impl<T> Strategy for StaticWeightStrategy<T>
+where
+    T: DataSource<Quote, Dividend>,
+{
     fn init(&mut self, initital_cash: &f64) {
         self.deposit_cash(initital_cash);
         if DefaultTradingSchedule::should_trade(&self.clock.borrow().now()) {
@@ -193,8 +205,10 @@ impl<T> Strategy for StaticWeightStrategy<T> where
     }
 }
 
-impl<T> TransferTo for StaticWeightStrategy<T> where
- T: DataSource<Quote, Dividend> {
+impl<T> TransferTo for StaticWeightStrategy<T>
+where
+    T: DataSource<Quote, Dividend>,
+{
     fn deposit_cash(&mut self, cash: &f64) -> StrategyEvent {
         info!("STRATEGY: Depositing {:?} into strategy", cash);
         self.brkr.deposit_cash(cash);
@@ -203,8 +217,10 @@ impl<T> TransferTo for StaticWeightStrategy<T> where
     }
 }
 
-impl<T> TransferFrom for StaticWeightStrategy<T> where
- T: DataSource<Quote, Dividend> {
+impl<T> TransferFrom for StaticWeightStrategy<T>
+where
+    T: DataSource<Quote, Dividend>,
+{
     fn withdraw_cash(&mut self, cash: &f64) -> StrategyEvent {
         if let BrokerCashEvent::WithdrawSuccess(withdrawn) = self.brkr.withdraw_cash(cash) {
             info!("STRATEGY: Succesfully withdrew {:?} from strategy", cash);
@@ -228,8 +244,10 @@ impl<T> TransferFrom for StaticWeightStrategy<T> where
     }
 }
 
-impl<T> Audit for StaticWeightStrategy<T> where
- T: DataSource<Quote, Dividend> {
+impl<T> Audit for StaticWeightStrategy<T>
+where
+    T: DataSource<Quote, Dividend>,
+{
     fn trades_between(&self, start: &i64, end: &i64) -> Vec<Trade> {
         self.brkr.trades_between(start, end)
     }
@@ -239,8 +257,10 @@ impl<T> Audit for StaticWeightStrategy<T> where
     }
 }
 
-impl<T> History for StaticWeightStrategy<T> where
- T: DataSource<Quote, Dividend> {
+impl<T> History for StaticWeightStrategy<T>
+where
+    T: DataSource<Quote, Dividend>,
+{
     fn get_history(&self) -> Vec<StrategySnapshot> {
         self.history.clone()
     }

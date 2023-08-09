@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 use std::rc::Rc;
 
-use crate::broker::{Order, OrderType, Quote, Trade, TradeType, Dividend};
+use crate::broker::{Dividend, Order, OrderType, Quote, Trade, TradeType};
 use crate::clock::Clock;
 use crate::input::{DataSource, Quotable};
 use crate::types::CashValue;
@@ -56,14 +56,18 @@ enum DefaultExchangeState {
 
 type DefaultExchangeOrderId = u32;
 
-pub struct DefaultExchangeBuilder<T> where
- T: DataSource<Quote, Dividend> {
+pub struct DefaultExchangeBuilder<T>
+where
+    T: DataSource<Quote, Dividend>,
+{
     data_source: Option<T>,
     clock: Option<Clock>,
 }
 
-impl<T> DefaultExchangeBuilder<T> where
- T: DataSource<Quote, Dividend> {
+impl<T> DefaultExchangeBuilder<T>
+where
+    T: DataSource<Quote, Dividend>,
+{
     pub fn build(&self) -> DefaultExchange<T> {
         if self.data_source.is_none() {
             panic!("Exchange must have data source");
@@ -97,8 +101,10 @@ impl<T> DefaultExchangeBuilder<T> where
     }
 }
 
-impl<T> Default for DefaultExchangeBuilder<T> where
- T: DataSource<Quote, Dividend> {
+impl<T> Default for DefaultExchangeBuilder<T>
+where
+    T: DataSource<Quote, Dividend>,
+{
     fn default() -> Self {
         Self::new()
     }
@@ -117,8 +123,10 @@ impl<T> Default for DefaultExchangeBuilder<T> where
 ///In both cases, we are potentially creating silent errors but this more closely represents the
 ///execution model that would exist in reality.
 #[derive(Clone, Debug)]
-pub struct DefaultExchange<T> where
- T: DataSource<Quote, Dividend> {
+pub struct DefaultExchange<T>
+where
+    T: DataSource<Quote, Dividend>,
+{
     clock: Clock,
     orderbook: HashMap<DefaultExchangeOrderId, Order>,
     last: DefaultExchangeOrderId,
@@ -129,8 +137,10 @@ pub struct DefaultExchange<T> where
     last_seen_quote: HashMap<String, Quote>,
 }
 
-impl<T> DefaultExchange<T> where
- T: DataSource<Quote, Dividend> {
+impl<T> DefaultExchange<T>
+where
+    T: DataSource<Quote, Dividend>,
+{
     pub fn new(clock: Clock, data_source: T) -> Self {
         Self {
             clock,
@@ -149,8 +159,10 @@ impl<T> DefaultExchange<T> where
     }
 }
 
-impl<T> Exchange<Quote> for DefaultExchange<T> where
- T: DataSource<Quote, Dividend> {
+impl<T> Exchange<Quote> for DefaultExchange<T>
+where
+    T: DataSource<Quote, Dividend>,
+{
     fn get_quote(&self, symbol: &str) -> Option<&Quote> {
         if let Some(quote) = self.data_source.get_quote(symbol) {
             Some(quote)

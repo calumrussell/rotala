@@ -10,9 +10,7 @@ use crate::types::{
 };
 
 #[cfg(feature = "python")]
-use pyo3::pyclass;
-#[cfg(feature = "python")]
-use pyo3::pymethods;
+use pyo3::{pyclass, pymethods};
 
 pub mod record;
 
@@ -103,6 +101,7 @@ pub struct PyQuote {
     pub symbol: String,
 }
 
+#[cfg(feature = "python")]
 #[pymethods]
 impl PyQuote {
     #[new]
@@ -116,6 +115,7 @@ impl PyQuote {
     }
 }
 
+#[cfg(feature = "python")]
 impl Quotable for PyQuote {
     fn get_ask(&self) -> &Price {
         &self.ask
@@ -134,7 +134,8 @@ impl Quotable for PyQuote {
     }
 }
 
-unsafe impl Send for PyQuote { }
+#[cfg(feature = "python")]
+unsafe impl Send for PyQuote {}
 
 ///Represents a single dividend payment in per-share terms.
 ///
@@ -211,10 +212,11 @@ pub struct PyDividend {
     pub date: DateTime,
 }
 
+#[cfg(feature = "python")]
 #[pymethods]
 impl PyDividend {
     #[new]
-    fn new (value: f64, symbol: &str, date: i64) -> Self {
+    fn new(value: f64, symbol: &str, date: i64) -> Self {
         Self {
             value: value.into(),
             symbol: symbol.to_string(),
@@ -223,6 +225,7 @@ impl PyDividend {
     }
 }
 
+#[cfg(feature = "python")]
 impl Dividendable for PyDividend {
     fn get_date(&self) -> &DateTime {
         &self.date
@@ -231,7 +234,7 @@ impl Dividendable for PyDividend {
     fn get_symbol(&self) -> &String {
         &self.symbol
     }
-    
+
     fn get_value(&self) -> &Price {
         &self.value
     }

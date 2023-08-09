@@ -1,12 +1,16 @@
-use pyo3::types::{PyDict, PyList};
 use rand::distributions::{Distribution, Uniform};
 use rand::thread_rng;
 use std::collections::HashMap;
 use std::rc::Rc;
 
-use crate::broker::{Dividend, Quote, PyQuote, PyDividend};
+use crate::broker::{Dividend, Quote};
 use crate::clock::Clock;
 use crate::types::{DateTime, Price};
+
+#[cfg(feature = "python")]
+use crate::broker::{PyDividend, PyQuote};
+#[cfg(feature = "python")]
+use pyo3::types::{PyDict, PyList};
 
 pub trait Quotable {
     fn get_bid(&self) -> &Price;
@@ -131,6 +135,7 @@ pub struct PyInput<'a> {
     clock: Clock,
 }
 
+#[cfg(feature = "python")]
 impl<'a> PyInput<'a> {
     fn get_ticker_by_pos(&self, pos: i32) -> String {
         let count = 0;
@@ -151,7 +156,7 @@ impl<'a> DataSource<PyQuote, PyDividend> for PyInput<'a> {
         if let Some(ticker_pos_any) = self.tickers.get_item(symbol) {
             let curr_date = self.clock.borrow().now();
             if let Some(quotes) = self.quotes.get_item(i64::from(curr_date)) {
-                if let Ok(quotes_list ) = quotes.downcast::<PyList>() {
+                if let Ok(quotes_list) = quotes.downcast::<PyList>() {
                     if let Ok(ticker_pos) = ticker_pos_any.extract::<usize>() {
                         let quote_any = quotes_list[ticker_pos];
                         if let Ok(quote) = quote_any.downcast::<PyQuote>() {
