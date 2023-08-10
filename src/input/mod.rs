@@ -11,6 +11,8 @@ use crate::types::{DateTime, Price};
 use crate::broker::{PyDividend, PyQuote};
 #[cfg(feature = "python")]
 use pyo3::types::{PyDict, PyList};
+#[cfg(feature = "python")]
+use pyo3::pycell::PyCell;
 
 pub trait Quotable {
     fn get_bid(&self) -> &Price;
@@ -129,10 +131,10 @@ impl Default for HashMapInputBuilder {
 #[cfg(feature = "python")]
 #[derive(Clone, Debug)]
 pub struct PyInput<'a> {
-    quotes: &'a PyDict,
-    dividends: &'a PyDict,
-    tickers: &'a PyDict,
-    clock: Clock,
+    pub quotes: &'a PyDict,
+    pub dividends: &'a PyDict,
+    pub tickers: &'a PyDict,
+    pub clock: Clock,
 }
 
 #[cfg(feature = "python")]
@@ -158,9 +160,10 @@ impl<'a> DataSource<PyQuote, PyDividend> for PyInput<'a> {
             if let Some(quotes) = self.quotes.get_item(i64::from(curr_date)) {
                 if let Ok(quotes_list) = quotes.downcast::<PyList>() {
                     if let Ok(ticker_pos) = ticker_pos_any.extract::<usize>() {
-                        let quote_any = quotes_list[ticker_pos];
-                        if let Ok(quote) = quote_any.downcast::<PyQuote>() {
-                            return Some(quote);
+                        let quote_any = &quotes_list[ticker_pos];
+                        if let Ok(quote) = quote_any.downcast::<PyCell<PyQuote>>() {
+                            let to_inner = quote.get();
+                            return Some(to_inner);
                         }
                     }
                 }
@@ -171,15 +174,14 @@ impl<'a> DataSource<PyQuote, PyDividend> for PyInput<'a> {
 
     //TODO: need to implement, can't do this without Python-native types
     fn get_quotes(&self) -> Option<&Vec<PyQuote>> {
-        let fake = Vec::new();
-        return Some(&fake);
+        None
     }
 
     //TODO: need to implement, can't do this without Python-native types
     fn get_dividends(&self) -> Option<&Vec<PyDividend>> {
-        let fake = Vec::new();
-        return Some(&fake);
+        None
     }
+    
 }
 
 pub fn fake_data_generator(clock: Clock) -> HashMapInput {

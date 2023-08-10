@@ -2,9 +2,9 @@ use pyo3::prelude::*;
 
 use alator::clock::{Clock, ClockBuilder};
 use alator::exchange::DefaultExchangeBuilder;
-use alator::input::HashMapInputBuilder;
+use alator::input::{HashMapInputBuilder, PyInput};
 use alator::strategy::StaticWeightStrategyBuilder;
-use alator::broker::{BrokerCost, Quote};
+use alator::broker::{BrokerCost, Quote, PyQuote, PyDividend};
 use alator::input::HashMapInput;
 use alator::sim::SimulatedBrokerBuilder;
 use alator::simcontext::SimContextBuilder;
@@ -44,10 +44,28 @@ fn build_data(clock: Clock) -> HashMapInput {
 }
 
 #[pyfunction]
-fn staticweight_example(quotes_any: &PyAny, tickers_any: &PyAny) -> PyResult<String> {
-    let quotes: &PyDict = quotes_any.downcast()?;
-    let tickers: &PyList = tickers_any.downcast()?;
+fn staticweight_example(quotes_any: &PyAny, dividends_any: &PyAny, tickers_any: &PyAny) -> PyResult<String> {
 
+    let clock = ClockBuilder::with_length_in_seconds(100, 900)
+        .with_frequency(&Frequency::Second)
+        .build();
+
+    let quotes: &PyDict = quotes_any.downcast()?;
+    let dividends: &PyDict = dividends_any.downcast()?;
+    let tickers: &PyDict = tickers_any.downcast()?;
+
+    let input = PyInput {
+        quotes,
+        dividends,
+        tickers,
+        clock,
+    };
+
+    println!("{:?}", input);
+
+    Ok("Backtest completed".to_string())
+
+    /*
     let initial_cash: CashValue = 100_000.0.into();
     let length_in_days: i64 = 1000;
     let start_date: i64 = 1609750800; //Date - 4/1/21 9:00:0000
@@ -88,10 +106,13 @@ fn staticweight_example(quotes_any: &PyAny, tickers_any: &PyAny) -> PyResult<Str
     let _perf = sim.perf(Frequency::Daily);
 
     Ok("Backtest completed".to_string())
+    */
 }
 
 #[pymodule]
 fn snake(_py: Python<'_>, m: &PyModule) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(staticweight_example, m)?)?;
+    m.add_class::<PyQuote>()?;
+    m.add_class::<PyDividend>()?;
     Ok(())
 }

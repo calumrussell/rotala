@@ -93,7 +93,7 @@ impl Quotable for Quote {
 
 #[cfg(feature = "python")]
 #[derive(Clone, Debug)]
-#[pyclass]
+#[pyclass(frozen)]
 pub struct PyQuote {
     pub bid: Price,
     pub ask: Price,
@@ -204,7 +204,7 @@ impl Dividendable for Dividend {
 
 #[cfg(feature = "python")]
 #[derive(Clone, Debug)]
-#[pyclass]
+#[pyclass(frozen)]
 pub struct PyDividend {
     //Dividend value is expressed in terms of per share values
     pub value: Price,
