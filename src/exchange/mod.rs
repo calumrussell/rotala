@@ -1,9 +1,10 @@
 use std::collections::HashMap;
+use std::marker::PhantomData;
 use std::rc::Rc;
 
-use crate::broker::{Dividend, Order, OrderType, Quote, Trade, TradeType};
+use crate::broker::{Order, OrderType, Trade, TradeType};
 use crate::clock::Clock;
-use crate::input::{DataSource, Quotable};
+use crate::input::{DataSource, Quotable, Dividendable};
 use crate::types::CashValue;
 
 ///Exchanges accept orders for securities, store them on an internal order book, and then execute
@@ -56,19 +57,25 @@ enum DefaultExchangeState {
 
 type DefaultExchangeOrderId = u32;
 
-pub struct DefaultExchangeBuilder<T>
+pub struct DefaultExchangeBuilder<T, Q, D>
 where
-    T: DataSource<Quote, Dividend>,
+    Q: Quotable,
+    D: Dividendable,
+    T: DataSource<Q, D>,
 {
     data_source: Option<T>,
     clock: Option<Clock>,
+    _quote: PhantomData<Q>,
+    _dividend: PhantomData<D>,
 }
 
-impl<T> DefaultExchangeBuilder<T>
+impl<T, Q, D> DefaultExchangeBuilder<T, Q, D>
 where
-    T: DataSource<Quote, Dividend>,
+    Q: Quotable,
+    D: Dividendable,
+    T: DataSource<Q, D>,
 {
-    pub fn build(&self) -> DefaultExchange<T> {
+    pub fn build(&self) -> DefaultExchange<T, Q, D> {
         if self.data_source.is_none() {
             panic!("Exchange must have data source");
         }
@@ -97,13 +104,17 @@ where
         Self {
             clock: None,
             data_source: None,
+            _quote: PhantomData,
+            _dividend: PhantomData,
         }
     }
 }
 
-impl<T> Default for DefaultExchangeBuilder<T>
+impl<T, Q, D> Default for DefaultExchangeBuilder<T, Q, D>
 where
-    T: DataSource<Quote, Dividend>,
+    Q: Quotable,
+    D: Dividendable,
+    T: DataSource<Q, D>,
 {
     fn default() -> Self {
         Self::new()
@@ -123,9 +134,11 @@ where
 ///In both cases, we are potentially creating silent errors but this more closely represents the
 ///execution model that would exist in reality.
 #[derive(Clone, Debug)]
-pub struct DefaultExchange<T>
+pub struct DefaultExchange<T, Q, D>
 where
-    T: DataSource<Quote, Dividend>,
+    Q: Quotable,
+    D: Dividendable,
+    T: DataSource<Q, D>,
 {
     clock: Clock,
     orderbook: HashMap<DefaultExchangeOrderId, Order>,
@@ -134,12 +147,15 @@ where
     trade_log: Vec<Trade>,
     trade_buffer: Vec<Trade>,
     ready_state: DefaultExchangeState,
-    last_seen_quote: HashMap<String, Quote>,
+    last_seen_quote: HashMap<String, Q>,
+    _dividend: PhantomData<D>,
 }
 
-impl<T> DefaultExchange<T>
+impl<T, Q, D> DefaultExchange<T, Q, D>
 where
-    T: DataSource<Quote, Dividend>,
+    Q: Quotable,
+    D: Dividendable,
+    T: DataSource<Q, D>,
 {
     pub fn new(clock: Clock, data_source: T) -> Self {
         Self {
@@ -155,15 +171,18 @@ where
             //Exchange is empty, so it must be ready to accept new orders.
             ready_state: DefaultExchangeState::Ready,
             last_seen_quote: HashMap::new(),
+            _dividend: PhantomData,
         }
     }
 }
 
-impl<T> Exchange<Quote> for DefaultExchange<T>
+impl<T, Q, D> Exchange<Q> for DefaultExchange<T, Q, D>
 where
-    T: DataSource<Quote, Dividend>,
+    Q: Quotable,
+    D: Dividendable,
+    T: DataSource<Q, D>,
 {
-    fn get_quote(&self, symbol: &str) -> Option<&Quote> {
+    fn get_quote(&self, symbol: &str) -> Option<&Q> {
         if let Some(quote) = self.data_source.get_quote(symbol) {
             Some(quote)
         } else {
@@ -174,7 +193,7 @@ where
         }
     }
 
-    fn get_quotes(&self) -> Option<&Vec<Quote>> {
+    fn get_quotes(&self) -> Option<&Vec<Q>> {
         self.data_source.get_quotes()
     }
 
@@ -215,8 +234,8 @@ where
         let mut executed_trades: Vec<Trade> = Vec::new();
         let mut removed_keys: Vec<DefaultExchangeOrderId> = Vec::new();
 
-        let execute_buy = |quote: &Quote, order: &Order| -> Trade {
-            let trade_price = &quote.ask;
+        let execute_buy = |quote: &Q, order: &Order| -> Trade {
+            let trade_price = quote.get_ask();
             let value = CashValue::from(**trade_price * **order.get_shares());
             let date = self.clock.borrow().now();
             Trade::new(
@@ -228,8 +247,8 @@ where
             )
         };
 
-        let execute_sell = |quote: &Quote, order: &Order| -> Trade {
-            let trade_price = &quote.bid;
+        let execute_sell = |quote: &Q, order: &Order| -> Trade {
+            let trade_price = quote.get_bid();
             let value = CashValue::from(**trade_price * **order.get_shares());
             let date = self.clock.borrow().now();
             Trade::new(
@@ -250,7 +269,7 @@ where
                     OrderType::LimitBuy => {
                         //Unwrap is safe because LimitBuy will always have a price
                         let order_price = order.get_price().as_ref().unwrap();
-                        if *order_price < quote.ask {
+                        if *order_price < *quote.get_ask() {
                             Some(execute_buy(quote, order))
                         } else {
                             None
@@ -259,7 +278,7 @@ where
                     OrderType::LimitSell => {
                         //Unwrap is safe because LimitSell will always have a price
                         let order_price = order.get_price().as_ref().unwrap();
-                        if *order_price > quote.bid {
+                        if *order_price > *quote.get_bid() {
                             Some(execute_sell(quote, order))
                         } else {
                             None
@@ -268,7 +287,7 @@ where
                     OrderType::StopBuy => {
                         //Unwrap is safe because StopBuy will always have a price
                         let order_price = order.get_price().as_ref().unwrap();
-                        if quote.ask > *order_price {
+                        if quote.get_ask() > order_price {
                             Some(execute_buy(quote, order))
                         } else {
                             None
@@ -277,7 +296,7 @@ where
                     OrderType::StopSell => {
                         //Unwrap is safe because StopSell will always have a price
                         let order_price = order.get_price().as_ref().unwrap();
-                        if quote.bid < *order_price {
+                        if quote.get_bid() < order_price {
                             Some(execute_sell(quote, order))
                         } else {
                             None
@@ -306,7 +325,7 @@ where
         if let Some(quotes) = self.data_source.get_quotes() {
             for quote in quotes {
                 self.last_seen_quote
-                    .insert(quote.symbol.clone(), quote.clone());
+                    .insert(quote.get_symbol().clone(), quote.clone());
             }
         }
     }
@@ -357,13 +376,13 @@ mod tests {
     use std::{collections::HashMap, rc::Rc};
 
     use super::{DefaultExchange, DefaultExchangeBuilder};
-    use crate::broker::{Order, OrderType, Quote};
+    use crate::broker::{Order, OrderType, Quote, Dividend};
     use crate::clock::{Clock, ClockBuilder};
     use crate::exchange::Exchange;
     use crate::input::{HashMapInput, HashMapInputBuilder, QuotesHashMap};
     use crate::types::DateTime;
 
-    fn setup() -> (DefaultExchange<HashMapInput>, Clock) {
+    fn setup() -> (DefaultExchange<HashMapInput, Quote, Dividend>, Clock) {
         let mut quotes: QuotesHashMap = HashMap::new();
         quotes.insert(
             DateTime::from(100),

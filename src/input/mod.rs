@@ -14,14 +14,14 @@ use pyo3::types::{PyDict, PyList};
 #[cfg(feature = "python")]
 use pyo3::pycell::PyCell;
 
-pub trait Quotable {
+pub trait Quotable: Clone {
     fn get_bid(&self) -> &Price;
     fn get_ask(&self) -> &Price;
     fn get_date(&self) -> &DateTime;
     fn get_symbol(&self) -> &String;
 }
 
-pub trait Dividendable {
+pub trait Dividendable: Clone {
     fn get_symbol(&self) -> &String;
     fn get_date(&self) -> &DateTime;
     fn get_value(&self) -> &Price;

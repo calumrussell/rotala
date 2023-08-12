@@ -17,7 +17,7 @@ where
     //Cannot run without data but can run with empty trade_costs
     data: Option<T>,
     trade_costs: Vec<BrokerCost>,
-    exchange: Option<DefaultExchange<T>>,
+    exchange: Option<DefaultExchange<T, Quote, Dividend>>,
 }
 
 impl<T> SimulatedBrokerBuilder<T>
@@ -49,7 +49,7 @@ where
         }
     }
 
-    pub fn with_exchange(&mut self, exchange: DefaultExchange<T>) -> &mut Self {
+pub fn with_exchange(&mut self, exchange: DefaultExchange<T, Quote, Dividend>) -> &mut Self {
         self.exchange = Some(exchange);
         self
     }
@@ -117,7 +117,7 @@ where
     cash: CashValue,
     log: BrokerLog,
     trade_costs: Vec<BrokerCost>,
-    exchange: DefaultExchange<T>,
+    exchange: DefaultExchange<T, Quote, Dividend>,
     ready_state: SimulatedBrokerReadyState,
 }
 
