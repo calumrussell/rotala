@@ -10,9 +10,9 @@ use crate::types::{DateTime, Price};
 #[cfg(feature = "python")]
 use crate::broker::{PyDividend, PyQuote};
 #[cfg(feature = "python")]
-use pyo3::types::{PyDict, PyList};
-#[cfg(feature = "python")]
 use pyo3::pycell::PyCell;
+#[cfg(feature = "python")]
+use pyo3::types::{PyDict, PyList};
 
 pub trait Quotable: Clone {
     fn get_bid(&self) -> &Price;
@@ -181,7 +181,6 @@ impl<'a> DataSource<PyQuote, PyDividend> for PyInput<'a> {
     fn get_dividends(&self) -> Option<&Vec<PyDividend>> {
         None
     }
-    
 }
 
 pub fn fake_data_generator(clock: Clock) -> HashMapInput {

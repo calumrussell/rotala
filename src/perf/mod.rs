@@ -258,7 +258,7 @@ mod tests {
     use std::collections::HashMap;
     use std::rc::Rc;
 
-    use crate::broker::{BrokerCost, Quote};
+    use crate::broker::{BrokerCost, Dividend, Quote};
     use crate::clock::{Clock, ClockBuilder};
     use crate::exchange::DefaultExchangeBuilder;
     use crate::input::{HashMapInput, HashMapInputBuilder};
@@ -271,7 +271,7 @@ mod tests {
     use super::PerformanceCalculator;
     use super::PortfolioCalculations;
 
-    fn setup() -> (SimulatedBroker<HashMapInput>, Clock) {
+    fn setup() -> (SimulatedBroker<HashMapInput, Quote, Dividend>, Clock) {
         let mut raw_data: HashMap<DateTime, Vec<Quote>> = HashMap::new();
 
         let quote_a1 = Quote::new(101.0, 102.0, 100, "ABC");

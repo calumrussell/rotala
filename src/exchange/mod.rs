@@ -4,7 +4,7 @@ use std::rc::Rc;
 
 use crate::broker::{Order, OrderType, Trade, TradeType};
 use crate::clock::Clock;
-use crate::input::{DataSource, Quotable, Dividendable};
+use crate::input::{DataSource, Dividendable, Quotable};
 use crate::types::CashValue;
 
 ///Exchanges accept orders for securities, store them on an internal order book, and then execute
@@ -376,7 +376,7 @@ mod tests {
     use std::{collections::HashMap, rc::Rc};
 
     use super::{DefaultExchange, DefaultExchangeBuilder};
-    use crate::broker::{Order, OrderType, Quote, Dividend};
+    use crate::broker::{Dividend, Order, OrderType, Quote};
     use crate::clock::{Clock, ClockBuilder};
     use crate::exchange::Exchange;
     use crate::input::{HashMapInput, HashMapInputBuilder, QuotesHashMap};

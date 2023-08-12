@@ -1,30 +1,37 @@
 use core::panic;
 use log::info;
+use std::marker::PhantomData;
 
 use crate::broker::record::BrokerLog;
 use crate::broker::{
-    BacktestBroker, BrokerCalculations, BrokerCashEvent, BrokerCost, BrokerEvent, Dividend,
-    DividendPayment, EventLog, GetsQuote, Order, OrderType, Quote, Trade, TradeType, TransferCash,
+    BacktestBroker, BrokerCalculations, BrokerCashEvent, BrokerCost, BrokerEvent, DividendPayment,
+    EventLog, GetsQuote, Order, OrderType, Trade, TradeType, TransferCash,
 };
 use crate::exchange::{DefaultExchange, Exchange};
-use crate::input::DataSource;
+use crate::input::{DataSource, Dividendable, Quotable};
 use crate::types::{CashValue, PortfolioHoldings, PortfolioQty, Price};
 
-pub struct SimulatedBrokerBuilder<T>
+pub struct SimulatedBrokerBuilder<T, Q, D>
 where
-    T: DataSource<Quote, Dividend>,
+    Q: Quotable,
+    D: Dividendable,
+    T: DataSource<Q, D>,
 {
     //Cannot run without data but can run with empty trade_costs
     data: Option<T>,
     trade_costs: Vec<BrokerCost>,
-    exchange: Option<DefaultExchange<T, Quote, Dividend>>,
+    exchange: Option<DefaultExchange<T, Q, D>>,
+    _quote: PhantomData<Q>,
+    _dividend: PhantomData<D>,
 }
 
-impl<T> SimulatedBrokerBuilder<T>
+impl<T, Q, D> SimulatedBrokerBuilder<T, Q, D>
 where
-    T: DataSource<Quote, Dividend>,
+    Q: Quotable,
+    D: Dividendable,
+    T: DataSource<Q, D>,
 {
-    pub fn build(&self) -> SimulatedBroker<T> {
+    pub fn build(&self) -> SimulatedBroker<T, Q, D> {
         if self.data.is_none() {
             panic!("Cannot build broker without data");
         }
@@ -49,7 +56,7 @@ where
         }
     }
 
-pub fn with_exchange(&mut self, exchange: DefaultExchange<T, Quote, Dividend>) -> &mut Self {
+    pub fn with_exchange(&mut self, exchange: DefaultExchange<T, Q, D>) -> &mut Self {
         self.exchange = Some(exchange);
         self
     }
@@ -69,13 +76,17 @@ pub fn with_exchange(&mut self, exchange: DefaultExchange<T, Quote, Dividend>) -
             data: None,
             trade_costs: Vec::new(),
             exchange: None,
+            _quote: PhantomData,
+            _dividend: PhantomData,
         }
     }
 }
 
-impl<T> Default for SimulatedBrokerBuilder<T>
+impl<T, Q, D> Default for SimulatedBrokerBuilder<T, Q, D>
 where
-    T: DataSource<Quote, Dividend>,
+    Q: Quotable,
+    D: Dividendable,
+    T: DataSource<Q, D>,
 {
     fn default() -> Self {
         Self::new()
@@ -107,9 +118,11 @@ where
 ///Keeps an internal log of trades executed and dividends received/paid. The events supported by
 ///the `BrokerLog` are stored in the `BrokerRecordedEvent` enum in broker/mod.rs.
 #[derive(Clone, Debug)]
-pub struct SimulatedBroker<T>
+pub struct SimulatedBroker<T, Q, D>
 where
-    T: DataSource<Quote, Dividend>,
+    Q: Quotable,
+    D: Dividendable,
+    T: DataSource<Q, D>,
 {
     //We have overlapping functionality because we are storing
     data: T,
@@ -117,13 +130,15 @@ where
     cash: CashValue,
     log: BrokerLog,
     trade_costs: Vec<BrokerCost>,
-    exchange: DefaultExchange<T, Quote, Dividend>,
+    exchange: DefaultExchange<T, Q, D>,
     ready_state: SimulatedBrokerReadyState,
 }
 
-impl<T> SimulatedBroker<T>
+impl<T, Q, D> SimulatedBroker<T, Q, D>
 where
-    T: DataSource<Quote, Dividend>,
+    Q: Quotable,
+    D: Dividendable,
+    T: DataSource<Q, D>,
 {
     pub fn cost_basis(&self, symbol: &str) -> Option<Price> {
         self.log.cost_basis(symbol)
@@ -206,9 +221,11 @@ where
     }
 }
 
-impl<T> BacktestBroker for SimulatedBroker<T>
+impl<T, Q, D> BacktestBroker for SimulatedBroker<T, Q, D>
 where
-    T: DataSource<Quote, Dividend>,
+    Q: Quotable,
+    D: Dividendable,
+    T: DataSource<Q, D>,
 {
     //Identical to deposit_cash but is seperated to distinguish internal cash
     //transactions from external with no value returned to client
@@ -298,7 +315,7 @@ where
 
         if let Some(quote) = self.get_quote(symbol) {
             //We only have long positions so we only need to look at the bid
-            let price = &quote.bid;
+            let price = quote.get_bid();
             if let Some(qty) = self.get_position_qty(symbol) {
                 let val = **price * **qty;
                 return Some(CashValue::from(val));
@@ -368,17 +385,18 @@ where
             for dividend in dividends.clone() {
                 //Our dataset can include dividends for stocks we don't own so we need to check
                 //that we own the stock, not performant but can be changed later
-                if let Some(qty) = self.get_position_qty(&dividend.symbol) {
+                if let Some(qty) = self.get_position_qty(dividend.get_symbol()) {
                     info!(
                         "BROKER: Found dividend of {:?} for portfolio holding {:?}",
-                        dividend.value, dividend.symbol
+                        dividend.get_value(),
+                        dividend.get_symbol()
                     );
-                    let cash_value = CashValue::from(*qty.clone() * *dividend.value);
+                    let cash_value = CashValue::from(*qty.clone() * **dividend.get_value());
                     self.credit(&cash_value);
                     let dividend_paid = DividendPayment::new(
                         cash_value.clone(),
-                        dividend.symbol.clone(),
-                        dividend.date,
+                        dividend.get_symbol().clone(),
+                        dividend.get_date().clone(),
                     );
                     self.log.record(dividend_paid);
                 }
@@ -400,9 +418,11 @@ where
 
                 let quote = self.get_quote(order.get_symbol()).unwrap();
                 let price = match order.get_order_type() {
-                    OrderType::MarketBuy | OrderType::LimitBuy | OrderType::StopBuy => &quote.ask,
+                    OrderType::MarketBuy | OrderType::LimitBuy | OrderType::StopBuy => {
+                        quote.get_ask()
+                    }
                     OrderType::MarketSell | OrderType::LimitSell | OrderType::StopSell => {
-                        &quote.bid
+                        quote.get_bid()
                     }
                 };
 
@@ -467,24 +487,34 @@ where
     }
 }
 
-impl<T> TransferCash for SimulatedBroker<T> where T: DataSource<Quote, Dividend> {}
-
-impl<T> GetsQuote for SimulatedBroker<T>
+impl<T, Q, D> TransferCash for SimulatedBroker<T, Q, D>
 where
-    T: DataSource<Quote, Dividend>,
+    Q: Quotable,
+    D: Dividendable,
+    T: DataSource<Q, D>,
 {
-    fn get_quote(&self, symbol: &str) -> Option<&Quote> {
+}
+
+impl<T, Q, D> GetsQuote<Q, D> for SimulatedBroker<T, Q, D>
+where
+    Q: Quotable,
+    D: Dividendable,
+    T: DataSource<Q, D>,
+{
+    fn get_quote(&self, symbol: &str) -> Option<&Q> {
         self.exchange.get_quote(symbol)
     }
 
-    fn get_quotes(&self) -> Option<&Vec<Quote>> {
+    fn get_quotes(&self) -> Option<&Vec<Q>> {
         self.exchange.get_quotes()
     }
 }
 
-impl<T> EventLog for SimulatedBroker<T>
+impl<T, Q, D> EventLog for SimulatedBroker<T, Q, D>
 where
-    T: DataSource<Quote, Dividend>,
+    Q: Quotable,
+    D: Dividendable,
+    T: DataSource<Q, D>,
 {
     fn trades_between(&self, start: &i64, end: &i64) -> Vec<Trade> {
         self.log.trades_between(start, end)
@@ -531,7 +561,7 @@ mod tests {
     use std::collections::HashMap;
     use std::rc::Rc;
 
-    fn setup() -> (SimulatedBroker<HashMapInput>, Clock) {
+    fn setup() -> (SimulatedBroker<HashMapInput, Quote, Dividend>, Clock) {
         let mut prices: HashMap<DateTime, Vec<Quote>> = HashMap::new();
         let mut dividends: HashMap<DateTime, Vec<Dividend>> = HashMap::new();
         let quote = Quote::new(100.00, 101.00, 100, "ABC");
@@ -779,7 +809,7 @@ mod tests {
     #[test]
     #[should_panic]
     fn test_that_broker_builder_fails_without_data() {
-        let _brkr = SimulatedBrokerBuilder::<HashMapInput>::new()
+        let _brkr = SimulatedBrokerBuilder::<HashMapInput, Quote, Dividend>::new()
             .with_trade_costs(vec![BrokerCost::flat(1.0)])
             .build();
     }

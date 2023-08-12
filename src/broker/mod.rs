@@ -710,9 +710,9 @@ pub trait TransferCash: BacktestBroker {
 //Implementation allows clients to retrieve prices. This trait may be used to retrieve prices
 //internally too, and this confusion comes from broker implementations being both a consumer and
 //source of data. So this trait is seperated out now but may disappear in future versions.
-pub trait GetsQuote {
-    fn get_quote(&self, symbol: &str) -> Option<&Quote>;
-    fn get_quotes(&self) -> Option<&Vec<Quote>>;
+pub trait GetsQuote<Q: Quotable, D: Dividendable>: Clone {
+    fn get_quote(&self, symbol: &str) -> Option<&Q>;
+    fn get_quotes(&self) -> Option<&Vec<Q>>;
 }
 
 ///Implementation allows clients to query properties of the transaction history of the broker.
@@ -746,7 +746,11 @@ impl BrokerCalculations {
     //The primary use-case for this functionality is for clients that implement tax payments: these are
     //mandatory reductions in cash that have to be paid before the simulation can proceed to the next
     //valid state.
-    pub fn withdraw_cash_with_liquidation<T: BacktestBroker + GetsQuote>(
+    pub fn withdraw_cash_with_liquidation<
+        Q: Quotable,
+        D: Dividendable,
+        T: BacktestBroker + GetsQuote<Q, D>,
+    >(
         cash: &f64,
         brkr: &mut T,
     ) -> BrokerCashEvent {
@@ -790,7 +794,7 @@ impl BrokerCalculations {
                     //Create orders to sell 100% of position, don't continue to next stock
                     //
                     //Cannot be called without quote existing so unwrap
-                    let price = &brkr.get_quote(&ticker).unwrap().bid;
+                    let price = brkr.get_quote(&ticker).unwrap().get_bid();
                     let shares_req = PortfolioQty::from((total_sold / **price).ceil());
                     let order = Order::market(OrderType::MarketSell, ticker, shares_req);
                     info!("BROKER: Withdrawing {:?} with liquidation, queueing sale of {:?} shares of {:?}", cash, order.get_shares(), order.get_symbol());
@@ -823,7 +827,11 @@ impl BrokerCalculations {
     //target_weights passed into the function.
     //Returns orders so calling function has control over when orders are executed
     //Requires mutable reference to brkr because it calls get_position_value
-    pub fn diff_brkr_against_target_weights<T: BacktestBroker + GetsQuote>(
+    pub fn diff_brkr_against_target_weights<
+        Q: Quotable,
+        D: Dividendable,
+        T: BacktestBroker + GetsQuote<Q, D>,
+    >(
         target_weights: &PortfolioAllocation,
         brkr: &mut T,
     ) -> Vec<Order> {
@@ -841,15 +849,15 @@ impl BrokerCalculations {
 
         //This returns a positive number for buy and negative for sell, this is necessary because
         //of calculations made later to find the net position of orders on the exchange.
-        let calc_required_shares_with_costs = |diff_val: &f64, quote: &Quote, brkr: &T| -> f64 {
+        let calc_required_shares_with_costs = |diff_val: &f64, quote: &Q, brkr: &T| -> f64 {
             if diff_val.lt(&0.0) {
-                let price = &quote.bid;
-                let costs = brkr.calc_trade_impact(&diff_val.abs(), price, false);
+                let price = **quote.get_bid();
+                let costs = brkr.calc_trade_impact(&diff_val.abs(), &price, false);
                 let total = (*costs.0 / *costs.1).floor();
                 -total
             } else {
-                let price = &quote.ask;
-                let costs = brkr.calc_trade_impact(&diff_val.abs(), price, true);
+                let price = **quote.get_ask();
+                let costs = brkr.calc_trade_impact(&diff_val.abs(), &price, true);
                 (*costs.0 / *costs.1).floor()
             }
         };

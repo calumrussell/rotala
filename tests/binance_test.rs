@@ -2,7 +2,7 @@ use std::collections::HashMap;
 use std::io::{Cursor, Write};
 use std::rc::Rc;
 
-use alator::broker::{BacktestBroker, GetsQuote, Order, OrderType, Quote, TransferCash};
+use alator::broker::{BacktestBroker, Dividend, GetsQuote, Order, OrderType, Quote, TransferCash};
 use alator::clock::{Clock, ClockBuilder};
 use alator::exchange::DefaultExchangeBuilder;
 use alator::input::{HashMapInput, HashMapInputBuilder, QuotesHashMap};
@@ -130,7 +130,7 @@ impl MovingAverage {
 //tracking into the simulation lifecycle.
 struct MovingAverageStrategy {
     clock: Clock,
-    brkr: SimulatedBroker<HashMapInput>,
+    brkr: SimulatedBroker<HashMapInput, Quote, Dividend>,
     ten: MovingAverage,
     fifty: MovingAverage,
     history: Vec<StrategySnapshot>,
@@ -224,7 +224,7 @@ impl Strategy for MovingAverageStrategy {
 }
 
 impl MovingAverageStrategy {
-    fn new(brkr: SimulatedBroker<HashMapInput>, clock: Clock) -> Self {
+    fn new(brkr: SimulatedBroker<HashMapInput, Quote, Dividend>, clock: Clock) -> Self {
         let ten = MovingAverage::new(10);
         let fifty = MovingAverage::new(50);
         let history = Vec::new();
