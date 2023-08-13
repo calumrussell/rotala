@@ -60,7 +60,7 @@ Alator comes with a `StaticWeightStrategy` and clients will typically need to im
 
 # How do you get data into Alator for backtesting?
 
-Alator is flexible about the underlying representation of data: at the bottom is just an implementation of a broker that operates on `Quote` structures. So all you need to provide the broker is a structure that implements `DataSource` and which can be queried to find `Quote` events (or any kind of broker-related event: for example, dividends). You can use ticks, you can use candlesticks, there is no dependency on underlying structure within the default broker implementation (but it is often the case that the strategy you implement will have a dependency on the data structure used i.e. a moving average system contains some assumptions about data frequency).
+Alator is flexible about the underlying representation of data: at the bottom is just an implementation of a broker that operates on types that implement the `Quotable` and `Dividendable` traits. So all you need to provide the broker is a structure that implements the traits.You can use ticks, you can use candlesticks, there is no dependency on underlying structure within the default broker implementation (but it is often the case that the strategy you implement will have a dependency on the data structure used i.e. a moving average system contains some assumptions about data frequency).
 
 In the tests folder, we have provided an implementation of a simple moving average crossover strategy that pulls data directly from Binance. To see the system running: fail the test with an assert and pass `RUST_LOG=info` to the command.
 
@@ -72,9 +72,18 @@ In the tests folder, we have provided an implementation of a simple moving avera
 * Performance benchmarks
 * Concurrency
 
-The main priority in the near future, given the existing uses of the library, is support for multiple currencies and performance.
+# Development priorities
+
+* Improving performance
+* Making the code simpler, particularly around the code that ensures tests cannot run with lookahead bias
+* Adding tests
+* Adding integrations with other languages, currently missing JS and a Python implementation of a trading strategy that runs in Rust.
+* Documentation
+* Concurrency
 
 # Change Log
+
+v0.2.11 - Added (hopefully) zero-copy Python integration. No other way to do this but making everything generic on `Quotable`/`Dividendable` traits which has led to substantial changes in the signature of Broker/Strategy/Exchange implementations. This also comes with perf improvements for the `DataSource` trait and general improvements throughout the library.
 
 v0.2.10 - Added licence/CI. Perf improvements. Bug fix in CAGR calculation and clarifying comments. Updated deps.
 
