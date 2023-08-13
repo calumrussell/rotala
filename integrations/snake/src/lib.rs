@@ -1,47 +1,15 @@
 use pyo3::prelude::*;
 
-use alator::clock::{Clock, ClockBuilder};
+use alator::clock::ClockBuilder;
 use alator::exchange::DefaultExchangeBuilder;
-use alator::input::{HashMapInputBuilder, PyInput};
+use alator::input::PyInput;
 use alator::strategy::StaticWeightStrategyBuilder;
-use alator::broker::{BrokerCost, Quote, PyQuote, PyDividend};
-use alator::input::HashMapInput;
+use alator::broker::{BrokerCost, PyQuote, PyDividend};
 use alator::sim::SimulatedBrokerBuilder;
 use alator::simcontext::SimContextBuilder;
-use alator::types::{CashValue, DateTime, Frequency, PortfolioAllocation};
-use pyo3::types::{PyDict, PyList};
-use rand::distributions::{Distribution, Uniform};
-use rand::thread_rng;
-use std::collections::HashMap;
+use alator::types::{CashValue, Frequency, PortfolioAllocation};
+use pyo3::types::PyDict;
 use std::rc::Rc;
-
-fn build_data(clock: Clock) -> HashMapInput {
-    let price_dist = Uniform::new(90.0, 100.0);
-    let mut rng = thread_rng();
-
-    let mut raw_data: HashMap<DateTime, Vec<Quote>> = HashMap::with_capacity(clock.borrow().len());
-    for date in clock.borrow().peek() {
-        let q1 = Quote::new(
-            price_dist.sample(&mut rng),
-            price_dist.sample(&mut rng),
-            date.clone(),
-            "ABC",
-        );
-        let q2 = Quote::new(
-            price_dist.sample(&mut rng),
-            price_dist.sample(&mut rng),
-            date.clone(),
-            "BCD",
-        );
-        raw_data.insert(date, vec![q1, q2]);
-    }
-
-    let source = HashMapInputBuilder::new()
-        .with_quotes(raw_data)
-        .with_clock(Rc::clone(&clock))
-        .build();
-    source
-}
 
 #[pyfunction]
 fn staticweight_example(quotes_any: &PyAny, dividends_any: &PyAny, tickers_any: &PyAny) -> PyResult<String> {
@@ -61,11 +29,6 @@ fn staticweight_example(quotes_any: &PyAny, dividends_any: &PyAny, tickers_any: 
         clock,
     };
 
-    println!("{:?}", input);
-
-    Ok("Backtest completed".to_string())
-
-    /*
     let initial_cash: CashValue = 100_000.0.into();
     let length_in_days: i64 = 1000;
     let start_date: i64 = 1609750800; //Date - 4/1/21 9:00:0000
@@ -73,19 +36,17 @@ fn staticweight_example(quotes_any: &PyAny, dividends_any: &PyAny, tickers_any: 
         .with_frequency(&Frequency::Daily)
         .build();
 
-    let data = build_data(Rc::clone(&clock));
-
     let mut weights: PortfolioAllocation = PortfolioAllocation::new();
     weights.insert("ABC", 0.5);
     weights.insert("BCD", 0.5);
 
-    let exchange = DefaultExchangeBuilder::new()
-        .with_data_source(data.clone())
+    let exchange = DefaultExchangeBuilder::<PyInput, PyQuote, PyDividend>::new()
+        .with_data_source(input.clone())
         .with_clock(Rc::clone(&clock))
         .build();
 
     let simbrkr = SimulatedBrokerBuilder::new()
-        .with_data(data)
+        .with_data(input)
         .with_exchange(exchange)
         .with_trade_costs(vec![BrokerCost::Flat(1.0.into())])
         .build();
@@ -105,8 +66,9 @@ fn staticweight_example(quotes_any: &PyAny, dividends_any: &PyAny, tickers_any: 
 
     let _perf = sim.perf(Frequency::Daily);
 
+    println!("{:?}", _perf);
+
     Ok("Backtest completed".to_string())
-    */
 }
 
 #[pymodule]
