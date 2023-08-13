@@ -138,21 +138,6 @@ pub struct PyInput<'a> {
 }
 
 #[cfg(feature = "python")]
-impl<'a> PyInput<'a> {
-    fn get_ticker_by_pos(&self, pos: i32) -> String {
-        let count = 0;
-        for key in self.tickers.keys() {
-            if count == pos {
-                if let Ok(ticker) = key.extract::<String>() {
-                    return ticker;
-                }
-            }
-        }
-        panic!("Can't find position, there is an error in the code");
-    }
-}
-
-#[cfg(feature = "python")]
 impl<'a> DataSource<PyQuote, PyDividend> for PyInput<'a> {
     fn get_quote(&self, symbol: &str) -> Option<&PyQuote> {
         if let Some(ticker_pos_any) = self.tickers.get_item(symbol) {

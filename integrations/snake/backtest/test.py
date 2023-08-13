@@ -6,7 +6,7 @@ import snake
 
 data = {}
 tickers = ["ABC", "BCD"]
-for i in range(100, 1000):
+for i in range(1, 100_000):
     tmp = []
     for ticker in tickers:
         price = random.randint(90, 110)
