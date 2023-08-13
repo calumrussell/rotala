@@ -1,9 +1,9 @@
 name: Check
 
-on: ["push", "pull_request"]
+on: ["pull_request"]
 
 jobs:
-  test:
+  check:
     name: Check
     runs-on: ubuntu-latest
     steps:

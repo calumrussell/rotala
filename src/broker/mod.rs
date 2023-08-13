@@ -3,10 +3,14 @@ use std::error::Error;
 use std::fmt::Formatter;
 use std::{cmp::Ordering, fmt::Display};
 
+use crate::input::{Dividendable, Quotable};
 use crate::types::{
     CashValue, DateTime, PortfolioAllocation, PortfolioHoldings, PortfolioQty, PortfolioValues,
     Price,
 };
+
+#[cfg(feature = "python")]
+use pyo3::{pyclass, pymethods};
 
 pub mod record;
 
@@ -69,6 +73,70 @@ impl PartialEq for Quote {
     }
 }
 
+impl Quotable for Quote {
+    fn get_ask(&self) -> &Price {
+        &self.ask
+    }
+
+    fn get_bid(&self) -> &Price {
+        &self.bid
+    }
+
+    fn get_date(&self) -> &DateTime {
+        &self.date
+    }
+
+    fn get_symbol(&self) -> &String {
+        &self.symbol
+    }
+}
+
+#[cfg(feature = "python")]
+#[derive(Clone, Debug)]
+#[pyclass(frozen)]
+pub struct PyQuote {
+    pub bid: Price,
+    pub ask: Price,
+    pub date: DateTime,
+    pub symbol: String,
+}
+
+#[cfg(feature = "python")]
+#[pymethods]
+impl PyQuote {
+    #[new]
+    fn new(bid: f64, ask: f64, date: i64, symbol: &str) -> Self {
+        Self {
+            bid: bid.into(),
+            ask: ask.into(),
+            date: date.into(),
+            symbol: symbol.to_string(),
+        }
+    }
+}
+
+#[cfg(feature = "python")]
+impl Quotable for PyQuote {
+    fn get_ask(&self) -> &Price {
+        &self.ask
+    }
+
+    fn get_bid(&self) -> &Price {
+        &self.bid
+    }
+
+    fn get_date(&self) -> &DateTime {
+        &self.date
+    }
+
+    fn get_symbol(&self) -> &String {
+        &self.symbol
+    }
+}
+
+#[cfg(feature = "python")]
+unsafe impl Send for PyQuote {}
+
 ///Represents a single dividend payment in per-share terms.
 ///
 ///Equality checked against ticker and date. Ordering against date only.
@@ -117,6 +185,58 @@ impl Eq for Dividend {}
 impl PartialEq for Dividend {
     fn eq(&self, other: &Self) -> bool {
         self.date == other.date && self.symbol == other.symbol
+    }
+}
+
+impl Dividendable for Dividend {
+    fn get_date(&self) -> &DateTime {
+        &self.date
+    }
+
+    fn get_symbol(&self) -> &String {
+        &self.symbol
+    }
+
+    fn get_value(&self) -> &Price {
+        &self.value
+    }
+}
+
+#[cfg(feature = "python")]
+#[derive(Clone, Debug)]
+#[pyclass(frozen)]
+pub struct PyDividend {
+    //Dividend value is expressed in terms of per share values
+    pub value: Price,
+    pub symbol: String,
+    pub date: DateTime,
+}
+
+#[cfg(feature = "python")]
+#[pymethods]
+impl PyDividend {
+    #[new]
+    fn new(value: f64, symbol: &str, date: i64) -> Self {
+        Self {
+            value: value.into(),
+            symbol: symbol.to_string(),
+            date: date.into(),
+        }
+    }
+}
+
+#[cfg(feature = "python")]
+impl Dividendable for PyDividend {
+    fn get_date(&self) -> &DateTime {
+        &self.date
+    }
+
+    fn get_symbol(&self) -> &String {
+        &self.symbol
+    }
+
+    fn get_value(&self) -> &Price {
+        &self.value
     }
 }
 
@@ -590,9 +710,9 @@ pub trait TransferCash: BacktestBroker {
 //Implementation allows clients to retrieve prices. This trait may be used to retrieve prices
 //internally too, and this confusion comes from broker implementations being both a consumer and
 //source of data. So this trait is seperated out now but may disappear in future versions.
-pub trait GetsQuote {
-    fn get_quote(&self, symbol: &str) -> Option<&Quote>;
-    fn get_quotes(&self) -> Option<&[Quote]>;
+pub trait GetsQuote<Q: Quotable, D: Dividendable>: Clone {
+    fn get_quote(&self, symbol: &str) -> Option<&Q>;
+    fn get_quotes(&self) -> Option<&[Q]>;
 }
 
 ///Implementation allows clients to query properties of the transaction history of the broker.
@@ -626,7 +746,11 @@ impl BrokerCalculations {
     //The primary use-case for this functionality is for clients that implement tax payments: these are
     //mandatory reductions in cash that have to be paid before the simulation can proceed to the next
     //valid state.
-    pub fn withdraw_cash_with_liquidation<T: BacktestBroker + GetsQuote>(
+    pub fn withdraw_cash_with_liquidation<
+        Q: Quotable,
+        D: Dividendable,
+        T: BacktestBroker + GetsQuote<Q, D>,
+    >(
         cash: &f64,
         brkr: &mut T,
     ) -> BrokerCashEvent {
@@ -670,7 +794,7 @@ impl BrokerCalculations {
                     //Create orders to sell 100% of position, don't continue to next stock
                     //
                     //Cannot be called without quote existing so unwrap
-                    let price = &brkr.get_quote(&ticker).unwrap().bid;
+                    let price = brkr.get_quote(&ticker).unwrap().get_bid();
                     let shares_req = PortfolioQty::from((total_sold / **price).ceil());
                     let order = Order::market(OrderType::MarketSell, ticker, shares_req);
                     info!("BROKER: Withdrawing {:?} with liquidation, queueing sale of {:?} shares of {:?}", cash, order.get_shares(), order.get_symbol());
@@ -703,7 +827,11 @@ impl BrokerCalculations {
     //target_weights passed into the function.
     //Returns orders so calling function has control over when orders are executed
     //Requires mutable reference to brkr because it calls get_position_value
-    pub fn diff_brkr_against_target_weights<T: BacktestBroker + GetsQuote>(
+    pub fn diff_brkr_against_target_weights<
+        Q: Quotable,
+        D: Dividendable,
+        T: BacktestBroker + GetsQuote<Q, D>,
+    >(
         target_weights: &PortfolioAllocation,
         brkr: &mut T,
     ) -> Vec<Order> {
@@ -721,15 +849,15 @@ impl BrokerCalculations {
 
         //This returns a positive number for buy and negative for sell, this is necessary because
         //of calculations made later to find the net position of orders on the exchange.
-        let calc_required_shares_with_costs = |diff_val: &f64, quote: &Quote, brkr: &T| -> f64 {
+        let calc_required_shares_with_costs = |diff_val: &f64, quote: &Q, brkr: &T| -> f64 {
             if diff_val.lt(&0.0) {
-                let price = &quote.bid;
-                let costs = brkr.calc_trade_impact(&diff_val.abs(), price, false);
+                let price = **quote.get_bid();
+                let costs = brkr.calc_trade_impact(&diff_val.abs(), &price, false);
                 let total = (*costs.0 / *costs.1).floor();
                 -total
             } else {
-                let price = &quote.ask;
-                let costs = brkr.calc_trade_impact(&diff_val.abs(), price, true);
+                let price = **quote.get_ask();
+                let costs = brkr.calc_trade_impact(&diff_val.abs(), &price, true);
                 (*costs.0 / *costs.1).floor()
             }
         };

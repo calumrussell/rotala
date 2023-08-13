@@ -1,9 +1,10 @@
 use std::collections::HashMap;
+use std::marker::PhantomData;
 use std::rc::Rc;
 
-use crate::broker::{Order, OrderType, Quote, Trade, TradeType};
+use crate::broker::{Order, OrderType, Trade, TradeType};
 use crate::clock::Clock;
-use crate::input::DataSource;
+use crate::input::{DataSource, Dividendable, Quotable};
 use crate::types::CashValue;
 
 ///Exchanges accept orders for securities, store them on an internal order book, and then execute
@@ -24,7 +25,7 @@ use crate::types::CashValue;
 ///the client should not insert new orders into the book, check them, and then insert more orders.
 ///Clients must check, then insert new orders, then finish; ordering of operations should be
 ///maintained through state in the implementation.
-pub trait Exchange {
+pub trait Exchange<Q: Quotable> {
     fn insert_order(&mut self, order: Order) -> DefaultExchangeOrderId;
     fn delete_order(&mut self, order_id: DefaultExchangeOrderId);
     fn get_order(&self, order_id: &DefaultExchangeOrderId) -> Option<&Order>;
@@ -34,8 +35,8 @@ pub trait Exchange {
     //Represents size of orders in orderbook
     fn orderbook_size(&self) -> usize;
     fn flush_buffer(&mut self) -> Vec<Trade>;
-    fn get_quote(&self, symbol: &str) -> Option<&Quote>;
-    fn get_quotes(&self) -> Option<&[Quote]>;
+    fn get_quote(&self, symbol: &str) -> Option<&Q>;
+    fn get_quotes(&self) -> Option<&[Q]>;
     fn clear(&mut self);
     fn clear_pending_market_orders_by_symbol(&mut self, symbol: &str);
 }
@@ -56,13 +57,25 @@ enum DefaultExchangeState {
 
 type DefaultExchangeOrderId = u32;
 
-pub struct DefaultExchangeBuilder<D: DataSource> {
-    data_source: Option<D>,
+pub struct DefaultExchangeBuilder<T, Q, D>
+where
+    Q: Quotable,
+    D: Dividendable,
+    T: DataSource<Q, D>,
+{
+    data_source: Option<T>,
     clock: Option<Clock>,
+    _quote: PhantomData<Q>,
+    _dividend: PhantomData<D>,
 }
 
-impl<D: DataSource> DefaultExchangeBuilder<D> {
-    pub fn build(&self) -> DefaultExchange<D> {
+impl<T, Q, D> DefaultExchangeBuilder<T, Q, D>
+where
+    Q: Quotable,
+    D: Dividendable,
+    T: DataSource<Q, D>,
+{
+    pub fn build(&self) -> DefaultExchange<T, Q, D> {
         if self.data_source.is_none() {
             panic!("Exchange must have data source");
         }
@@ -82,7 +95,7 @@ impl<D: DataSource> DefaultExchangeBuilder<D> {
         self
     }
 
-    pub fn with_data_source(&mut self, data_source: D) -> &mut Self {
+    pub fn with_data_source(&mut self, data_source: T) -> &mut Self {
         self.data_source = Some(data_source);
         self
     }
@@ -91,11 +104,18 @@ impl<D: DataSource> DefaultExchangeBuilder<D> {
         Self {
             clock: None,
             data_source: None,
+            _quote: PhantomData,
+            _dividend: PhantomData,
         }
     }
 }
 
-impl<D: DataSource> Default for DefaultExchangeBuilder<D> {
+impl<T, Q, D> Default for DefaultExchangeBuilder<T, Q, D>
+where
+    Q: Quotable,
+    D: Dividendable,
+    T: DataSource<Q, D>,
+{
     fn default() -> Self {
         Self::new()
     }
@@ -114,19 +134,30 @@ impl<D: DataSource> Default for DefaultExchangeBuilder<D> {
 ///In both cases, we are potentially creating silent errors but this more closely represents the
 ///execution model that would exist in reality.
 #[derive(Clone, Debug)]
-pub struct DefaultExchange<D: DataSource> {
+pub struct DefaultExchange<T, Q, D>
+where
+    Q: Quotable,
+    D: Dividendable,
+    T: DataSource<Q, D>,
+{
     clock: Clock,
     orderbook: HashMap<DefaultExchangeOrderId, Order>,
     last: DefaultExchangeOrderId,
-    data_source: D,
+    data_source: T,
     trade_log: Vec<Trade>,
     trade_buffer: Vec<Trade>,
     ready_state: DefaultExchangeState,
-    last_seen_quote: HashMap<String, Quote>,
+    last_seen_quote: HashMap<String, Q>,
+    _dividend: PhantomData<D>,
 }
 
-impl<D: DataSource> DefaultExchange<D> {
-    pub fn new(clock: Clock, data_source: D) -> Self {
+impl<T, Q, D> DefaultExchange<T, Q, D>
+where
+    Q: Quotable,
+    D: Dividendable,
+    T: DataSource<Q, D>,
+{
+    pub fn new(clock: Clock, data_source: T) -> Self {
         Self {
             clock,
             orderbook: HashMap::new(),
@@ -140,12 +171,18 @@ impl<D: DataSource> DefaultExchange<D> {
             //Exchange is empty, so it must be ready to accept new orders.
             ready_state: DefaultExchangeState::Ready,
             last_seen_quote: HashMap::new(),
+            _dividend: PhantomData,
         }
     }
 }
 
-impl<D: DataSource> Exchange for DefaultExchange<D> {
-    fn get_quote(&self, symbol: &str) -> Option<&Quote> {
+impl<T, Q, D> Exchange<Q> for DefaultExchange<T, Q, D>
+where
+    Q: Quotable,
+    D: Dividendable,
+    T: DataSource<Q, D>,
+{
+    fn get_quote(&self, symbol: &str) -> Option<&Q> {
         if let Some(quote) = self.data_source.get_quote(symbol) {
             Some(quote)
         } else {
@@ -156,7 +193,7 @@ impl<D: DataSource> Exchange for DefaultExchange<D> {
         }
     }
 
-    fn get_quotes(&self) -> Option<&[Quote]> {
+    fn get_quotes(&self) -> Option<&[Q]> {
         self.data_source.get_quotes()
     }
 
@@ -197,8 +234,8 @@ impl<D: DataSource> Exchange for DefaultExchange<D> {
         let mut executed_trades: Vec<Trade> = Vec::new();
         let mut removed_keys: Vec<DefaultExchangeOrderId> = Vec::new();
 
-        let execute_buy = |quote: &Quote, order: &Order| -> Trade {
-            let trade_price = &quote.ask;
+        let execute_buy = |quote: &Q, order: &Order| -> Trade {
+            let trade_price = quote.get_ask();
             let value = CashValue::from(**trade_price * **order.get_shares());
             let date = self.clock.borrow().now();
             Trade::new(
@@ -210,8 +247,8 @@ impl<D: DataSource> Exchange for DefaultExchange<D> {
             )
         };
 
-        let execute_sell = |quote: &Quote, order: &Order| -> Trade {
-            let trade_price = &quote.bid;
+        let execute_sell = |quote: &Q, order: &Order| -> Trade {
+            let trade_price = quote.get_bid();
             let value = CashValue::from(**trade_price * **order.get_shares());
             let date = self.clock.borrow().now();
             Trade::new(
@@ -232,7 +269,7 @@ impl<D: DataSource> Exchange for DefaultExchange<D> {
                     OrderType::LimitBuy => {
                         //Unwrap is safe because LimitBuy will always have a price
                         let order_price = order.get_price().as_ref().unwrap();
-                        if *order_price < quote.ask {
+                        if *order_price < *quote.get_ask() {
                             Some(execute_buy(quote, order))
                         } else {
                             None
@@ -241,7 +278,7 @@ impl<D: DataSource> Exchange for DefaultExchange<D> {
                     OrderType::LimitSell => {
                         //Unwrap is safe because LimitSell will always have a price
                         let order_price = order.get_price().as_ref().unwrap();
-                        if *order_price > quote.bid {
+                        if *order_price > *quote.get_bid() {
                             Some(execute_sell(quote, order))
                         } else {
                             None
@@ -250,7 +287,7 @@ impl<D: DataSource> Exchange for DefaultExchange<D> {
                     OrderType::StopBuy => {
                         //Unwrap is safe because StopBuy will always have a price
                         let order_price = order.get_price().as_ref().unwrap();
-                        if quote.ask > *order_price {
+                        if quote.get_ask() > order_price {
                             Some(execute_buy(quote, order))
                         } else {
                             None
@@ -259,7 +296,7 @@ impl<D: DataSource> Exchange for DefaultExchange<D> {
                     OrderType::StopSell => {
                         //Unwrap is safe because StopSell will always have a price
                         let order_price = order.get_price().as_ref().unwrap();
-                        if quote.bid < *order_price {
+                        if quote.get_bid() < order_price {
                             Some(execute_sell(quote, order))
                         } else {
                             None
@@ -288,7 +325,7 @@ impl<D: DataSource> Exchange for DefaultExchange<D> {
         if let Some(quotes) = self.data_source.get_quotes() {
             for quote in quotes {
                 self.last_seen_quote
-                    .insert(quote.symbol.clone(), quote.clone());
+                    .insert(quote.get_symbol().clone(), quote.clone());
             }
         }
     }
@@ -339,13 +376,13 @@ mod tests {
     use std::{collections::HashMap, rc::Rc};
 
     use super::{DefaultExchange, DefaultExchangeBuilder};
-    use crate::broker::{Order, OrderType, Quote};
+    use crate::broker::{Dividend, Order, OrderType, Quote};
     use crate::clock::{Clock, ClockBuilder};
     use crate::exchange::Exchange;
     use crate::input::{HashMapInput, HashMapInputBuilder, QuotesHashMap};
     use crate::types::DateTime;
 
-    fn setup() -> (DefaultExchange<HashMapInput>, Clock) {
+    fn setup() -> (DefaultExchange<HashMapInput, Quote, Dividend>, Clock) {
         let mut quotes: QuotesHashMap = HashMap::new();
         quotes.insert(
             DateTime::from(100),
