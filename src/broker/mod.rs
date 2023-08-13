@@ -592,7 +592,7 @@ pub trait TransferCash: BacktestBroker {
 //source of data. So this trait is seperated out now but may disappear in future versions.
 pub trait GetsQuote {
     fn get_quote(&self, symbol: &str) -> Option<&Quote>;
-    fn get_quotes(&self) -> Option<&Vec<Quote>>;
+    fn get_quotes(&self) -> Option<&[Quote]>;
 }
 
 ///Implementation allows clients to query properties of the transaction history of the broker.
