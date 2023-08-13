@@ -126,22 +126,22 @@ impl From<Month> for u8 {
 //The internal representation with the time package should remain hidden from clients. Whilst this
 //results in some duplication of the API, this retains the option to get rid of the dependency on
 //time or change individual functions later.
-#[derive(Clone, Debug, Hash, Eq, PartialEq, PartialOrd)]
+#[derive(Clone, Debug, Hash, Eq, PartialEq, PartialOrd, Copy)]
 pub struct DateTime(i64);
 
 impl DateTime {
     pub fn day(&self) -> u8 {
-        let date: OffsetDateTime = self.clone().into();
+        let date: OffsetDateTime = (*self).into();
         date.day()
     }
 
     pub fn weekday(&self) -> Weekday {
-        let date: OffsetDateTime = self.clone().into();
+        let date: OffsetDateTime = (*self).into();
         date.weekday().into()
     }
 
     pub fn month(&self) -> Month {
-        let date: OffsetDateTime = self.clone().into();
+        let date: OffsetDateTime = (*self).into();
         date.month().into()
     }
 

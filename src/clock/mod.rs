@@ -27,7 +27,7 @@ impl ClockInner {
     pub fn now(&self) -> DateTime {
         //This cannot trigger an error because the error will be thrown when the client ticks to an
         //invalid position
-        self.dates.get(self.pos).unwrap().clone()
+        *self.dates.get(self.pos).unwrap()
     }
 
     pub fn has_next(&self) -> bool {
@@ -76,25 +76,24 @@ impl ClockBuilder {
     pub fn with_frequency(&self, freq: &Frequency) -> Self {
         match freq {
             Frequency::Daily => {
-                let dates: Vec<DateTime> = (i64::from(self.start.clone())
-                    ..i64::from(self.end.clone()) + ClockBuilder::SECS_IN_DAY)
+                let dates: Vec<DateTime> = (i64::from(self.start)
+                    ..i64::from(self.end) + ClockBuilder::SECS_IN_DAY)
                     .step_by(ClockBuilder::SECS_IN_DAY as usize)
                     .map(DateTime::from)
                     .collect();
                 Self {
-                    start: self.start.clone(),
-                    end: self.end.clone(),
+                    start: self.start,
+                    end: self.end,
                     dates,
                 }
             }
             Frequency::Second => {
-                let dates: Vec<DateTime> = (i64::from(self.start.clone())
-                    ..i64::from(self.end.clone()) + 1)
+                let dates: Vec<DateTime> = (i64::from(self.start)..i64::from(self.end) + 1)
                     .map(DateTime::from)
                     .collect();
                 Self {
-                    start: self.start.clone(),
-                    end: self.end.clone(),
+                    start: self.start,
+                    end: self.end,
                     dates,
                 }
             }

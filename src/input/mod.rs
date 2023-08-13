@@ -38,8 +38,8 @@ pub trait Dividendable: Clone {
 ///`HashMap::with_capacity()` should be used using either length of dates or `len()` of `Clock`.
 pub trait DataSource<Q: Quotable, D: Dividendable>: Clone {
     fn get_quote(&self, symbol: &str) -> Option<&Q>;
-    fn get_quotes(&self) -> Option<&Vec<Q>>;
-    fn get_dividends(&self) -> Option<&Vec<D>>;
+    fn get_quotes(&self) -> Option<&[Q]>;
+    fn get_dividends(&self) -> Option<&[D]>;
 }
 
 ///Implementation of [DataSource trait that wraps around a HashMap. Time is kept with reference to
@@ -67,14 +67,14 @@ impl DataSource<Quote, Dividend> for HashMapInput {
         None
     }
 
-    fn get_quotes(&self) -> Option<&Vec<Quote>> {
+    fn get_quotes(&self) -> Option<&[Quote]> {
         let curr_date = self.clock.borrow().now();
-        self.quotes.get(&curr_date)
+        self.quotes.get(&curr_date).map(|v| v.as_slice())
     }
 
-    fn get_dividends(&self) -> Option<&Vec<Dividend>> {
+    fn get_dividends(&self) -> Option<&[Dividend]> {
         let curr_date = self.clock.borrow().now();
-        self.dividends.get(&curr_date)
+        self.dividends.get(&curr_date).map(|v| v.as_slice())
     }
 }
 
@@ -158,12 +158,12 @@ impl<'a> DataSource<PyQuote, PyDividend> for PyInput<'a> {
     }
 
     //TODO: need to implement, can't do this without Python-native types
-    fn get_quotes(&self) -> Option<&Vec<PyQuote>> {
+    fn get_quotes(&self) -> Option<&[PyQuote]> {
         None
     }
 
     //TODO: need to implement, can't do this without Python-native types
-    fn get_dividends(&self) -> Option<&Vec<PyDividend>> {
+    fn get_dividends(&self) -> Option<&[PyDividend]> {
         None
     }
 }
@@ -177,13 +177,13 @@ pub fn fake_data_generator(clock: Clock) -> HashMapInput {
         let q1 = Quote::new(
             price_dist.sample(&mut rng),
             price_dist.sample(&mut rng),
-            date.clone(),
+            date,
             "ABC",
         );
         let q2 = Quote::new(
             price_dist.sample(&mut rng),
             price_dist.sample(&mut rng),
-            date.clone(),
+            date,
             "BCD",
         );
         raw_data.insert(i64::from(date).into(), vec![q1, q2]);

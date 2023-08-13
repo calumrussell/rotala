@@ -36,7 +36,7 @@ pub trait Exchange<Q: Quotable> {
     fn orderbook_size(&self) -> usize;
     fn flush_buffer(&mut self) -> Vec<Trade>;
     fn get_quote(&self, symbol: &str) -> Option<&Q>;
-    fn get_quotes(&self) -> Option<&Vec<Q>>;
+    fn get_quotes(&self) -> Option<&[Q]>;
     fn clear(&mut self);
     fn clear_pending_market_orders_by_symbol(&mut self, symbol: &str);
 }
@@ -193,7 +193,7 @@ where
         }
     }
 
-    fn get_quotes(&self) -> Option<&Vec<Q>> {
+    fn get_quotes(&self) -> Option<&[Q]> {
         self.data_source.get_quotes()
     }
 
