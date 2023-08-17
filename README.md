@@ -1,5 +1,6 @@
 # What is Alator?
 
+
 Rust library with components for investment portfolio backtesting.
 
 This library is used as a back-end for a Python financial simulation [app](https://pytho.uk). A feature of this application is Monte-Carlo simulations of investor lifetimes, and to run hundreds of these complex, event-driven simulations within a few seconds requires a fast backtesting engine.
