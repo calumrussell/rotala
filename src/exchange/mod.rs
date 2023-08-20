@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 use std::marker::PhantomData;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 
 use crate::broker::{Order, OrderType, Trade, TradeType};
 use crate::clock::Clock;
@@ -28,7 +28,7 @@ use crate::types::CashValue;
 pub trait Exchange<Q: Quotable> {
     fn insert_order(&mut self, order: Order) -> DefaultExchangeOrderId;
     fn delete_order(&mut self, order_id: DefaultExchangeOrderId);
-    fn get_order(&self, order_id: &DefaultExchangeOrderId) -> Option<&Order>;
+    fn get_order(&self, order_id: &DefaultExchangeOrderId) -> Option<Arc<Order>>;
     fn check(&mut self);
     fn finish(&mut self);
     fn get_trade_log(&self) -> Vec<Trade>;
@@ -121,6 +121,24 @@ where
     }
 }
 
+#[derive(Debug)]
+pub struct ExchangeInner<T, Q, D>
+where
+    Q: Quotable,
+    D: Dividendable,
+    T: DataSource<Q, D>,
+{
+    clock: Clock,
+    orderbook: HashMap<DefaultExchangeOrderId, Arc<Order>>,
+    last: DefaultExchangeOrderId,
+    data_source: T,
+    trade_log: Vec<Trade>,
+    trade_buffer: Vec<Trade>,
+    ready_state: DefaultExchangeState,
+    last_seen_quote: HashMap<String, Arc<Q>>,
+    _dividend: PhantomData<D>,
+}
+
 ///Implementation of [Exchange]. Supports all [OrderType]. Generic implementation of the execution
 ///and updating logic of an exchange.
 ///
@@ -133,23 +151,44 @@ where
 ///
 ///In both cases, we are potentially creating silent errors but this more closely represents the
 ///execution model that would exist in reality.
-#[derive(Clone, Debug)]
+#[derive(Debug)]
 pub struct DefaultExchange<T, Q, D>
 where
     Q: Quotable,
     D: Dividendable,
     T: DataSource<Q, D>,
 {
-    clock: Clock,
-    orderbook: HashMap<DefaultExchangeOrderId, Order>,
-    last: DefaultExchangeOrderId,
-    data_source: T,
-    trade_log: Vec<Trade>,
-    trade_buffer: Vec<Trade>,
-    ready_state: DefaultExchangeState,
-    last_seen_quote: HashMap<String, Arc<Q>>,
+    exchange: Arc<Mutex<ExchangeInner<T, Q, D>>>,
     _dividend: PhantomData<D>,
 }
+
+impl<T, Q, D> Clone for DefaultExchange<T, Q, D>
+where
+    Q: Quotable,
+    D: Dividendable,
+    T: DataSource<Q, D>,
+{
+    fn clone(&self) -> Self {
+        Self {
+            exchange: Arc::clone(&self.exchange),
+            _dividend: PhantomData,
+        }
+    }
+}
+
+unsafe impl<T, Q, D> Send for DefaultExchange<T, Q, D>
+where
+    Q: Quotable,
+    D: Dividendable,
+    T: DataSource<Q, D>,
+{}
+
+unsafe impl<T, Q, D> Sync for DefaultExchange<T, Q, D>
+where
+    Q: Quotable,
+    D: Dividendable,
+    T: DataSource<Q, D>,
+{}
 
 impl<T, Q, D> DefaultExchange<T, Q, D>
 where
@@ -159,18 +198,21 @@ where
 {
     pub fn new(clock: Clock, data_source: T) -> Self {
         Self {
-            clock,
-            orderbook: HashMap::new(),
-            last: 0,
-            data_source,
-            trade_log: Vec::new(),
-            //This must be flushed by the broker every time the broker checks this creates a
-            //dependency on the time but ready_state ensures that client can only call after we
-            //have checked
-            trade_buffer: Vec::new(),
-            //Exchange is empty, so it must be ready to accept new orders.
-            ready_state: DefaultExchangeState::Ready,
-            last_seen_quote: HashMap::new(),
+            exchange: Arc::new(Mutex::new(ExchangeInner {
+                clock,
+                orderbook: HashMap::new(),
+                last: 0,
+                data_source,
+                trade_log: Vec::new(),
+                //This must be flushed by the broker every time the broker checks this creates a
+                //dependency on the time but ready_state ensures that client can only call after we
+                //have checked
+                trade_buffer: Vec::new(),
+                //Exchange is empty, so it must be ready to accept new orders.
+                ready_state: DefaultExchangeState::Ready,
+                last_seen_quote: HashMap::new(),
+                _dividend: PhantomData,
+            })),
             _dividend: PhantomData,
         }
     }
@@ -183,10 +225,11 @@ where
     T: DataSource<Q, D>,
 {
     fn get_quote(&self, symbol: &str) -> Option<Arc<Q>> {
-        if let Some(quote) = self.data_source.get_quote(symbol) {
+        let exchange = self.exchange.lock().unwrap();
+        if let Some(quote) = exchange.data_source.get_quote(symbol) {
             Some(quote)
         } else {
-            if let Some(quote) = self.last_seen_quote.get(symbol) {
+            if let Some(quote) = exchange.last_seen_quote.get(symbol) {
                 return Some(quote.clone());
             }
             None
@@ -194,14 +237,16 @@ where
     }
 
     fn get_quotes(&self) -> Option<Vec<Arc<Q>>> {
-        self.data_source.get_quotes()
+        let exchange = self.exchange.lock().unwrap();
+        exchange.data_source.get_quotes()
     }
 
     fn flush_buffer(&mut self) -> Vec<Trade> {
-        match self.ready_state {
+        let mut exchange = self.exchange.lock().unwrap();
+        match exchange.ready_state {
             DefaultExchangeState::Ready => {
-                let copy = self.trade_buffer.clone();
-                self.trade_buffer = Vec::new();
+                let copy = exchange.trade_buffer.clone();
+                exchange.trade_buffer = Vec::new();
                 copy
             }
             //We panic here because if this happens then it is impossible for the simulation to
@@ -213,22 +258,27 @@ where
     }
 
     fn finish(&mut self) {
-        self.ready_state = DefaultExchangeState::Waiting;
+        let mut exchange = self.exchange.lock().unwrap();
+        exchange.ready_state = DefaultExchangeState::Waiting;
     }
 
     fn orderbook_size(&self) -> usize {
-        self.orderbook.keys().len()
+        let exchange = self.exchange.lock().unwrap();
+        exchange.orderbook.keys().len()
     }
 
-    fn get_order(&self, order_id: &DefaultExchangeOrderId) -> Option<&Order> {
-        self.orderbook.get(order_id)
+    fn get_order(&self, order_id: &DefaultExchangeOrderId) -> Option<Arc<Order>> {
+        let exchange = self.exchange.lock().unwrap();
+        exchange.orderbook.get(order_id).cloned()
     }
 
     fn get_trade_log(&self) -> Vec<Trade> {
-        self.trade_log.clone()
+        let exchange = self.exchange.lock().unwrap();
+        exchange.trade_log.clone()
     }
 
     fn check(&mut self) {
+        let exchange = self.exchange.lock().unwrap();
         //orderbook only contains orders that are pending, once an order has been executed it is
         //removed from the orderbook so we can just check all orders here
         let mut executed_trades: Vec<Trade> = Vec::new();
@@ -237,7 +287,7 @@ where
         let execute_buy = |quote: &Q, order: &Order| -> Trade {
             let trade_price = quote.get_ask();
             let value = CashValue::from(**trade_price * **order.get_shares());
-            let date = self.clock.now();
+            let date = exchange.clock.now();
             Trade::new(
                 order.get_symbol(),
                 value,
@@ -250,7 +300,7 @@ where
         let execute_sell = |quote: &Q, order: &Order| -> Trade {
             let trade_price = quote.get_bid();
             let value = CashValue::from(**trade_price * **order.get_shares());
-            let date = self.clock.now();
+            let date = exchange.clock.now();
             Trade::new(
                 order.get_symbol(),
                 value,
@@ -260,9 +310,9 @@ where
             )
         };
 
-        for (key, order) in &self.orderbook {
+        for (key, order) in exchange.orderbook.iter() {
             let security_id = order.get_symbol();
-            if let Some(quote) = self.data_source.get_quote(security_id) {
+            if let Some(quote) = exchange.data_source.get_quote(security_id) {
                 let result = match order.get_order_type() {
                     OrderType::MarketBuy => Some(execute_buy(&quote, order)),
                     OrderType::MarketSell => Some(execute_sell(&quote, order)),
@@ -311,35 +361,41 @@ where
             }
         }
 
+        drop(exchange);
         for key in removed_keys {
             self.delete_order(key)
         }
-        self.trade_log.extend(executed_trades.clone());
+
+        let mut exchange_one = self.exchange.lock().unwrap();
+        exchange_one.trade_log.extend(executed_trades.clone());
         //Update the buffer, which is flushed to broker, and the log which is held per-simulation
-        self.trade_buffer.extend(executed_trades);
-        self.ready_state = DefaultExchangeState::Ready;
+        exchange_one.trade_buffer.extend(executed_trades);
+        exchange_one.ready_state = DefaultExchangeState::Ready;
 
         //Updating last_seen_quote with all the quotes seen on this date, potentially quite a
         //costly operation on every tick but this guarantees that missing prices don't cause a
         //panic that stops the simulation.
-        if let Some(quotes) = self.data_source.get_quotes() {
+        if let Some(quotes) = exchange_one.data_source.get_quotes() {
             for quote in quotes {
-                self.last_seen_quote
+                exchange_one.last_seen_quote
                     .insert(quote.get_symbol().clone(), quote.clone());
             }
         }
     }
 
     fn delete_order(&mut self, order_id: DefaultExchangeOrderId) {
-        self.orderbook.remove(&order_id);
+        let mut exchange = self.exchange.lock().unwrap();
+        exchange.orderbook.remove(&order_id);
     }
 
     fn insert_order(&mut self, order: Order) -> DefaultExchangeOrderId {
-        match self.ready_state {
+        let mut exchange = self.exchange.lock().unwrap();
+        match exchange.ready_state {
             DefaultExchangeState::Ready => {
-                self.last += 1;
-                self.orderbook.insert(self.last, order);
-                self.last
+                let last = exchange.last;
+                exchange.last = last + 1;
+                exchange.orderbook.insert(last, Arc::new(order));
+                last
             }
             DefaultExchangeState::Waiting => {
                 //We panic here because if this happens then it is impossible for the simulation to
@@ -350,12 +406,14 @@ where
     }
 
     fn clear(&mut self) {
-        self.orderbook = HashMap::new();
+        let mut exchange = self.exchange.lock().unwrap();
+        exchange.orderbook = HashMap::new();
     }
 
     fn clear_pending_market_orders_by_symbol(&mut self, symbol: &str) {
+        let exchange = self.exchange.lock().unwrap();
         let mut to_remove = Vec::new();
-        for (key, order) in self.orderbook.iter() {
+        for (key, order) in exchange.orderbook.iter() {
             match order.get_order_type() {
                 OrderType::MarketBuy | OrderType::MarketSell => {
                     if order.get_symbol() == symbol {
@@ -365,6 +423,7 @@ where
                 _ => {}
             }
         }
+        drop(exchange);
         for key in to_remove {
             self.delete_order(key);
         }
