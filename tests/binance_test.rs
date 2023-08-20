@@ -279,9 +279,9 @@ async fn binance_test() {
 
     let mut sim = SimContextBuilder::new()
         .with_clock(clock.clone())
-        .with_strategy(strat)
-        .init(&1_000_000.0.into());
+        .add_strategy(strat)
+        .init_first(&1_000_000.0.into());
 
-    sim.run().await;
+    sim.run();
     let _perf = sim.perf(Frequency::Daily);
 }

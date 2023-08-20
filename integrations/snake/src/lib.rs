@@ -53,8 +53,8 @@ fn staticweight_example(quotes_any: &PyAny, dividends_any: &PyAny, tickers_any: 
 
     let mut sim = SimContextBuilder::new()
         .with_clock(clock.clone())
-        .with_strategy(strat)
-        .init(&initial_cash);
+        .add_strategy(strat)
+        .init_first(&initial_cash);
 
     sim.run();
 
