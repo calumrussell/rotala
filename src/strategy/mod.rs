@@ -1,5 +1,5 @@
+use async_trait::async_trait;
 use log::info;
-use std::sync::Arc;
 
 use crate::broker::{
     BacktestBroker, BrokerCalculations, BrokerCashEvent, DividendPayment, EventLog, Trade,
@@ -33,7 +33,7 @@ use crate::types::{CashValue, PortfolioAllocation, StrategySnapshot};
 ///`Strategy`) to clients. The reasoning for this is explained in the documentation for
 ///`SimContext`.
 pub trait Strategy: TransferTo + Clone {
-    fn update(&mut self) -> CashValue;
+    fn update(&mut self);
     fn init(&mut self, initial_cash: &f64);
 }
 
@@ -104,7 +104,7 @@ where
             brkr: self.brkr.clone().unwrap(),
             target_weights: self.weights.clone().unwrap(),
             net_cash_flow: 0.0.into(),
-            clock: Arc::clone(self.clock.as_ref().unwrap()),
+            clock: self.clock.as_ref().unwrap().clone(),
             history: Vec::new(),
         }
     }
@@ -160,6 +160,14 @@ where
     history: Vec<StrategySnapshot>,
 }
 
+unsafe impl<T, Q, D> Send for StaticWeightStrategy<T, Q, D>
+where
+    Q: Quotable,
+    D: Dividendable,
+    T: DataSource<Q, D>,
+{
+}
+
 impl<T, Q, D> StaticWeightStrategy<T, Q, D>
 where
     Q: Quotable,
@@ -169,7 +177,7 @@ where
     pub fn get_snapshot(&mut self) -> StrategySnapshot {
         // Defaults to zero inflation because most users probably aren't looking
         // for real returns calcs
-        let now = self.clock.lock().unwrap().now();
+        let now = self.clock.now();
         StrategySnapshot {
             date: now,
             portfolio_value: self.brkr.get_total_value(),
@@ -179,6 +187,7 @@ where
     }
 }
 
+#[async_trait]
 impl<T, Q, D> Strategy for StaticWeightStrategy<T, Q, D>
 where
     Q: Quotable,
@@ -187,7 +196,7 @@ where
 {
     fn init(&mut self, initital_cash: &f64) {
         self.deposit_cash(initital_cash);
-        if DefaultTradingSchedule::should_trade(&self.clock.lock().unwrap().now()) {
+        if DefaultTradingSchedule::should_trade(&self.clock.now()) {
             let orders = BrokerCalculations::diff_brkr_against_target_weights(
                 &self.target_weights,
                 &mut self.brkr,
@@ -199,9 +208,9 @@ where
         self.brkr.finish();
     }
 
-    fn update(&mut self) -> CashValue {
+    fn update(&mut self) {
         self.brkr.check();
-        let now = self.clock.lock().unwrap().now();
+        let now = self.clock.now();
         if DefaultTradingSchedule::should_trade(&now) {
             let orders = BrokerCalculations::diff_brkr_against_target_weights(
                 &self.target_weights,
@@ -214,8 +223,6 @@ where
         self.brkr.finish();
         let snap = self.get_snapshot();
         self.history.push(snap);
-
-        self.brkr.get_total_value()
     }
 }
 
@@ -317,7 +324,7 @@ mod tests {
 
         let source = HashMapInputBuilder::new()
             .with_quotes(prices)
-            .with_clock(Arc::clone(&clock))
+            .with_clock(clock.clone())
             .build();
 
         let brkr = SimulatedBrokerBuilder::<HashMapInput, Quote, Dividend>::new()
@@ -333,7 +340,7 @@ mod tests {
         let comp = setup();
         let _strat = StaticWeightStrategyBuilder::<HashMapInput, Quote, Dividend>::new()
             .with_brkr(comp.0)
-            .with_clock(Arc::clone(&comp.1))
+            .with_clock(comp.1)
             .default();
     }
 
@@ -344,7 +351,7 @@ mod tests {
         let weights = PortfolioAllocation::new();
         let _strat = StaticWeightStrategyBuilder::<HashMapInput, Quote, Dividend>::new()
             .with_weights(weights)
-            .with_clock(Arc::clone(&comp.1))
+            .with_clock(comp.1)
             .default();
     }
 

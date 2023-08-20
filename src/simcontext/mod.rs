@@ -1,3 +1,5 @@
+use std::sync::{Arc, Mutex};
+
 use crate::clock::Clock;
 use crate::perf::{BacktestOutput, PerformanceCalculator};
 use crate::strategy::{History, Strategy};
@@ -10,36 +12,42 @@ use crate::types::{CashValue, Frequency};
 ///reference to a `Strategy` to run it. Passing references around with smart pointers would
 ///introduce a level of complexity beyond the requirements of current use-cases. The cost of this
 ///is that `SimContext` is tightly-bound to `Strategy`.
-pub struct SimContext<T: Strategy + History> {
+pub struct SimContext<T: Strategy + History + std::marker::Send> {
     clock: Clock,
-    strategy: T,
+    strategy: Arc<Mutex<T>>,
 }
 
-impl<T: Strategy + History> SimContext<T> {
-    pub fn run(&mut self) {
-        while self.clock.lock().unwrap().has_next() {
-            self.clock.lock().unwrap().tick();
-            self.strategy.update();
+impl<T: Strategy + History + std::marker::Send + 'static> SimContext<T> {
+    pub async fn run(&mut self) {
+        while self.clock.has_next() {
+            self.clock.tick();
+            //self.strategy.lock().unwrap().update();
+
+            let strat = Arc::clone(&self.strategy);
+            let handle = tokio::spawn(async move {
+                strat.lock().unwrap().update();
+            });
+            let _ = handle.await;
         }
     }
 
     pub fn perf(&self, freq: Frequency) -> BacktestOutput {
         //Intended to be called at end of simulation
-        let hist = self.strategy.get_history();
+        let hist = self.strategy.lock().unwrap().get_history();
         PerformanceCalculator::calculate(freq, hist)
     }
 
     pub fn init(&mut self, initial_cash: &CashValue) {
-        self.strategy.init(initial_cash);
+        self.strategy.lock().unwrap().init(initial_cash);
     }
 }
 
-pub struct SimContextBuilder<T: Strategy + History> {
+pub struct SimContextBuilder<T: Strategy + History + std::marker::Send> {
     clock: Option<Clock>,
     strategy: Option<T>,
 }
 
-impl<T: Strategy + History> SimContextBuilder<T> {
+impl<T: Strategy + History + std::marker::Send + 'static> SimContextBuilder<T> {
     pub fn with_strategy(&mut self, strategy: T) -> &mut Self {
         self.strategy = Some(strategy);
         self
@@ -60,7 +68,7 @@ impl<T: Strategy + History> SimContextBuilder<T> {
         }
         let mut cxt = SimContext::<T> {
             clock: self.clock.as_ref().unwrap().clone(),
-            strategy: self.strategy.as_ref().unwrap().clone(),
+            strategy: Arc::new(Mutex::new(self.strategy.as_ref().unwrap().clone())),
         };
         cxt.init(initial_cash);
         cxt
@@ -74,7 +82,7 @@ impl<T: Strategy + History> SimContextBuilder<T> {
     }
 }
 
-impl<T: Strategy + History> Default for SimContextBuilder<T> {
+impl<T: Strategy + History + std::marker::Send + 'static> Default for SimContextBuilder<T> {
     fn default() -> Self {
         Self::new()
     }

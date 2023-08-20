@@ -15,7 +15,7 @@ use rand_distr::Distribution;
 use std::collections::HashMap;
 use std::sync::Arc;
 
-pub fn full_backtest_random_data() {
+async fn full_backtest_random_data() {
     let price_dist = Uniform::new(90.0, 100.0);
     let mut rng = thread_rng();
     let length_in_days: i64 = 100;
@@ -26,9 +26,8 @@ pub fn full_backtest_random_data() {
 
     let initial_cash: CashValue = 100_000.0.into();
 
-    let mut raw_data: HashMap<DateTime, Vec<Arc<Quote>>> =
-        HashMap::with_capacity(clock.lock().unwrap().len());
-    for date in clock.lock().unwrap().peek() {
+    let mut raw_data: HashMap<DateTime, Vec<Arc<Quote>>> = HashMap::with_capacity(clock.len());
+    for date in clock.peek() {
         let q1 = Quote::new(
             price_dist.sample(&mut rng),
             price_dist.sample(&mut rng),
@@ -46,7 +45,7 @@ pub fn full_backtest_random_data() {
 
     let data = HashMapInputBuilder::new()
         .with_quotes(raw_data)
-        .with_clock(Arc::clone(&clock))
+        .with_clock(clock.clone())
         .build();
 
     let mut weights: PortfolioAllocation = PortfolioAllocation::new();
@@ -55,7 +54,7 @@ pub fn full_backtest_random_data() {
 
     let exchange = DefaultExchangeBuilder::new()
         .with_data_source(data.clone())
-        .with_clock(Arc::clone(&clock))
+        .with_clock(clock.clone())
         .build();
 
     let simbrkr = SimulatedBrokerBuilder::new()
@@ -67,15 +66,15 @@ pub fn full_backtest_random_data() {
     let strat = StaticWeightStrategyBuilder::new()
         .with_brkr(simbrkr)
         .with_weights(weights)
-        .with_clock(Arc::clone(&clock))
+        .with_clock(clock.clone())
         .default();
 
     let mut sim = SimContextBuilder::new()
-        .with_clock(Arc::clone(&clock))
+        .with_clock(clock.clone())
         .with_strategy(strat)
         .init(&initial_cash);
 
-    sim.run();
+    sim.run().await;
 }
 
 fn trade_execution_logic() {
@@ -97,17 +96,17 @@ fn trade_execution_logic() {
     prices.insert(102.into(), vec![quote4, quote5]);
     prices.insert(103.into(), vec![quote6, quote7]);
 
-    let clock = ClockBuilder::with_length_in_seconds(100, 5)
+    let mut clock = ClockBuilder::with_length_in_seconds(100, 5)
         .with_frequency(&Frequency::Second)
         .build();
 
     let source = HashMapInputBuilder::new()
         .with_quotes(prices)
-        .with_clock(Arc::clone(&clock))
+        .with_clock(clock.clone())
         .build();
 
     let exchange = DefaultExchangeBuilder::new()
-        .with_clock(Arc::clone(&clock))
+        .with_clock(clock.clone())
         .with_data_source(source.clone())
         .build();
 
@@ -121,21 +120,24 @@ fn trade_execution_logic() {
     brkr.send_order(Order::market(OrderType::MarketBuy, "BCD", 100.0));
     brkr.finish();
 
-    clock.lock().unwrap().tick();
+    clock.tick();
     brkr.check();
     brkr.finish();
 
-    clock.lock().unwrap().tick();
+    clock.tick();
     brkr.check();
     brkr.finish();
 
-    clock.lock().unwrap().tick();
+    clock.tick();
     brkr.check();
     brkr.finish();
 }
 
 fn benchmarks(c: &mut Criterion) {
-    c.bench_function("full backtest", |b| b.iter(full_backtest_random_data));
+    c.bench_function("full backtest", |b| {
+        let rt = tokio::runtime::Runtime::new().unwrap();
+        b.to_async(&rt).iter(full_backtest_random_data)
+    });
     c.bench_function("trade test", |b| b.iter(trade_execution_logic));
 }
 

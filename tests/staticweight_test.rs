@@ -17,9 +17,8 @@ fn build_data(clock: Clock) -> HashMapInput {
     let price_dist = Uniform::new(90.0, 100.0);
     let mut rng = thread_rng();
 
-    let mut raw_data: HashMap<DateTime, Vec<Arc<Quote>>> =
-        HashMap::with_capacity(clock.lock().unwrap().len());
-    for date in clock.lock().unwrap().peek() {
+    let mut raw_data: HashMap<DateTime, Vec<Arc<Quote>>> = HashMap::with_capacity(clock.len());
+    for date in clock.peek() {
         let q1 = Quote::new(
             price_dist.sample(&mut rng),
             price_dist.sample(&mut rng),
@@ -37,13 +36,13 @@ fn build_data(clock: Clock) -> HashMapInput {
 
     let source = HashMapInputBuilder::new()
         .with_quotes(raw_data)
-        .with_clock(Arc::clone(&clock))
+        .with_clock(clock.clone())
         .build();
     source
 }
 
-#[test]
-fn staticweight_integration_test() {
+#[tokio::test]
+async fn staticweight_integration_test() {
     env_logger::init();
     let initial_cash: CashValue = 100_000.0.into();
     let length_in_days: i64 = 1000;
@@ -52,7 +51,7 @@ fn staticweight_integration_test() {
         .with_frequency(&Frequency::Daily)
         .build();
 
-    let data = build_data(Arc::clone(&clock));
+    let data = build_data(clock.clone());
 
     let mut weights: PortfolioAllocation = PortfolioAllocation::new();
     weights.insert("ABC", 0.5);
@@ -60,7 +59,7 @@ fn staticweight_integration_test() {
 
     let exchange = DefaultExchangeBuilder::new()
         .with_data_source(data.clone())
-        .with_clock(Arc::clone(&clock))
+        .with_clock(clock.clone())
         .build();
 
     let simbrkr = SimulatedBrokerBuilder::new()
@@ -72,15 +71,15 @@ fn staticweight_integration_test() {
     let strat = StaticWeightStrategyBuilder::new()
         .with_brkr(simbrkr)
         .with_weights(weights)
-        .with_clock(Arc::clone(&clock))
+        .with_clock(clock.clone())
         .default();
 
     let mut sim = SimContextBuilder::new()
-        .with_clock(Arc::clone(&clock))
+        .with_clock(clock.clone())
         .with_strategy(strat)
         .init(&initial_cash);
 
-    sim.run();
+    sim.run().await;
 
     let _perf = sim.perf(Frequency::Daily);
 }

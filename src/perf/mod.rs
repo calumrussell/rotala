@@ -295,12 +295,12 @@ mod tests {
 
         let source = HashMapInputBuilder::new()
             .with_quotes(raw_data)
-            .with_clock(Arc::clone(&clock))
+            .with_clock(clock.clone())
             .build();
 
         let exchange = DefaultExchangeBuilder::new()
             .with_data_source(source.clone())
-            .with_clock(Arc::clone(&clock))
+            .with_clock(clock.clone())
             .build();
 
         let sb = SimulatedBrokerBuilder::new()
@@ -350,7 +350,7 @@ mod tests {
 
     #[test]
     fn test_that_portfolio_calculates_performance_accurately() {
-        let (brkr, clock) = setup();
+        let (brkr, mut clock) = setup();
         //We use less than 100% because some bugs become possible when you are allocating the full
         //portfolio which perturb the order of operations leading to different perf outputs.
         let mut target_weights = PortfolioAllocation::new();
@@ -360,18 +360,18 @@ mod tests {
         let mut strat = StaticWeightStrategyBuilder::new()
             .with_brkr(brkr)
             .with_weights(target_weights)
-            .with_clock(Arc::clone(&clock))
+            .with_clock(clock.clone())
             .default();
 
         strat.init(&100_000.0);
 
-        clock.lock().unwrap().tick();
+        clock.tick();
         strat.update();
 
-        clock.lock().unwrap().tick();
+        clock.tick();
         strat.update();
 
-        clock.lock().unwrap().tick();
+        clock.tick();
         strat.update();
 
         let output = strat.get_history();

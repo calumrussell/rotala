@@ -4,16 +4,6 @@ use std::vec::IntoIter;
 
 use crate::types::{DateTime, Frequency};
 
-///Clock is a reference to the internal clock used be all components that have a dependency on the
-///date within the backtest.
-///
-///Previous implementations did not use a shared clock which result in runtime errors and
-///complexity when some parts of the system updated their time but others did not. By creating a
-///shared reference, we significantly reduce the scope for unexpected behaviour due to
-///inadvertently incorrect sequencing of operations. An added benefit is that this significantly
-///simplifies the interface for data queries so that live-trading would be possible.
-pub type Clock = Arc<Mutex<ClockInner>>;
-
 #[derive(Debug)]
 pub struct ClockInner {
     //We have a position and Vec because we should be able to return an iterator without changing
@@ -22,38 +12,72 @@ pub struct ClockInner {
     dates: Vec<DateTime>,
 }
 
-impl ClockInner {
-    //TODO: this should return an Option<&DateTime>
+///Clock is a reference to the internal clock used be all components that have a dependency on the
+///date within the backtest.
+///
+///Previous implementations did not use a shared clock which result in runtime errors and
+///complexity when some parts of the system updated their time but others did not. By creating a
+///shared reference, we significantly reduce the scope for unexpected behaviour due to
+///inadvertently incorrect sequencing of operations. An added benefit is that this significantly
+///simplifies the interface for data queries so that live-trading would be possible.
+#[derive(Debug)]
+pub struct Clock {
+    inner: Arc<Mutex<ClockInner>>,
+}
+
+impl Clone for Clock {
+    fn clone(&self) -> Self {
+        Clock {
+            inner: Arc::clone(&self.inner),
+        }
+    }
+}
+
+unsafe impl Send for Clock {}
+
+impl Clock {
     pub fn now(&self) -> DateTime {
+        let inner = self.inner.lock().unwrap();
         //This cannot trigger an error because the error will be thrown when the client ticks to an
         //invalid position
-        *self.dates.get(self.pos).unwrap()
+        *inner.dates.get(inner.pos).unwrap()
     }
 
     pub fn has_next(&self) -> bool {
-        self.pos < self.dates.len() - 1
+        let inner = self.inner.lock().unwrap();
+        inner.pos < inner.dates.len() - 1
     }
 
     pub fn tick(&mut self) {
-        self.pos += 1;
-        if self.pos == self.dates.len() {
+        let mut inner_mut = self.inner.lock().unwrap();
+        inner_mut.pos += 1;
+        if inner_mut.pos == inner_mut.dates.len() {
             panic!("Client has ticked past the number of dates");
         }
     }
 
     //Doesn't change the iteration state, used for clients to setup data using clock
     pub fn peek(&self) -> IntoIter<DateTime> {
-        self.dates.clone().into_iter()
+        let inner = self.inner.lock().unwrap();
+        inner.dates.clone().into_iter()
     }
 
     /// Get length of clock
     pub fn len(&self) -> usize {
-        self.dates.len()
+        let inner = self.inner.lock().unwrap();
+        inner.dates.len()
     }
 
     /// Check to see if dates are empty
     pub fn is_empty(&self) -> bool {
-        self.dates.is_empty()
+        let inner = self.inner.lock().unwrap();
+        inner.dates.is_empty()
+    }
+
+    pub fn new(dates: Vec<DateTime>) -> Self {
+        Self {
+            inner: Arc::new(Mutex::new(ClockInner { dates, pos: 0 })),
+        }
     }
 }
 
@@ -67,10 +91,7 @@ impl ClockBuilder {
     const SECS_IN_DAY: i64 = 86_400;
 
     pub fn build(self) -> Clock {
-        Arc::new(Mutex::new(ClockInner {
-            dates: self.dates,
-            pos: 0,
-        }))
+        Clock::new(self.dates)
     }
 
     pub fn with_frequency(&self, freq: &Frequency) -> Self {
@@ -142,24 +163,24 @@ mod tests {
     #[test]
     #[should_panic]
     fn test_that_ticking_past_the_length_of_dates_triggers_panic() {
-        let clock = ClockBuilder::with_length_in_dates(1, 3)
+        let mut clock = ClockBuilder::with_length_in_dates(1, 3)
             .with_frequency(&Frequency::Second)
             .build();
-        clock.lock().unwrap().tick();
-        clock.lock().unwrap().tick();
-        clock.lock().unwrap().tick();
+        clock.tick();
+        clock.tick();
+        clock.tick();
     }
 
     #[test]
     fn test_that_there_isnt_next_when_tick_at_end() {
-        let clock = ClockBuilder::with_length_in_dates(1, 3)
+        let mut clock = ClockBuilder::with_length_in_dates(1, 3)
             .with_frequency(&Frequency::Second)
             .build();
-        assert!(clock.lock().unwrap().has_next());
-        clock.lock().unwrap().tick();
+        assert!(clock.has_next());
+        clock.tick();
 
-        clock.lock().unwrap().tick();
-        assert!(!clock.lock().unwrap().has_next());
+        clock.tick();
+        assert!(!clock.has_next());
     }
 
     #[test]
@@ -170,7 +191,7 @@ mod tests {
             .with_frequency(&Frequency::Daily)
             .build();
         let mut dates: Vec<i64> = Vec::new();
-        for date in clock.lock().unwrap().peek() {
+        for date in clock.peek() {
             dates.push(i64::from(date));
         }
         assert!(dates == vec![1, 86401, 172801, 259201]);
@@ -183,7 +204,7 @@ mod tests {
             .with_frequency(&Frequency::Second)
             .build();
         let mut count = 0;
-        for _i in clock.lock().unwrap().peek() {
+        for _i in clock.peek() {
             count += 1;
         }
         println!("{:?}", count);

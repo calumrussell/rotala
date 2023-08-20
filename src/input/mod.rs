@@ -60,7 +60,7 @@ pub type DividendsHashMap = HashMap<DateTime, Vec<Arc<Dividend>>>;
 
 impl DataSource<Quote, Dividend> for HashMapInput {
     fn get_quote(&self, symbol: &str) -> Option<Arc<Quote>> {
-        let curr_date = self.clock.lock().unwrap().now();
+        let curr_date = self.clock.now();
         if let Some(quotes) = self.quotes.get(&curr_date) {
             for quote in quotes {
                 if quote.symbol.eq(symbol) {
@@ -72,7 +72,7 @@ impl DataSource<Quote, Dividend> for HashMapInput {
     }
 
     fn get_quotes(&self) -> Option<Vec<Arc<Quote>>> {
-        let curr_date = self.clock.lock().unwrap().now();
+        let curr_date = self.clock.now();
         if let Some(quotes) = self.quotes.get(&curr_date) {
             return Some(quotes.clone());
         }
@@ -80,7 +80,7 @@ impl DataSource<Quote, Dividend> for HashMapInput {
     }
 
     fn get_dividends(&self) -> Option<Vec<Arc<Dividend>>> {
-        let curr_date = self.clock.lock().unwrap().now();
+        let curr_date = self.clock.now();
         if let Some(dividends) = self.dividends.get(&curr_date) {
             return Some(dividends.clone());
         }
@@ -151,7 +151,7 @@ pub struct PyInput<'a> {
 impl<'a> DataSource<PyQuote, PyDividend> for PyInput<'a> {
     fn get_quote(&self, symbol: &str) -> Option<Arc<PyQuote>> {
         if let Some(ticker_pos_any) = self.tickers.get_item(symbol) {
-            let curr_date = self.clock.lock().unwrap().now();
+            let curr_date = self.clock.now();
             if let Some(quotes) = self.quotes.get_item(i64::from(curr_date)) {
                 if let Ok(quotes_list) = quotes.downcast::<PyList>() {
                     if let Ok(ticker_pos) = ticker_pos_any.extract::<usize>() {
@@ -182,9 +182,8 @@ pub fn fake_data_generator(clock: Clock) -> HashMapInput {
     let price_dist = Uniform::new(90.0, 100.0);
     let mut rng = thread_rng();
 
-    let mut raw_data: HashMap<DateTime, Vec<Arc<Quote>>> =
-        HashMap::with_capacity(clock.lock().unwrap().len());
-    for date in clock.lock().unwrap().peek() {
+    let mut raw_data: HashMap<DateTime, Vec<Arc<Quote>>> = HashMap::with_capacity(clock.len());
+    for date in clock.peek() {
         let q1 = Quote::new(
             price_dist.sample(&mut rng),
             price_dist.sample(&mut rng),
@@ -202,7 +201,7 @@ pub fn fake_data_generator(clock: Clock) -> HashMapInput {
 
     let source = HashMapInputBuilder::new()
         .with_quotes(raw_data)
-        .with_clock(Arc::clone(&clock))
+        .with_clock(clock.clone())
         .build();
     source
 }

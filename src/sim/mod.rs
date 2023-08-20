@@ -607,11 +607,11 @@ mod tests {
         let source = HashMapInputBuilder::new()
             .with_quotes(prices)
             .with_dividends(dividends)
-            .with_clock(Arc::clone(&clock))
+            .with_clock(clock.clone())
             .build();
 
         let exchange = DefaultExchangeBuilder::new()
-            .with_clock(Arc::clone(&clock))
+            .with_clock(clock.clone())
             .with_data_source(source.clone())
             .build();
 
@@ -625,9 +625,9 @@ mod tests {
 
     #[test]
     fn test_cash_deposit_withdraw() {
-        let (mut brkr, clock) = setup();
+        let (mut brkr, mut clock) = setup();
         brkr.deposit_cash(&100.0);
-        clock.lock().unwrap().tick();
+        clock.tick();
 
         //Test cash
         assert!(matches!(
@@ -660,14 +660,14 @@ mod tests {
 
     #[test]
     fn test_that_buy_order_reduces_cash_and_increases_holdings() {
-        let (mut brkr, clock) = setup();
+        let (mut brkr, mut clock) = setup();
         brkr.deposit_cash(&100_000.0);
         let res = brkr.send_order(Order::market(OrderType::MarketBuy, "ABC", 495.0));
         println!("{:?}", res);
         assert!(matches!(res, BrokerEvent::OrderSentToExchange(..)));
         brkr.finish();
 
-        clock.lock().unwrap().tick();
+        clock.tick();
         brkr.check();
         brkr.finish();
 
@@ -680,14 +680,14 @@ mod tests {
 
     #[test]
     fn test_that_buy_order_larger_than_cash_fails_with_error_returned_without_panic() {
-        let (mut brkr, clock) = setup();
+        let (mut brkr, mut clock) = setup();
         brkr.deposit_cash(&100.0);
         //Order value is greater than cash balance
         let res = brkr.send_order(Order::market(OrderType::MarketBuy, "ABC", 495.0));
         assert!(matches!(res, BrokerEvent::OrderInvalid(..)));
         brkr.finish();
 
-        clock.lock().unwrap().tick();
+        clock.tick();
         brkr.check();
         brkr.finish();
 
@@ -697,18 +697,18 @@ mod tests {
 
     #[test]
     fn test_that_sell_order_larger_than_holding_fails_with_error_returned_without_panic() {
-        let (mut brkr, clock) = setup();
+        let (mut brkr, mut clock) = setup();
         brkr.deposit_cash(&100_000.0);
         let res = brkr.send_order(Order::market(OrderType::MarketBuy, "ABC", 100.0));
         assert!(matches!(res, BrokerEvent::OrderSentToExchange(..)));
         brkr.finish();
 
-        clock.lock().unwrap().tick();
+        clock.tick();
         brkr.check();
         brkr.finish();
 
         //Order greater than current holding
-        clock.lock().unwrap().tick();
+        clock.tick();
         brkr.check();
         let res = brkr.send_order(Order::market(OrderType::MarketSell, "ABC", 105.0));
         assert!(matches!(res, BrokerEvent::OrderInvalid(..)));
@@ -722,24 +722,24 @@ mod tests {
 
     #[test]
     fn test_that_market_sell_increases_cash_and_decreases_holdings() {
-        let (mut brkr, clock) = setup();
+        let (mut brkr, mut clock) = setup();
         brkr.deposit_cash(&100_000.0);
         let res = brkr.send_order(Order::market(OrderType::MarketBuy, "ABC", 495.0));
         assert!(matches!(res, BrokerEvent::OrderSentToExchange(..)));
         brkr.finish();
 
-        clock.lock().unwrap().tick();
+        clock.tick();
         brkr.check();
         brkr.finish();
         let cash = brkr.get_cash_balance();
 
-        clock.lock().unwrap().tick();
+        clock.tick();
         brkr.check();
         let res = brkr.send_order(Order::market(OrderType::MarketSell, "ABC", 295.0));
         assert!(matches!(res, BrokerEvent::OrderSentToExchange(..)));
         brkr.finish();
 
-        clock.lock().unwrap().tick();
+        clock.tick();
         brkr.check();
         brkr.finish();
         let cash0 = brkr.get_cash_balance();
@@ -751,17 +751,17 @@ mod tests {
 
     #[test]
     fn test_that_valuation_updates_in_next_period() {
-        let (mut brkr, clock) = setup();
+        let (mut brkr, mut clock) = setup();
         brkr.deposit_cash(&100_000.0);
         brkr.send_order(Order::market(OrderType::MarketBuy, "ABC", 495.0));
         brkr.finish();
 
-        clock.lock().unwrap().tick();
+        clock.tick();
         brkr.check();
         brkr.finish();
         let val = brkr.get_position_value("ABC").unwrap();
 
-        clock.lock().unwrap().tick();
+        clock.tick();
         brkr.check();
         brkr.finish();
         let val1 = brkr.get_position_value("ABC").unwrap();
@@ -770,16 +770,16 @@ mod tests {
 
     #[test]
     fn test_that_profit_calculation_is_accurate() {
-        let (mut brkr, clock) = setup();
+        let (mut brkr, mut clock) = setup();
         brkr.deposit_cash(&100_000.0);
         brkr.send_order(Order::market(OrderType::MarketBuy, "ABC", 495.0));
         brkr.finish();
 
-        clock.lock().unwrap().tick();
+        clock.tick();
         brkr.check();
         brkr.finish();
 
-        clock.lock().unwrap().tick();
+        clock.tick();
         brkr.check();
         brkr.finish();
 
@@ -789,17 +789,17 @@ mod tests {
 
     #[test]
     fn test_that_dividends_are_paid() {
-        let (mut brkr, clock) = setup();
+        let (mut brkr, mut clock) = setup();
         brkr.deposit_cash(&101_000.0);
         brkr.send_order(Order::market(OrderType::MarketBuy, "ABC", 495.0));
         brkr.finish();
 
-        clock.lock().unwrap().tick();
+        clock.tick();
         brkr.check();
         brkr.finish();
         let cash_before_dividend = brkr.get_cash_balance();
 
-        clock.lock().unwrap().tick();
+        clock.tick();
         brkr.check();
         brkr.finish();
         let cash_after_dividend = brkr.get_cash_balance();
@@ -819,7 +819,7 @@ mod tests {
 
         let source = HashMapInputBuilder::new()
             .with_quotes(prices)
-            .with_clock(Arc::clone(&clock))
+            .with_clock(clock.clone())
             .build();
 
         let _brkr = SimulatedBrokerBuilder::new().with_data(source).build();
@@ -850,11 +850,11 @@ mod tests {
 
         let source = HashMapInputBuilder::new()
             .with_quotes(prices)
-            .with_clock(Arc::clone(&clock))
+            .with_clock(clock.clone())
             .build();
 
         let exchange = DefaultExchangeBuilder::new()
-            .with_clock(Arc::clone(&clock))
+            .with_clock(clock.clone())
             .with_data_source(source.clone())
             .build();
 
@@ -893,18 +893,18 @@ mod tests {
         //And when we check the next date, it updates correctly
         prices.insert(103.into(), vec![quote5, quote6]);
 
-        let clock = ClockBuilder::with_length_in_seconds(100, 5)
+        let mut clock = ClockBuilder::with_length_in_seconds(100, 5)
             .with_frequency(&Frequency::Second)
             .build();
 
         let source = HashMapInputBuilder::new()
             .with_quotes(prices)
             .with_dividends(dividends)
-            .with_clock(Arc::clone(&clock))
+            .with_clock(clock.clone())
             .build();
 
         let exchange = DefaultExchangeBuilder::new()
-            .with_clock(Arc::clone(&clock))
+            .with_clock(clock.clone())
             .with_data_source(source.clone())
             .build();
 
@@ -920,12 +920,12 @@ mod tests {
         brkr.finish();
 
         //Trades execute
-        clock.lock().unwrap().tick();
+        clock.tick();
         brkr.check();
         brkr.finish();
 
         //Missing live quote for BCD
-        clock.lock().unwrap().tick();
+        clock.tick();
         brkr.check();
         brkr.finish();
         let value = brkr.get_position_value("BCD").unwrap();
@@ -934,7 +934,7 @@ mod tests {
         assert!(*value == 10.0 * 100.0);
 
         //BCD has quote again
-        clock.lock().unwrap().tick();
+        clock.tick();
         brkr.check();
         brkr.finish();
 
@@ -961,17 +961,17 @@ mod tests {
         prices.insert(101.into(), vec![quote1]);
         prices.insert(102.into(), vec![quote2]);
 
-        let clock = ClockBuilder::with_length_in_seconds(100, 5)
+        let mut clock = ClockBuilder::with_length_in_seconds(100, 5)
             .with_frequency(&Frequency::Second)
             .build();
 
         let source = HashMapInputBuilder::new()
             .with_quotes(prices)
-            .with_clock(Arc::clone(&clock))
+            .with_clock(clock.clone())
             .build();
 
         let exchange = DefaultExchangeBuilder::new()
-            .with_clock(Arc::clone(&clock))
+            .with_clock(clock.clone())
             .with_data_source(source.clone())
             .build();
 
@@ -988,7 +988,7 @@ mod tests {
         brkr.finish();
 
         //Trades execute
-        clock.lock().unwrap().tick();
+        clock.tick();
         brkr.check();
         brkr.finish();
 
@@ -996,7 +996,7 @@ mod tests {
         assert!(*cash < 0.0);
 
         //Broker rebalances to raise cash
-        clock.lock().unwrap().tick();
+        clock.tick();
         brkr.check();
         brkr.finish();
         let cash1 = brkr.get_cash_balance();

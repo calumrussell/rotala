@@ -986,14 +986,14 @@ mod tests {
 
     #[test]
     fn diff_direction_correct_if_need_to_buy() {
-        let clock = ClockBuilder::with_length_in_days(0, 10)
+        let mut clock = ClockBuilder::with_length_in_days(0, 10)
             .with_frequency(&Frequency::Daily)
             .build();
-        let input = fake_data_generator(Arc::clone(&clock));
+        let input = fake_data_generator(clock.clone());
 
         let exchange = DefaultExchangeBuilder::new()
             .with_data_source(input.clone())
-            .with_clock(Arc::clone(&clock))
+            .with_clock(clock.clone())
             .build();
 
         let mut brkr = SimulatedBrokerBuilder::new()
@@ -1005,7 +1005,7 @@ mod tests {
         weights.insert("ABC", 1.0);
 
         brkr.deposit_cash(&100_000.0);
-        clock.lock().unwrap().tick();
+        clock.tick();
         brkr.finish();
 
         let orders = BrokerCalculations::diff_brkr_against_target_weights(&weights, &mut brkr);
@@ -1018,15 +1018,15 @@ mod tests {
     fn diff_direction_correct_if_need_to_sell() {
         //This is connected to the previous test, if the above fails then this will never pass.
         //However, if the above passes this could still fail.
-        let clock = ClockBuilder::with_length_in_days(0, 10)
+        let mut clock = ClockBuilder::with_length_in_days(0, 10)
             .with_frequency(&Frequency::Daily)
             .build();
 
-        let input = fake_data_generator(Arc::clone(&clock));
+        let input = fake_data_generator(clock.clone());
 
         let exchange = DefaultExchangeBuilder::new()
             .with_data_source(input.clone())
-            .with_clock(Arc::clone(&clock))
+            .with_clock(clock.clone())
             .build();
 
         let mut brkr = SimulatedBrokerBuilder::new()
@@ -1042,11 +1042,11 @@ mod tests {
         brkr.send_orders(&orders);
         brkr.finish();
 
-        clock.lock().unwrap().tick();
+        clock.tick();
         brkr.check();
         brkr.finish();
 
-        clock.lock().unwrap().tick();
+        clock.tick();
         brkr.check();
         brkr.finish();
 
@@ -1067,15 +1067,15 @@ mod tests {
         //In this scenario, the user has inserted incorrect information but this scenario can also occur if there is no quote
         //for a given security on a certain date. We are interested in the latter case, not the former but it is more
         //difficult to test for the latter, and the code should be the same.
-        let clock = ClockBuilder::with_length_in_days(0, 10)
+        let mut clock = ClockBuilder::with_length_in_days(0, 10)
             .with_frequency(&Frequency::Daily)
             .build();
 
-        let input = fake_data_generator(Arc::clone(&clock));
+        let input = fake_data_generator(clock.clone());
 
         let exchange = DefaultExchangeBuilder::new()
             .with_data_source(input.clone())
-            .with_clock(Arc::clone(&clock))
+            .with_clock(clock.clone())
             .build();
 
         let mut brkr = SimulatedBrokerBuilder::new()
@@ -1091,7 +1091,7 @@ mod tests {
         weights.insert("XYZ", 0.5);
 
         brkr.deposit_cash(&100_000.0);
-        clock.lock().unwrap().tick();
+        clock.tick();
         let orders = BrokerCalculations::diff_brkr_against_target_weights(&weights, &mut brkr);
         assert!(orders.len() == 1);
     }
@@ -1101,14 +1101,14 @@ mod tests {
     fn diff_panics_if_brkr_has_no_cash() {
         //If we get to a point where the client is diffing without cash, we can assume that no further operations are possible
         //and we should panic
-        let clock = ClockBuilder::with_length_in_days(0, 10)
+        let mut clock = ClockBuilder::with_length_in_days(0, 10)
             .with_frequency(&Frequency::Daily)
             .build();
-        let input = fake_data_generator(Arc::clone(&clock));
+        let input = fake_data_generator(clock.clone());
 
         let exchange = DefaultExchangeBuilder::new()
             .with_data_source(input.clone())
-            .with_clock(Arc::clone(&clock))
+            .with_clock(clock.clone())
             .build();
 
         let mut brkr = SimulatedBrokerBuilder::new()
@@ -1119,7 +1119,7 @@ mod tests {
         let mut weights = PortfolioAllocation::new();
         weights.insert("ABC", 1.0);
 
-        clock.lock().unwrap().tick();
+        clock.tick();
         BrokerCalculations::diff_brkr_against_target_weights(&weights, &mut brkr);
     }
 
@@ -1167,17 +1167,17 @@ mod tests {
         prices.insert(102.into(), vec![]);
         prices.insert(103.into(), vec![quote2]);
 
-        let clock = ClockBuilder::with_length_in_seconds(100, 5)
+        let mut clock = ClockBuilder::with_length_in_seconds(100, 5)
             .with_frequency(&Frequency::Second)
             .build();
 
         let source = HashMapInputBuilder::new()
             .with_quotes(prices)
-            .with_clock(Arc::clone(&clock))
+            .with_clock(clock.clone())
             .build();
 
         let exchange = DefaultExchangeBuilder::new()
-            .with_clock(Arc::clone(&clock))
+            .with_clock(clock.clone())
             .with_data_source(source.clone())
             .build();
 
@@ -1190,11 +1190,11 @@ mod tests {
         brkr.finish();
 
         //No price for security so we haven't diffed correctly
-        clock.lock().unwrap().tick();
+        clock.tick();
         brkr.check();
         brkr.finish();
 
-        clock.lock().unwrap().tick();
+        clock.tick();
         brkr.check();
 
         let mut target_weights = PortfolioAllocation::new();
@@ -1205,7 +1205,7 @@ mod tests {
         brkr.send_orders(&orders);
         brkr.finish();
 
-        clock.lock().unwrap().tick();
+        clock.tick();
         brkr.check();
 
         let orders1 =
@@ -1235,17 +1235,17 @@ mod tests {
         prices.insert(103.into(), vec![quote2]);
         prices.insert(104.into(), vec![quote3]);
 
-        let clock = ClockBuilder::with_length_in_seconds(100, 5)
+        let mut clock = ClockBuilder::with_length_in_seconds(100, 5)
             .with_frequency(&Frequency::Second)
             .build();
 
         let source = HashMapInputBuilder::new()
             .with_quotes(prices)
-            .with_clock(Arc::clone(&clock))
+            .with_clock(clock.clone())
             .build();
 
         let exchange = DefaultExchangeBuilder::new()
-            .with_clock(Arc::clone(&clock))
+            .with_clock(clock.clone())
             .with_data_source(source.clone())
             .build();
 
@@ -1264,15 +1264,15 @@ mod tests {
         brkr.finish();
 
         //No price for security so we haven't diffed correctly
-        clock.lock().unwrap().tick();
+        clock.tick();
         brkr.check();
         brkr.finish();
 
-        clock.lock().unwrap().tick();
+        clock.tick();
         brkr.check();
         brkr.finish();
 
-        clock.lock().unwrap().tick();
+        clock.tick();
         brkr.check();
         let orders1 =
             BrokerCalculations::diff_brkr_against_target_weights(&target_weights, &mut brkr);
@@ -1281,7 +1281,7 @@ mod tests {
         brkr.send_orders(&orders1);
         brkr.finish();
 
-        clock.lock().unwrap().tick();
+        clock.tick();
         brkr.check();
         brkr.finish();
 

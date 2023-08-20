@@ -15,14 +15,15 @@ use alator::types::{CashValue, Frequency, StrategySnapshot};
  * QuotesHashMap using those dates.
  * We also need to work out the start and end of the simulation to initialise the clock with
  */
-fn build_data() -> (QuotesHashMap, (i64, i64)) {
+async fn build_data() -> (QuotesHashMap, (i64, i64)) {
     let url =
         "https://data.binance.vision/data/spot/daily/klines/BTCUSDT/1m/BTCUSDT-1m-2022-08-03.zip";
     let mut quotes: QuotesHashMap = HashMap::new();
     let mut min_date = i64::MAX;
     let mut max_date = i64::MIN;
-    if let Ok(resp) = reqwest::blocking::get(url) {
-        if let Ok(contents) = resp.bytes() {
+    let client = reqwest::Client::new();
+    if let Ok(resp) = client.get(url).send().await {
+        if let Ok(contents) = resp.bytes().await {
             let mut c = Cursor::new(Vec::new());
             let _res = c.write(&contents);
 
@@ -154,7 +155,7 @@ impl Strategy for MovingAverageStrategy {
         self.deposit_cash(initial_cash);
     }
 
-    fn update(&mut self) -> CashValue {
+    fn update(&mut self) {
         //If you need to use dividends or place non-market orders then we need to call:
         //self.brkr.check(); somewhere here. We don't use these features so this call is
         //excluded.
@@ -183,7 +184,7 @@ impl Strategy for MovingAverageStrategy {
             //If we are at the start of the simulation and don't have full data for each moving
             //average then don't trade
             if !self.ten.full() || !self.fifty.full() {
-                return self.brkr.get_total_value();
+                return;
             }
 
             //If the 10 period MA is above the 50 period then we go long with 10% of our portfolio.
@@ -212,14 +213,13 @@ impl Strategy for MovingAverageStrategy {
         let val = self.brkr.get_total_value();
 
         let snap = StrategySnapshot {
-            date: self.clock.lock().unwrap().now(),
+            date: self.clock.now(),
             portfolio_value: val.clone(),
             net_cash_flow: CashValue::from(0.0),
             inflation: 0.0,
         };
 
         self.history.push(snap);
-        val
     }
 }
 
@@ -238,8 +238,8 @@ impl MovingAverageStrategy {
     }
 }
 
-#[test]
-fn binance_test() {
+#[tokio::test]
+async fn binance_test() {
     //If you past RUST_LOG=info and fail this test then you will be able to see what each component
     //of the system is doing.
     env_logger::init();
@@ -253,7 +253,7 @@ fn binance_test() {
      * Messaging systems are far more scalable horizontally but this library is just intended to
      * run backtests, that is it so scalability really isn't a huge consideration.
      */
-    let (quotes, dates) = build_data();
+    let (quotes, dates) = build_data().await;
     //Clock is the only shared reference between backtesting components: it keeps the time inside
     //the simulation and should guard against the accidental use of future data.
     let clock = ClockBuilder::with_length_in_dates(dates.0, dates.1)
@@ -261,12 +261,12 @@ fn binance_test() {
         .build();
 
     let data = HashMapInputBuilder::new()
-        .with_clock(Arc::clone(&clock))
+        .with_clock(clock.clone())
         .with_quotes(quotes)
         .build();
 
     let exchange = DefaultExchangeBuilder::new()
-        .with_clock(Arc::clone(&clock))
+        .with_clock(clock.clone())
         .with_data_source(data.clone())
         .build();
 
@@ -275,12 +275,13 @@ fn binance_test() {
         .with_exchange(exchange)
         .build();
 
-    let strat = MovingAverageStrategy::new(simbrkr, Arc::clone(&clock));
+    let strat = MovingAverageStrategy::new(simbrkr, clock.clone());
 
     let mut sim = SimContextBuilder::new()
-        .with_clock(Arc::clone(&clock))
+        .with_clock(clock.clone())
         .with_strategy(strat)
         .init(&1_000_000.0.into());
 
-    sim.run();
+    sim.run().await;
+    let _perf = sim.perf(Frequency::Daily);
 }

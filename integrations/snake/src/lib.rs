@@ -9,7 +9,6 @@ use alator::sim::SimulatedBrokerBuilder;
 use alator::simcontext::SimContextBuilder;
 use alator::types::{CashValue, Frequency, PortfolioAllocation};
 use pyo3::types::PyDict;
-use std::sync::Arc;
 
 #[pyfunction]
 fn staticweight_example(quotes_any: &PyAny, dividends_any: &PyAny, tickers_any: &PyAny) -> PyResult<String> {
@@ -26,7 +25,7 @@ fn staticweight_example(quotes_any: &PyAny, dividends_any: &PyAny, tickers_any: 
         quotes,
         dividends,
         tickers,
-        clock: Arc::clone(&clock),
+        clock: clock.clone(),
     };
 
     let initial_cash: CashValue = 100_000.0.into();
@@ -37,7 +36,7 @@ fn staticweight_example(quotes_any: &PyAny, dividends_any: &PyAny, tickers_any: 
 
     let exchange = DefaultExchangeBuilder::<PyInput, PyQuote, PyDividend>::new()
         .with_data_source(input.clone())
-        .with_clock(Arc::clone(&clock))
+        .with_clock(clock.clone())
         .build();
 
     let simbrkr = SimulatedBrokerBuilder::new()
@@ -49,11 +48,11 @@ fn staticweight_example(quotes_any: &PyAny, dividends_any: &PyAny, tickers_any: 
     let strat = StaticWeightStrategyBuilder::new()
         .with_brkr(simbrkr)
         .with_weights(weights)
-        .with_clock(Arc::clone(&clock))
+        .with_clock(clock.clone())
         .default();
 
     let mut sim = SimContextBuilder::new()
-        .with_clock(Arc::clone(&clock))
+        .with_clock(clock.clone())
         .with_strategy(strat)
         .init(&initial_cash);
 

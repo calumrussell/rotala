@@ -85,7 +85,7 @@ where
         }
 
         DefaultExchange::new(
-            Arc::clone(self.clock.as_ref().unwrap()),
+            self.clock.as_ref().unwrap().clone(),
             self.data_source.as_ref().unwrap().clone(),
         )
     }
@@ -237,7 +237,7 @@ where
         let execute_buy = |quote: &Q, order: &Order| -> Trade {
             let trade_price = quote.get_ask();
             let value = CashValue::from(**trade_price * **order.get_shares());
-            let date = self.clock.lock().unwrap().now();
+            let date = self.clock.now();
             Trade::new(
                 order.get_symbol(),
                 value,
@@ -250,7 +250,7 @@ where
         let execute_sell = |quote: &Q, order: &Order| -> Trade {
             let trade_price = quote.get_bid();
             let value = CashValue::from(**trade_price * **order.get_shares());
-            let date = self.clock.lock().unwrap().now();
+            let date = self.clock.now();
             Trade::new(
                 order.get_symbol(),
                 value,
@@ -371,22 +371,6 @@ where
     }
 }
 
-unsafe impl<T, Q, D> Send for DefaultExchange<T, Q, D>
-where
-    Q: Quotable,
-    D: Dividendable,
-    T: DataSource<Q, D>,
-{
-}
-
-unsafe impl<T, Q, D> Sync for DefaultExchange<T, Q, D>
-where
-    Q: Quotable,
-    D: Dividendable,
-    T: DataSource<Q, D>,
-{
-}
-
 #[cfg(test)]
 mod tests {
     use std::collections::HashMap;
@@ -419,22 +403,22 @@ mod tests {
             .build();
 
         let source = HashMapInputBuilder::new()
-            .with_clock(Arc::clone(&clock))
+            .with_clock(clock.clone())
             .with_quotes(quotes)
             .build();
 
         let exchange = DefaultExchangeBuilder::new()
-            .with_clock(Arc::clone(&clock))
+            .with_clock(clock.clone())
             .with_data_source(source)
             .build();
 
-        (exchange, Arc::clone(&clock))
+        (exchange, clock)
     }
 
     #[test]
     fn test_that_exchange_executing_order_decrements_len_increments_trade_log() {
         let order = Order::market(OrderType::MarketBuy, "ABC", 100.00);
-        let (mut exchange, clock) = setup();
+        let (mut exchange, mut clock) = setup();
 
         exchange.insert_order(order);
         exchange.finish();
@@ -442,7 +426,7 @@ mod tests {
         assert_eq!(exchange.get_trade_log().len(), 0);
         assert_eq!(exchange.orderbook_size(), 1);
 
-        clock.lock().unwrap().tick();
+        clock.tick();
         exchange.check();
 
         println!("{:?}", exchange.get_trade_log());
@@ -454,11 +438,11 @@ mod tests {
     #[test]
     fn test_that_calling_insert_on_unchecked_exchange_causes_panic() {
         let order = Order::market(OrderType::MarketBuy, "ABC", 100.00);
-        let (mut exchange, clock) = setup();
+        let (mut exchange, mut clock) = setup();
 
         exchange.finish();
 
-        clock.lock().unwrap().tick();
+        clock.tick();
         exchange.insert_order(order);
         exchange.check();
     }
@@ -466,12 +450,12 @@ mod tests {
     #[test]
     fn test_that_exchange_with_buy_market_triggers_correctly() {
         let order = Order::market(OrderType::MarketBuy, "ABC", 100.00);
-        let (mut exchange, clock) = setup();
+        let (mut exchange, mut clock) = setup();
 
         exchange.insert_order(order);
         exchange.finish();
 
-        clock.lock().unwrap().tick();
+        clock.tick();
         exchange.check();
 
         println!("{:?}", exchange.get_trade_log());
@@ -482,17 +466,17 @@ mod tests {
     fn test_that_exchange_with_buy_market_does_not_trigger_immediately() {
         //This is more of a timing issue with the clock but this validates that we don't see future
         //prices and that trading is sequential, not instantaneous
-        let (mut exchange, clock) = setup();
+        let (mut exchange, mut clock) = setup();
 
         //We need to tick forward to enter the order in the period before the price changes
-        clock.lock().unwrap().tick();
+        clock.tick();
         exchange.check();
         let order = Order::market(OrderType::MarketBuy, "ABC", 100.00);
         exchange.insert_order(order);
         exchange.finish();
 
         //We only insert after check has been called
-        clock.lock().unwrap().tick();
+        clock.tick();
         exchange.check();
 
         println!("{:?}", exchange.get_trade_log());
@@ -505,12 +489,12 @@ mod tests {
     #[test]
     fn test_that_exchange_with_sell_market_triggers_correctly() {
         let order = Order::market(OrderType::MarketSell, "ABC", 100.00);
-        let (mut exchange, clock) = setup();
+        let (mut exchange, mut clock) = setup();
 
         exchange.insert_order(order);
         exchange.finish();
 
-        clock.lock().unwrap().tick();
+        clock.tick();
         exchange.check();
 
         println!("{:?}", exchange.get_trade_log());
@@ -521,13 +505,13 @@ mod tests {
     fn test_that_exchange_with_buy_limit_triggers_correctly() {
         let order = Order::delayed(OrderType::LimitBuy, "ABC", 100.0, 100.0);
         let order0 = Order::delayed(OrderType::LimitBuy, "ABC", 100.0, 105.0);
-        let (mut exchange, clock) = setup();
+        let (mut exchange, mut clock) = setup();
 
         exchange.insert_order(order);
         exchange.insert_order(order0);
         exchange.finish();
 
-        clock.lock().unwrap().tick();
+        clock.tick();
         exchange.check();
 
         println!("{:?}", exchange.get_trade_log());
@@ -538,13 +522,13 @@ mod tests {
     fn test_that_exchange_with_sell_limit_triggers_correctly() {
         let order = Order::delayed(OrderType::LimitSell, "ABC", 100.0, 100.0);
         let order0 = Order::delayed(OrderType::LimitSell, "ABC", 100.0, 105.0);
-        let (mut exchange, clock) = setup();
+        let (mut exchange, mut clock) = setup();
 
         exchange.insert_order(order);
         exchange.insert_order(order0);
         exchange.finish();
 
-        clock.lock().unwrap().tick();
+        clock.tick();
         exchange.check();
 
         println!("{:?}", exchange.get_trade_log());
@@ -558,13 +542,13 @@ mod tests {
         //should be executed.
         let order = Order::delayed(OrderType::StopBuy, "ABC", 100.0, 100.0);
         let order0 = Order::delayed(OrderType::StopBuy, "ABC", 100.0, 105.0);
-        let (mut exchange, clock) = setup();
+        let (mut exchange, mut clock) = setup();
 
         exchange.insert_order(order);
         exchange.insert_order(order0);
         exchange.finish();
 
-        clock.lock().unwrap().tick();
+        clock.tick();
         exchange.check();
 
         println!("{:?}", exchange.get_trade_log());
@@ -577,13 +561,13 @@ mod tests {
         //If we are quoted 101/102 then our 105 StopSell is executed.
         let order = Order::delayed(OrderType::StopSell, "ABC", 100.0, 100.0);
         let order0 = Order::delayed(OrderType::StopSell, "ABC", 100.0, 105.0);
-        let (mut exchange, clock) = setup();
+        let (mut exchange, mut clock) = setup();
 
         exchange.insert_order(order);
         exchange.insert_order(order0);
         exchange.finish();
 
-        clock.lock().unwrap().tick();
+        clock.tick();
         exchange.check();
 
         println!("{:?}", exchange.get_trade_log());
@@ -594,14 +578,14 @@ mod tests {
     fn test_that_delete_and_insert_dont_conflict() {
         let order = Order::delayed(OrderType::LimitBuy, "ABC", 100.0, 100.0);
         let order0 = Order::delayed(OrderType::LimitBuy, "ABC", 100.0, 105.0);
-        let (mut exchange, clock) = setup();
+        let (mut exchange, mut clock) = setup();
 
         let order_id = exchange.insert_order(order);
         exchange.delete_order(order_id);
         exchange.insert_order(order0);
         exchange.finish();
 
-        clock.lock().unwrap().tick();
+        clock.tick();
         exchange.check();
 
         println!("{:?}", exchange.get_trade_log());
@@ -611,12 +595,12 @@ mod tests {
     #[test]
     fn test_that_order_for_nonexistent_stock_fails_silently() {
         let order = Order::delayed(OrderType::LimitBuy, "XYZ", 100.0, 100.0);
-        let (mut exchange, clock) = setup();
+        let (mut exchange, mut clock) = setup();
 
         exchange.insert_order(order);
         exchange.finish();
 
-        clock.lock().unwrap().tick();
+        clock.tick();
         exchange.check();
 
         println!("{:?}", exchange.get_trade_log());
@@ -637,17 +621,17 @@ mod tests {
             vec![Arc::new(Quote::new(105.00, 106.00, 102, "ABC"))],
         );
 
-        let clock = ClockBuilder::with_length_in_seconds(100, 3)
+        let mut clock = ClockBuilder::with_length_in_seconds(100, 3)
             .with_frequency(&crate::types::Frequency::Second)
             .build();
 
         let source = HashMapInputBuilder::new()
-            .with_clock(Arc::clone(&clock))
+            .with_clock(clock.clone())
             .with_quotes(quotes)
             .build();
 
         let mut exchange = DefaultExchangeBuilder::new()
-            .with_clock(Arc::clone(&clock))
+            .with_clock(clock.clone())
             .with_data_source(source)
             .build();
 
@@ -655,14 +639,14 @@ mod tests {
         exchange.insert_order(order);
         exchange.finish();
 
-        clock.lock().unwrap().tick();
+        clock.tick();
         exchange.check();
 
         //Orderbook should have one order and trade log has no executed trades
         assert_eq!(exchange.get_trade_log().len(), 0);
         assert_eq!(exchange.orderbook_size(), 1);
 
-        clock.lock().unwrap().tick();
+        clock.tick();
         exchange.check();
 
         //Order should execute now
