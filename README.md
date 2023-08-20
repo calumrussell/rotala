@@ -27,7 +27,7 @@ An example backtest (with data creation excluded):
     let start_date: i64 = 1609750800; //Date - 4/1/21 9:00:0000
     let clock = ClockBuilder::from_length(start_date, length_in_days).daily();
 
-    let data = build_data(Rc::clone(&clock));
+    let data = build_data(Arc::clone(&clock));
 
     let mut weights: PortfolioAllocation<PortfolioWeight> = PortfolioAllocation::new();
     weights.insert(ABC, 0.5);
@@ -35,7 +35,7 @@ An example backtest (with data creation excluded):
 
     let exchange = DefaultExchangeBuilder::new()
         .with_data_source(data.clone())
-        .with_clock(Rc::clone(&clock))
+        .with_clock(Arc::clone(&clock))
         .build();
 
     let simbrkr = SimulatedBrokerBuilder::new()
@@ -47,11 +47,11 @@ An example backtest (with data creation excluded):
     let strat = StaticWeightStrategyBuilder::new()
         .with_brkr(simbrkr)
         .with_weights(weights)
-        .with_clock(Rc::clone(&clock))
+        .with_clock(Arc::clone(&clock))
         .daily();
 
     let mut sim = SimContextBuilder::new()
-        .with_clock(Rc::clone(&clock))
+        .with_clock(Arc::clone(&clock))
         .with_strategy(strat)
         .init(&initial_cash);
 

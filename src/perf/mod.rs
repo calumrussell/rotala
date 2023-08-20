@@ -256,7 +256,7 @@ impl PerformanceCalculator {
 #[cfg(test)]
 mod tests {
     use std::collections::HashMap;
-    use std::rc::Rc;
+    use std::sync::Arc;
 
     use crate::broker::{BrokerCost, Dividend, Quote};
     use crate::clock::{Clock, ClockBuilder};
@@ -272,17 +272,17 @@ mod tests {
     use super::PortfolioCalculations;
 
     fn setup() -> (SimulatedBroker<HashMapInput, Quote, Dividend>, Clock) {
-        let mut raw_data: HashMap<DateTime, Vec<Quote>> = HashMap::new();
+        let mut raw_data: HashMap<DateTime, Vec<Arc<Quote>>> = HashMap::new();
 
-        let quote_a1 = Quote::new(101.0, 102.0, 100, "ABC");
-        let quote_a2 = Quote::new(102.0, 103.0, 101, "ABC");
-        let quote_a3 = Quote::new(97.0, 98.0, 102, "ABC");
-        let quote_a4 = Quote::new(105.0, 106.0, 103, "ABC");
+        let quote_a1 = Arc::new(Quote::new(101.0, 102.0, 100, "ABC"));
+        let quote_a2 = Arc::new(Quote::new(102.0, 103.0, 101, "ABC"));
+        let quote_a3 = Arc::new(Quote::new(97.0, 98.0, 102, "ABC"));
+        let quote_a4 = Arc::new(Quote::new(105.0, 106.0, 103, "ABC"));
 
-        let quote_b1 = Quote::new(501.0, 502.0, 100, "BCD");
-        let quote_b2 = Quote::new(503.0, 504.0, 101, "BCD");
-        let quote_b3 = Quote::new(498.0, 499.0, 102, "BCD");
-        let quote_b4 = Quote::new(495.0, 496.0, 103, "BCD");
+        let quote_b1 = Arc::new(Quote::new(501.0, 502.0, 100, "BCD"));
+        let quote_b2 = Arc::new(Quote::new(503.0, 504.0, 101, "BCD"));
+        let quote_b3 = Arc::new(Quote::new(498.0, 499.0, 102, "BCD"));
+        let quote_b4 = Arc::new(Quote::new(495.0, 496.0, 103, "BCD"));
 
         raw_data.insert(100.into(), vec![quote_a1, quote_b1]);
         raw_data.insert(101.into(), vec![quote_a2, quote_b2]);
@@ -295,12 +295,12 @@ mod tests {
 
         let source = HashMapInputBuilder::new()
             .with_quotes(raw_data)
-            .with_clock(Rc::clone(&clock))
+            .with_clock(Arc::clone(&clock))
             .build();
 
         let exchange = DefaultExchangeBuilder::new()
             .with_data_source(source.clone())
-            .with_clock(Rc::clone(&clock))
+            .with_clock(Arc::clone(&clock))
             .build();
 
         let sb = SimulatedBrokerBuilder::new()
@@ -360,18 +360,18 @@ mod tests {
         let mut strat = StaticWeightStrategyBuilder::new()
             .with_brkr(brkr)
             .with_weights(target_weights)
-            .with_clock(Rc::clone(&clock))
+            .with_clock(Arc::clone(&clock))
             .default();
 
         strat.init(&100_000.0);
 
-        clock.borrow_mut().tick();
+        clock.lock().unwrap().tick();
         strat.update();
 
-        clock.borrow_mut().tick();
+        clock.lock().unwrap().tick();
         strat.update();
 
-        clock.borrow_mut().tick();
+        clock.lock().unwrap().tick();
         strat.update();
 
         let output = strat.get_history();

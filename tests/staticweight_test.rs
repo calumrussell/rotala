@@ -5,7 +5,7 @@ use alator::strategy::StaticWeightStrategyBuilder;
 use rand::distributions::{Distribution, Uniform};
 use rand::thread_rng;
 use std::collections::HashMap;
-use std::rc::Rc;
+use std::sync::Arc;
 
 use alator::broker::{BrokerCost, Quote};
 use alator::input::HashMapInput;
@@ -17,8 +17,9 @@ fn build_data(clock: Clock) -> HashMapInput {
     let price_dist = Uniform::new(90.0, 100.0);
     let mut rng = thread_rng();
 
-    let mut raw_data: HashMap<DateTime, Vec<Quote>> = HashMap::with_capacity(clock.borrow().len());
-    for date in clock.borrow().peek() {
+    let mut raw_data: HashMap<DateTime, Vec<Arc<Quote>>> =
+        HashMap::with_capacity(clock.lock().unwrap().len());
+    for date in clock.lock().unwrap().peek() {
         let q1 = Quote::new(
             price_dist.sample(&mut rng),
             price_dist.sample(&mut rng),
@@ -31,12 +32,12 @@ fn build_data(clock: Clock) -> HashMapInput {
             date,
             "BCD",
         );
-        raw_data.insert(date, vec![q1, q2]);
+        raw_data.insert(date, vec![Arc::new(q1), Arc::new(q2)]);
     }
 
     let source = HashMapInputBuilder::new()
         .with_quotes(raw_data)
-        .with_clock(Rc::clone(&clock))
+        .with_clock(Arc::clone(&clock))
         .build();
     source
 }
@@ -51,7 +52,7 @@ fn staticweight_integration_test() {
         .with_frequency(&Frequency::Daily)
         .build();
 
-    let data = build_data(Rc::clone(&clock));
+    let data = build_data(Arc::clone(&clock));
 
     let mut weights: PortfolioAllocation = PortfolioAllocation::new();
     weights.insert("ABC", 0.5);
@@ -59,7 +60,7 @@ fn staticweight_integration_test() {
 
     let exchange = DefaultExchangeBuilder::new()
         .with_data_source(data.clone())
-        .with_clock(Rc::clone(&clock))
+        .with_clock(Arc::clone(&clock))
         .build();
 
     let simbrkr = SimulatedBrokerBuilder::new()
@@ -71,11 +72,11 @@ fn staticweight_integration_test() {
     let strat = StaticWeightStrategyBuilder::new()
         .with_brkr(simbrkr)
         .with_weights(weights)
-        .with_clock(Rc::clone(&clock))
+        .with_clock(Arc::clone(&clock))
         .default();
 
     let mut sim = SimContextBuilder::new()
-        .with_clock(Rc::clone(&clock))
+        .with_clock(Arc::clone(&clock))
         .with_strategy(strat)
         .init(&initial_cash);
 

@@ -1,5 +1,5 @@
-use std::cell::RefCell;
-use std::rc::Rc;
+use std::sync::Arc;
+use std::sync::Mutex;
 use std::vec::IntoIter;
 
 use crate::types::{DateTime, Frequency};
@@ -12,7 +12,7 @@ use crate::types::{DateTime, Frequency};
 ///shared reference, we significantly reduce the scope for unexpected behaviour due to
 ///inadvertently incorrect sequencing of operations. An added benefit is that this significantly
 ///simplifies the interface for data queries so that live-trading would be possible.
-pub type Clock = Rc<RefCell<ClockInner>>;
+pub type Clock = Arc<Mutex<ClockInner>>;
 
 #[derive(Debug)]
 pub struct ClockInner {
@@ -67,7 +67,7 @@ impl ClockBuilder {
     const SECS_IN_DAY: i64 = 86_400;
 
     pub fn build(self) -> Clock {
-        Rc::new(RefCell::new(ClockInner {
+        Arc::new(Mutex::new(ClockInner {
             dates: self.dates,
             pos: 0,
         }))
@@ -145,9 +145,9 @@ mod tests {
         let clock = ClockBuilder::with_length_in_dates(1, 3)
             .with_frequency(&Frequency::Second)
             .build();
-        clock.borrow_mut().tick();
-        clock.borrow_mut().tick();
-        clock.borrow_mut().tick();
+        clock.lock().unwrap().tick();
+        clock.lock().unwrap().tick();
+        clock.lock().unwrap().tick();
     }
 
     #[test]
@@ -155,11 +155,11 @@ mod tests {
         let clock = ClockBuilder::with_length_in_dates(1, 3)
             .with_frequency(&Frequency::Second)
             .build();
-        assert!(clock.borrow().has_next());
-        clock.borrow_mut().tick();
+        assert!(clock.lock().unwrap().has_next());
+        clock.lock().unwrap().tick();
 
-        clock.borrow_mut().tick();
-        assert!(!clock.borrow().has_next());
+        clock.lock().unwrap().tick();
+        assert!(!clock.lock().unwrap().has_next());
     }
 
     #[test]
@@ -170,7 +170,7 @@ mod tests {
             .with_frequency(&Frequency::Daily)
             .build();
         let mut dates: Vec<i64> = Vec::new();
-        for date in clock.borrow().peek() {
+        for date in clock.lock().unwrap().peek() {
             dates.push(i64::from(date));
         }
         assert!(dates == vec![1, 86401, 172801, 259201]);
@@ -183,7 +183,7 @@ mod tests {
             .with_frequency(&Frequency::Second)
             .build();
         let mut count = 0;
-        for _i in clock.borrow().peek() {
+        for _i in clock.lock().unwrap().peek() {
             count += 1;
         }
         println!("{:?}", count);

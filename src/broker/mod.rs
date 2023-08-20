@@ -1,6 +1,7 @@
 use log::info;
 use std::error::Error;
 use std::fmt::Formatter;
+use std::sync::Arc;
 use std::{cmp::Ordering, fmt::Display};
 
 use crate::input::{Dividendable, Quotable};
@@ -711,8 +712,8 @@ pub trait TransferCash: BacktestBroker {
 //internally too, and this confusion comes from broker implementations being both a consumer and
 //source of data. So this trait is seperated out now but may disappear in future versions.
 pub trait GetsQuote<Q: Quotable, D: Dividendable>: Clone {
-    fn get_quote(&self, symbol: &str) -> Option<&Q>;
-    fn get_quotes(&self) -> Option<&[Q]>;
+    fn get_quote(&self, symbol: &str) -> Option<Arc<Q>>;
+    fn get_quotes(&self) -> Option<Vec<Arc<Q>>>;
 }
 
 ///Implementation allows clients to query properties of the transaction history of the broker.
@@ -794,7 +795,8 @@ impl BrokerCalculations {
                     //Create orders to sell 100% of position, don't continue to next stock
                     //
                     //Cannot be called without quote existing so unwrap
-                    let price = brkr.get_quote(&ticker).unwrap().get_bid();
+                    let quote = brkr.get_quote(&ticker).unwrap();
+                    let price = quote.get_bid();
                     let shares_req = PortfolioQty::from((total_sold / **price).ceil());
                     let order = Order::market(OrderType::MarketSell, ticker, shares_req);
                     info!("BROKER: Withdrawing {:?} with liquidation, queueing sale of {:?} shares of {:?}", cash, order.get_shares(), order.get_symbol());
@@ -875,7 +877,7 @@ impl BrokerCalculations {
             //eventually prove correct if we are missing quotes for the current time.
             if let Some(quote) = brkr.get_quote(&symbol) {
                 //This will be negative if the net is selling
-                let required_shares = calc_required_shares_with_costs(&diff_val, quote, brkr);
+                let required_shares = calc_required_shares_with_costs(&diff_val, &quote, brkr);
                 //Clear any pending orders on the exchange
                 brkr.clear_pending_market_orders_by_symbol(&symbol);
                 if required_shares.ne(&0.0) {
@@ -978,7 +980,7 @@ mod tests {
     use crate::types::{DateTime, PortfolioAllocation};
     use crate::{clock::ClockBuilder, types::Frequency};
     use std::collections::HashMap;
-    use std::rc::Rc;
+    use std::sync::Arc;
 
     use super::{BrokerCalculations, BrokerCost, Quote, TransferCash};
 
@@ -987,11 +989,11 @@ mod tests {
         let clock = ClockBuilder::with_length_in_days(0, 10)
             .with_frequency(&Frequency::Daily)
             .build();
-        let input = fake_data_generator(Rc::clone(&clock));
+        let input = fake_data_generator(Arc::clone(&clock));
 
         let exchange = DefaultExchangeBuilder::new()
             .with_data_source(input.clone())
-            .with_clock(Rc::clone(&clock))
+            .with_clock(Arc::clone(&clock))
             .build();
 
         let mut brkr = SimulatedBrokerBuilder::new()
@@ -1003,7 +1005,7 @@ mod tests {
         weights.insert("ABC", 1.0);
 
         brkr.deposit_cash(&100_000.0);
-        clock.borrow_mut().tick();
+        clock.lock().unwrap().tick();
         brkr.finish();
 
         let orders = BrokerCalculations::diff_brkr_against_target_weights(&weights, &mut brkr);
@@ -1020,11 +1022,11 @@ mod tests {
             .with_frequency(&Frequency::Daily)
             .build();
 
-        let input = fake_data_generator(Rc::clone(&clock));
+        let input = fake_data_generator(Arc::clone(&clock));
 
         let exchange = DefaultExchangeBuilder::new()
             .with_data_source(input.clone())
-            .with_clock(Rc::clone(&clock))
+            .with_clock(Arc::clone(&clock))
             .build();
 
         let mut brkr = SimulatedBrokerBuilder::new()
@@ -1040,11 +1042,11 @@ mod tests {
         brkr.send_orders(&orders);
         brkr.finish();
 
-        clock.borrow_mut().tick();
+        clock.lock().unwrap().tick();
         brkr.check();
         brkr.finish();
 
-        clock.borrow_mut().tick();
+        clock.lock().unwrap().tick();
         brkr.check();
         brkr.finish();
 
@@ -1069,11 +1071,11 @@ mod tests {
             .with_frequency(&Frequency::Daily)
             .build();
 
-        let input = fake_data_generator(Rc::clone(&clock));
+        let input = fake_data_generator(Arc::clone(&clock));
 
         let exchange = DefaultExchangeBuilder::new()
             .with_data_source(input.clone())
-            .with_clock(Rc::clone(&clock))
+            .with_clock(Arc::clone(&clock))
             .build();
 
         let mut brkr = SimulatedBrokerBuilder::new()
@@ -1089,7 +1091,7 @@ mod tests {
         weights.insert("XYZ", 0.5);
 
         brkr.deposit_cash(&100_000.0);
-        clock.borrow_mut().tick();
+        clock.lock().unwrap().tick();
         let orders = BrokerCalculations::diff_brkr_against_target_weights(&weights, &mut brkr);
         assert!(orders.len() == 1);
     }
@@ -1102,11 +1104,11 @@ mod tests {
         let clock = ClockBuilder::with_length_in_days(0, 10)
             .with_frequency(&Frequency::Daily)
             .build();
-        let input = fake_data_generator(Rc::clone(&clock));
+        let input = fake_data_generator(Arc::clone(&clock));
 
         let exchange = DefaultExchangeBuilder::new()
             .with_data_source(input.clone())
-            .with_clock(Rc::clone(&clock))
+            .with_clock(Arc::clone(&clock))
             .build();
 
         let mut brkr = SimulatedBrokerBuilder::new()
@@ -1117,7 +1119,7 @@ mod tests {
         let mut weights = PortfolioAllocation::new();
         weights.insert("ABC", 1.0);
 
-        clock.borrow_mut().tick();
+        clock.lock().unwrap().tick();
         BrokerCalculations::diff_brkr_against_target_weights(&weights, &mut brkr);
     }
 
@@ -1155,10 +1157,10 @@ mod tests {
         //This is not possible without earlier price data either. If there is no price data then
         //the diff will be unable to work out how many shares are required. So the test case is
         //some price but no price for the execution period.
-        let mut prices: HashMap<DateTime, Vec<Quote>> = HashMap::new();
-        let quote = Quote::new(100.00, 100.00, 100, "ABC");
-        let quote1 = Quote::new(100.00, 100.00, 101, "ABC");
-        let quote2 = Quote::new(100.00, 100.00, 103, "ABC");
+        let mut prices: HashMap<DateTime, Vec<Arc<Quote>>> = HashMap::new();
+        let quote = Arc::new(Quote::new(100.00, 100.00, 100, "ABC"));
+        let quote1 = Arc::new(Quote::new(100.00, 100.00, 101, "ABC"));
+        let quote2 = Arc::new(Quote::new(100.00, 100.00, 103, "ABC"));
 
         prices.insert(100.into(), vec![quote]);
         prices.insert(101.into(), vec![quote1]);
@@ -1171,11 +1173,11 @@ mod tests {
 
         let source = HashMapInputBuilder::new()
             .with_quotes(prices)
-            .with_clock(Rc::clone(&clock))
+            .with_clock(Arc::clone(&clock))
             .build();
 
         let exchange = DefaultExchangeBuilder::new()
-            .with_clock(Rc::clone(&clock))
+            .with_clock(Arc::clone(&clock))
             .with_data_source(source.clone())
             .build();
 
@@ -1188,11 +1190,11 @@ mod tests {
         brkr.finish();
 
         //No price for security so we haven't diffed correctly
-        clock.borrow_mut().tick();
+        clock.lock().unwrap().tick();
         brkr.check();
         brkr.finish();
 
-        clock.borrow_mut().tick();
+        clock.lock().unwrap().tick();
         brkr.check();
 
         let mut target_weights = PortfolioAllocation::new();
@@ -1203,7 +1205,7 @@ mod tests {
         brkr.send_orders(&orders);
         brkr.finish();
 
-        clock.borrow_mut().tick();
+        clock.lock().unwrap().tick();
         brkr.check();
 
         let orders1 =
@@ -1222,10 +1224,10 @@ mod tests {
         //missing, and we try to rebalance by buying but the pending order is for a significantly
         //greater amount of shares than we now need (e.g. we have a price of X, we miss a price,
         //and then it drops 20%).
-        let mut prices: HashMap<DateTime, Vec<Quote>> = HashMap::new();
-        let quote = Quote::new(100.00, 100.00, 100, "ABC");
-        let quote2 = Quote::new(75.00, 75.00, 103, "ABC");
-        let quote3 = Quote::new(75.00, 75.00, 104, "ABC");
+        let mut prices: HashMap<DateTime, Vec<Arc<Quote>>> = HashMap::new();
+        let quote = Arc::new(Quote::new(100.00, 100.00, 100, "ABC"));
+        let quote2 = Arc::new(Quote::new(75.00, 75.00, 103, "ABC"));
+        let quote3 = Arc::new(Quote::new(75.00, 75.00, 104, "ABC"));
 
         prices.insert(100.into(), vec![quote]);
         prices.insert(101.into(), vec![]);
@@ -1239,11 +1241,11 @@ mod tests {
 
         let source = HashMapInputBuilder::new()
             .with_quotes(prices)
-            .with_clock(Rc::clone(&clock))
+            .with_clock(Arc::clone(&clock))
             .build();
 
         let exchange = DefaultExchangeBuilder::new()
-            .with_clock(Rc::clone(&clock))
+            .with_clock(Arc::clone(&clock))
             .with_data_source(source.clone())
             .build();
 
@@ -1262,15 +1264,15 @@ mod tests {
         brkr.finish();
 
         //No price for security so we haven't diffed correctly
-        clock.borrow_mut().tick();
+        clock.lock().unwrap().tick();
         brkr.check();
         brkr.finish();
 
-        clock.borrow_mut().tick();
+        clock.lock().unwrap().tick();
         brkr.check();
         brkr.finish();
 
-        clock.borrow_mut().tick();
+        clock.lock().unwrap().tick();
         brkr.check();
         let orders1 =
             BrokerCalculations::diff_brkr_against_target_weights(&target_weights, &mut brkr);
@@ -1279,7 +1281,7 @@ mod tests {
         brkr.send_orders(&orders1);
         brkr.finish();
 
-        clock.borrow_mut().tick();
+        clock.lock().unwrap().tick();
         brkr.check();
         brkr.finish();
 

@@ -1,7 +1,7 @@
 use rand::distributions::{Distribution, Uniform};
 use rand::thread_rng;
 use std::collections::HashMap;
-use std::rc::Rc;
+use std::sync::Arc;
 
 use crate::broker::{Dividend, Quote};
 use crate::clock::Clock;
@@ -36,10 +36,14 @@ pub trait Dividendable: Clone {
 ///
 ///Dates will be known at runtime so when allocating space for `QuotesHashMap`/`DividendsHashMap`,
 ///`HashMap::with_capacity()` should be used using either length of dates or `len()` of `Clock`.
-pub trait DataSource<Q: Quotable, D: Dividendable>: Clone {
-    fn get_quote(&self, symbol: &str) -> Option<&Q>;
-    fn get_quotes(&self) -> Option<&[Q]>;
-    fn get_dividends(&self) -> Option<&[D]>;
+pub trait DataSource<Q, D>: Clone
+where
+    Q: Quotable,
+    D: Dividendable,
+{
+    fn get_quote(&self, symbol: &str) -> Option<Arc<Q>>;
+    fn get_quotes(&self) -> Option<Vec<Arc<Q>>>;
+    fn get_dividends(&self) -> Option<Vec<Arc<D>>>;
 }
 
 ///Implementation of [DataSource trait that wraps around a HashMap. Time is kept with reference to
@@ -51,30 +55,36 @@ pub struct HashMapInput {
     clock: Clock,
 }
 
-pub type QuotesHashMap = HashMap<DateTime, Vec<Quote>>;
-pub type DividendsHashMap = HashMap<DateTime, Vec<Dividend>>;
+pub type QuotesHashMap = HashMap<DateTime, Vec<Arc<Quote>>>;
+pub type DividendsHashMap = HashMap<DateTime, Vec<Arc<Dividend>>>;
 
 impl DataSource<Quote, Dividend> for HashMapInput {
-    fn get_quote(&self, symbol: &str) -> Option<&Quote> {
-        let curr_date = self.clock.borrow().now();
+    fn get_quote(&self, symbol: &str) -> Option<Arc<Quote>> {
+        let curr_date = self.clock.lock().unwrap().now();
         if let Some(quotes) = self.quotes.get(&curr_date) {
             for quote in quotes {
                 if quote.symbol.eq(symbol) {
-                    return Some(quote);
+                    return Some(quote.clone());
                 }
             }
         }
         None
     }
 
-    fn get_quotes(&self) -> Option<&[Quote]> {
-        let curr_date = self.clock.borrow().now();
-        self.quotes.get(&curr_date).map(|v| v.as_slice())
+    fn get_quotes(&self) -> Option<Vec<Arc<Quote>>> {
+        let curr_date = self.clock.lock().unwrap().now();
+        if let Some(quotes) = self.quotes.get(&curr_date) {
+            return Some(quotes.clone());
+        }
+        None
     }
 
-    fn get_dividends(&self) -> Option<&[Dividend]> {
-        let curr_date = self.clock.borrow().now();
-        self.dividends.get(&curr_date).map(|v| v.as_slice())
+    fn get_dividends(&self) -> Option<Vec<Arc<Dividend>>> {
+        let curr_date = self.clock.lock().unwrap().now();
+        if let Some(dividends) = self.dividends.get(&curr_date) {
+            return Some(dividends.clone());
+        }
+        None
     }
 }
 
@@ -139,16 +149,16 @@ pub struct PyInput<'a> {
 
 #[cfg(feature = "python")]
 impl<'a> DataSource<PyQuote, PyDividend> for PyInput<'a> {
-    fn get_quote(&self, symbol: &str) -> Option<&PyQuote> {
+    fn get_quote(&self, symbol: &str) -> Option<Arc<PyQuote>> {
         if let Some(ticker_pos_any) = self.tickers.get_item(symbol) {
-            let curr_date = self.clock.borrow().now();
+            let curr_date = self.clock.lock().unwrap().now();
             if let Some(quotes) = self.quotes.get_item(i64::from(curr_date)) {
                 if let Ok(quotes_list) = quotes.downcast::<PyList>() {
                     if let Ok(ticker_pos) = ticker_pos_any.extract::<usize>() {
                         let quote_any = &quotes_list[ticker_pos];
                         if let Ok(quote) = quote_any.downcast::<PyCell<PyQuote>>() {
                             let to_inner = quote.get();
-                            return Some(to_inner);
+                            return Some(Arc::new(to_inner.clone()));
                         }
                     }
                 }
@@ -158,12 +168,12 @@ impl<'a> DataSource<PyQuote, PyDividend> for PyInput<'a> {
     }
 
     //TODO: need to implement, can't do this without Python-native types
-    fn get_quotes(&self) -> Option<&[PyQuote]> {
+    fn get_quotes(&self) -> Option<Vec<Arc<PyQuote>>> {
         None
     }
 
     //TODO: need to implement, can't do this without Python-native types
-    fn get_dividends(&self) -> Option<&[PyDividend]> {
+    fn get_dividends(&self) -> Option<Vec<Arc<PyDividend>>> {
         None
     }
 }
@@ -172,8 +182,9 @@ pub fn fake_data_generator(clock: Clock) -> HashMapInput {
     let price_dist = Uniform::new(90.0, 100.0);
     let mut rng = thread_rng();
 
-    let mut raw_data: HashMap<DateTime, Vec<Quote>> = HashMap::with_capacity(clock.borrow().len());
-    for date in clock.borrow().peek() {
+    let mut raw_data: HashMap<DateTime, Vec<Arc<Quote>>> =
+        HashMap::with_capacity(clock.lock().unwrap().len());
+    for date in clock.lock().unwrap().peek() {
         let q1 = Quote::new(
             price_dist.sample(&mut rng),
             price_dist.sample(&mut rng),
@@ -186,12 +197,12 @@ pub fn fake_data_generator(clock: Clock) -> HashMapInput {
             date,
             "BCD",
         );
-        raw_data.insert(i64::from(date).into(), vec![q1, q2]);
+        raw_data.insert(i64::from(date).into(), vec![Arc::new(q1), Arc::new(q2)]);
     }
 
     let source = HashMapInputBuilder::new()
         .with_quotes(raw_data)
-        .with_clock(Rc::clone(&clock))
+        .with_clock(Arc::clone(&clock))
         .build();
     source
 }

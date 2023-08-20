@@ -1,5 +1,5 @@
 use log::info;
-use std::rc::Rc;
+use std::sync::Arc;
 
 use crate::broker::{
     BacktestBroker, BrokerCalculations, BrokerCashEvent, DividendPayment, EventLog, Trade,
@@ -104,7 +104,7 @@ where
             brkr: self.brkr.clone().unwrap(),
             target_weights: self.weights.clone().unwrap(),
             net_cash_flow: 0.0.into(),
-            clock: Rc::clone(self.clock.as_ref().unwrap()),
+            clock: Arc::clone(self.clock.as_ref().unwrap()),
             history: Vec::new(),
         }
     }
@@ -169,8 +169,9 @@ where
     pub fn get_snapshot(&mut self) -> StrategySnapshot {
         // Defaults to zero inflation because most users probably aren't looking
         // for real returns calcs
+        let now = self.clock.lock().unwrap().now();
         StrategySnapshot {
-            date: self.clock.borrow().now(),
+            date: now,
             portfolio_value: self.brkr.get_total_value(),
             net_cash_flow: self.net_cash_flow.clone(),
             inflation: 0.0,
@@ -186,7 +187,7 @@ where
 {
     fn init(&mut self, initital_cash: &f64) {
         self.deposit_cash(initital_cash);
-        if DefaultTradingSchedule::should_trade(&self.clock.borrow().now()) {
+        if DefaultTradingSchedule::should_trade(&self.clock.lock().unwrap().now()) {
             let orders = BrokerCalculations::diff_brkr_against_target_weights(
                 &self.target_weights,
                 &mut self.brkr,
@@ -200,7 +201,8 @@ where
 
     fn update(&mut self) -> CashValue {
         self.brkr.check();
-        if DefaultTradingSchedule::should_trade(&self.clock.borrow().now()) {
+        let now = self.clock.lock().unwrap().now();
+        if DefaultTradingSchedule::should_trade(&now) {
             let orders = BrokerCalculations::diff_brkr_against_target_weights(
                 &self.target_weights,
                 &mut self.brkr,
@@ -290,7 +292,7 @@ where
 mod tests {
 
     use std::collections::HashMap;
-    use std::rc::Rc;
+    use std::sync::Arc;
 
     use super::StaticWeightStrategyBuilder;
     use crate::broker::{BrokerCost, Dividend, Quote};
@@ -300,11 +302,11 @@ mod tests {
     use crate::types::{DateTime, Frequency, PortfolioAllocation};
 
     fn setup() -> (SimulatedBroker<HashMapInput, Quote, Dividend>, Clock) {
-        let mut prices: HashMap<DateTime, Vec<Quote>> = HashMap::new();
+        let mut prices: HashMap<DateTime, Vec<Arc<Quote>>> = HashMap::new();
 
-        let quote = Quote::new(100.00, 101.00, 100, "ABC");
-        let quote2 = Quote::new(104.00, 105.00, 101, "ABC");
-        let quote4 = Quote::new(95.00, 96.00, 102, "ABC");
+        let quote = Arc::new(Quote::new(100.00, 101.00, 100, "ABC"));
+        let quote2 = Arc::new(Quote::new(104.00, 105.00, 101, "ABC"));
+        let quote4 = Arc::new(Quote::new(95.00, 96.00, 102, "ABC"));
         prices.insert(100.into(), vec![quote]);
         prices.insert(101.into(), vec![quote2]);
         prices.insert(102.into(), vec![quote4]);
@@ -315,7 +317,7 @@ mod tests {
 
         let source = HashMapInputBuilder::new()
             .with_quotes(prices)
-            .with_clock(Rc::clone(&clock))
+            .with_clock(Arc::clone(&clock))
             .build();
 
         let brkr = SimulatedBrokerBuilder::<HashMapInput, Quote, Dividend>::new()
@@ -331,7 +333,7 @@ mod tests {
         let comp = setup();
         let _strat = StaticWeightStrategyBuilder::<HashMapInput, Quote, Dividend>::new()
             .with_brkr(comp.0)
-            .with_clock(Rc::clone(&comp.1))
+            .with_clock(Arc::clone(&comp.1))
             .default();
     }
 
@@ -342,7 +344,7 @@ mod tests {
         let weights = PortfolioAllocation::new();
         let _strat = StaticWeightStrategyBuilder::<HashMapInput, Quote, Dividend>::new()
             .with_weights(weights)
-            .with_clock(Rc::clone(&comp.1))
+            .with_clock(Arc::clone(&comp.1))
             .default();
     }
 

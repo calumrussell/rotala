@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 use std::marker::PhantomData;
-use std::rc::Rc;
+use std::sync::Arc;
 
 use crate::broker::{Order, OrderType, Trade, TradeType};
 use crate::clock::Clock;
@@ -35,8 +35,8 @@ pub trait Exchange<Q: Quotable> {
     //Represents size of orders in orderbook
     fn orderbook_size(&self) -> usize;
     fn flush_buffer(&mut self) -> Vec<Trade>;
-    fn get_quote(&self, symbol: &str) -> Option<&Q>;
-    fn get_quotes(&self) -> Option<&[Q]>;
+    fn get_quote(&self, symbol: &str) -> Option<Arc<Q>>;
+    fn get_quotes(&self) -> Option<Vec<Arc<Q>>>;
     fn clear(&mut self);
     fn clear_pending_market_orders_by_symbol(&mut self, symbol: &str);
 }
@@ -85,7 +85,7 @@ where
         }
 
         DefaultExchange::new(
-            Rc::clone(self.clock.as_ref().unwrap()),
+            Arc::clone(self.clock.as_ref().unwrap()),
             self.data_source.as_ref().unwrap().clone(),
         )
     }
@@ -147,7 +147,7 @@ where
     trade_log: Vec<Trade>,
     trade_buffer: Vec<Trade>,
     ready_state: DefaultExchangeState,
-    last_seen_quote: HashMap<String, Q>,
+    last_seen_quote: HashMap<String, Arc<Q>>,
     _dividend: PhantomData<D>,
 }
 
@@ -182,18 +182,18 @@ where
     D: Dividendable,
     T: DataSource<Q, D>,
 {
-    fn get_quote(&self, symbol: &str) -> Option<&Q> {
+    fn get_quote(&self, symbol: &str) -> Option<Arc<Q>> {
         if let Some(quote) = self.data_source.get_quote(symbol) {
             Some(quote)
         } else {
             if let Some(quote) = self.last_seen_quote.get(symbol) {
-                return Some(quote);
+                return Some(quote.clone());
             }
             None
         }
     }
 
-    fn get_quotes(&self) -> Option<&[Q]> {
+    fn get_quotes(&self) -> Option<Vec<Arc<Q>>> {
         self.data_source.get_quotes()
     }
 
@@ -237,7 +237,7 @@ where
         let execute_buy = |quote: &Q, order: &Order| -> Trade {
             let trade_price = quote.get_ask();
             let value = CashValue::from(**trade_price * **order.get_shares());
-            let date = self.clock.borrow().now();
+            let date = self.clock.lock().unwrap().now();
             Trade::new(
                 order.get_symbol(),
                 value,
@@ -250,7 +250,7 @@ where
         let execute_sell = |quote: &Q, order: &Order| -> Trade {
             let trade_price = quote.get_bid();
             let value = CashValue::from(**trade_price * **order.get_shares());
-            let date = self.clock.borrow().now();
+            let date = self.clock.lock().unwrap().now();
             Trade::new(
                 order.get_symbol(),
                 value,
@@ -264,13 +264,13 @@ where
             let security_id = order.get_symbol();
             if let Some(quote) = self.data_source.get_quote(security_id) {
                 let result = match order.get_order_type() {
-                    OrderType::MarketBuy => Some(execute_buy(quote, order)),
-                    OrderType::MarketSell => Some(execute_sell(quote, order)),
+                    OrderType::MarketBuy => Some(execute_buy(&quote, order)),
+                    OrderType::MarketSell => Some(execute_sell(&quote, order)),
                     OrderType::LimitBuy => {
                         //Unwrap is safe because LimitBuy will always have a price
                         let order_price = order.get_price().as_ref().unwrap();
                         if *order_price < *quote.get_ask() {
-                            Some(execute_buy(quote, order))
+                            Some(execute_buy(&quote, order))
                         } else {
                             None
                         }
@@ -279,7 +279,7 @@ where
                         //Unwrap is safe because LimitSell will always have a price
                         let order_price = order.get_price().as_ref().unwrap();
                         if *order_price > *quote.get_bid() {
-                            Some(execute_sell(quote, order))
+                            Some(execute_sell(&quote, order))
                         } else {
                             None
                         }
@@ -288,7 +288,7 @@ where
                         //Unwrap is safe because StopBuy will always have a price
                         let order_price = order.get_price().as_ref().unwrap();
                         if quote.get_ask() > order_price {
-                            Some(execute_buy(quote, order))
+                            Some(execute_buy(&quote, order))
                         } else {
                             None
                         }
@@ -297,7 +297,7 @@ where
                         //Unwrap is safe because StopSell will always have a price
                         let order_price = order.get_price().as_ref().unwrap();
                         if quote.get_bid() < order_price {
-                            Some(execute_sell(quote, order))
+                            Some(execute_sell(&quote, order))
                         } else {
                             None
                         }
@@ -371,9 +371,26 @@ where
     }
 }
 
+unsafe impl<T, Q, D> Send for DefaultExchange<T, Q, D>
+where
+    Q: Quotable,
+    D: Dividendable,
+    T: DataSource<Q, D>,
+{
+}
+
+unsafe impl<T, Q, D> Sync for DefaultExchange<T, Q, D>
+where
+    Q: Quotable,
+    D: Dividendable,
+    T: DataSource<Q, D>,
+{
+}
+
 #[cfg(test)]
 mod tests {
-    use std::{collections::HashMap, rc::Rc};
+    use std::collections::HashMap;
+    use std::sync::Arc;
 
     use super::{DefaultExchange, DefaultExchangeBuilder};
     use crate::broker::{Dividend, Order, OrderType, Quote};
@@ -386,15 +403,15 @@ mod tests {
         let mut quotes: QuotesHashMap = HashMap::new();
         quotes.insert(
             DateTime::from(100),
-            vec![Quote::new(101.00, 102.00, 100, "ABC")],
+            vec![Arc::new(Quote::new(101.00, 102.00, 100, "ABC"))],
         );
         quotes.insert(
             DateTime::from(101),
-            vec![Quote::new(101.00, 102.00, 101, "ABC")],
+            vec![Arc::new(Quote::new(101.00, 102.00, 101, "ABC"))],
         );
         quotes.insert(
             DateTime::from(102),
-            vec![Quote::new(105.00, 106.00, 102, "ABC")],
+            vec![Arc::new(Quote::new(105.00, 106.00, 102, "ABC"))],
         );
 
         let clock = ClockBuilder::with_length_in_seconds(100, 3)
@@ -402,16 +419,16 @@ mod tests {
             .build();
 
         let source = HashMapInputBuilder::new()
-            .with_clock(Rc::clone(&clock))
+            .with_clock(Arc::clone(&clock))
             .with_quotes(quotes)
             .build();
 
         let exchange = DefaultExchangeBuilder::new()
-            .with_clock(Rc::clone(&clock))
+            .with_clock(Arc::clone(&clock))
             .with_data_source(source)
             .build();
 
-        (exchange, Rc::clone(&clock))
+        (exchange, Arc::clone(&clock))
     }
 
     #[test]
@@ -425,7 +442,7 @@ mod tests {
         assert_eq!(exchange.get_trade_log().len(), 0);
         assert_eq!(exchange.orderbook_size(), 1);
 
-        clock.borrow_mut().tick();
+        clock.lock().unwrap().tick();
         exchange.check();
 
         println!("{:?}", exchange.get_trade_log());
@@ -441,7 +458,7 @@ mod tests {
 
         exchange.finish();
 
-        clock.borrow_mut().tick();
+        clock.lock().unwrap().tick();
         exchange.insert_order(order);
         exchange.check();
     }
@@ -454,7 +471,7 @@ mod tests {
         exchange.insert_order(order);
         exchange.finish();
 
-        clock.borrow_mut().tick();
+        clock.lock().unwrap().tick();
         exchange.check();
 
         println!("{:?}", exchange.get_trade_log());
@@ -468,14 +485,14 @@ mod tests {
         let (mut exchange, clock) = setup();
 
         //We need to tick forward to enter the order in the period before the price changes
-        clock.borrow_mut().tick();
+        clock.lock().unwrap().tick();
         exchange.check();
         let order = Order::market(OrderType::MarketBuy, "ABC", 100.00);
         exchange.insert_order(order);
         exchange.finish();
 
         //We only insert after check has been called
-        clock.borrow_mut().tick();
+        clock.lock().unwrap().tick();
         exchange.check();
 
         println!("{:?}", exchange.get_trade_log());
@@ -493,7 +510,7 @@ mod tests {
         exchange.insert_order(order);
         exchange.finish();
 
-        clock.borrow_mut().tick();
+        clock.lock().unwrap().tick();
         exchange.check();
 
         println!("{:?}", exchange.get_trade_log());
@@ -510,7 +527,7 @@ mod tests {
         exchange.insert_order(order0);
         exchange.finish();
 
-        clock.borrow_mut().tick();
+        clock.lock().unwrap().tick();
         exchange.check();
 
         println!("{:?}", exchange.get_trade_log());
@@ -527,7 +544,7 @@ mod tests {
         exchange.insert_order(order0);
         exchange.finish();
 
-        clock.borrow_mut().tick();
+        clock.lock().unwrap().tick();
         exchange.check();
 
         println!("{:?}", exchange.get_trade_log());
@@ -547,7 +564,7 @@ mod tests {
         exchange.insert_order(order0);
         exchange.finish();
 
-        clock.borrow_mut().tick();
+        clock.lock().unwrap().tick();
         exchange.check();
 
         println!("{:?}", exchange.get_trade_log());
@@ -566,7 +583,7 @@ mod tests {
         exchange.insert_order(order0);
         exchange.finish();
 
-        clock.borrow_mut().tick();
+        clock.lock().unwrap().tick();
         exchange.check();
 
         println!("{:?}", exchange.get_trade_log());
@@ -584,7 +601,7 @@ mod tests {
         exchange.insert_order(order0);
         exchange.finish();
 
-        clock.borrow_mut().tick();
+        clock.lock().unwrap().tick();
         exchange.check();
 
         println!("{:?}", exchange.get_trade_log());
@@ -599,7 +616,7 @@ mod tests {
         exchange.insert_order(order);
         exchange.finish();
 
-        clock.borrow_mut().tick();
+        clock.lock().unwrap().tick();
         exchange.check();
 
         println!("{:?}", exchange.get_trade_log());
@@ -612,12 +629,12 @@ mod tests {
         let mut quotes: QuotesHashMap = HashMap::new();
         quotes.insert(
             DateTime::from(100),
-            vec![Quote::new(101.00, 102.00, 100, "ABC")],
+            vec![Arc::new(Quote::new(101.00, 102.00, 100, "ABC"))],
         );
         quotes.insert(DateTime::from(101), vec![]);
         quotes.insert(
             DateTime::from(102),
-            vec![Quote::new(105.00, 106.00, 102, "ABC")],
+            vec![Arc::new(Quote::new(105.00, 106.00, 102, "ABC"))],
         );
 
         let clock = ClockBuilder::with_length_in_seconds(100, 3)
@@ -625,12 +642,12 @@ mod tests {
             .build();
 
         let source = HashMapInputBuilder::new()
-            .with_clock(Rc::clone(&clock))
+            .with_clock(Arc::clone(&clock))
             .with_quotes(quotes)
             .build();
 
         let mut exchange = DefaultExchangeBuilder::new()
-            .with_clock(Rc::clone(&clock))
+            .with_clock(Arc::clone(&clock))
             .with_data_source(source)
             .build();
 
@@ -638,14 +655,14 @@ mod tests {
         exchange.insert_order(order);
         exchange.finish();
 
-        clock.borrow_mut().tick();
+        clock.lock().unwrap().tick();
         exchange.check();
 
         //Orderbook should have one order and trade log has no executed trades
         assert_eq!(exchange.get_trade_log().len(), 0);
         assert_eq!(exchange.orderbook_size(), 1);
 
-        clock.borrow_mut().tick();
+        clock.lock().unwrap().tick();
         exchange.check();
 
         //Order should execute now

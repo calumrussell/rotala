@@ -13,7 +13,7 @@ use rand::thread_rng;
 use rand_distr::Distribution;
 
 use std::collections::HashMap;
-use std::rc::Rc;
+use std::sync::Arc;
 
 pub fn full_backtest_random_data() {
     let price_dist = Uniform::new(90.0, 100.0);
@@ -26,8 +26,9 @@ pub fn full_backtest_random_data() {
 
     let initial_cash: CashValue = 100_000.0.into();
 
-    let mut raw_data: HashMap<DateTime, Vec<Quote>> = HashMap::with_capacity(clock.borrow().len());
-    for date in clock.borrow().peek() {
+    let mut raw_data: HashMap<DateTime, Vec<Arc<Quote>>> =
+        HashMap::with_capacity(clock.lock().unwrap().len());
+    for date in clock.lock().unwrap().peek() {
         let q1 = Quote::new(
             price_dist.sample(&mut rng),
             price_dist.sample(&mut rng),
@@ -40,12 +41,12 @@ pub fn full_backtest_random_data() {
             date,
             "BCD",
         );
-        raw_data.insert(date, vec![q1, q2]);
+        raw_data.insert(date, vec![Arc::new(q1), Arc::new(q2)]);
     }
 
     let data = HashMapInputBuilder::new()
         .with_quotes(raw_data)
-        .with_clock(Rc::clone(&clock))
+        .with_clock(Arc::clone(&clock))
         .build();
 
     let mut weights: PortfolioAllocation = PortfolioAllocation::new();
@@ -54,7 +55,7 @@ pub fn full_backtest_random_data() {
 
     let exchange = DefaultExchangeBuilder::new()
         .with_data_source(data.clone())
-        .with_clock(Rc::clone(&clock))
+        .with_clock(Arc::clone(&clock))
         .build();
 
     let simbrkr = SimulatedBrokerBuilder::new()
@@ -66,11 +67,11 @@ pub fn full_backtest_random_data() {
     let strat = StaticWeightStrategyBuilder::new()
         .with_brkr(simbrkr)
         .with_weights(weights)
-        .with_clock(Rc::clone(&clock))
+        .with_clock(Arc::clone(&clock))
         .default();
 
     let mut sim = SimContextBuilder::new()
-        .with_clock(Rc::clone(&clock))
+        .with_clock(Arc::clone(&clock))
         .with_strategy(strat)
         .init(&initial_cash);
 
@@ -78,18 +79,18 @@ pub fn full_backtest_random_data() {
 }
 
 fn trade_execution_logic() {
-    let mut prices: HashMap<DateTime, Vec<Quote>> = HashMap::new();
-    let quote = Quote::new(100.00, 101.00, 100, "ABC");
-    let quote1 = Quote::new(10.00, 11.00, 100, "BCD");
+    let mut prices: HashMap<DateTime, Vec<Arc<Quote>>> = HashMap::new();
+    let quote = Arc::new(Quote::new(100.00, 101.00, 100, "ABC"));
+    let quote1 = Arc::new(Quote::new(10.00, 11.00, 100, "BCD"));
 
-    let quote2 = Quote::new(100.00, 101.00, 101, "ABC");
-    let quote3 = Quote::new(10.00, 11.00, 101, "BCD");
+    let quote2 = Arc::new(Quote::new(100.00, 101.00, 101, "ABC"));
+    let quote3 = Arc::new(Quote::new(10.00, 11.00, 101, "BCD"));
 
-    let quote4 = Quote::new(104.00, 105.00, 102, "ABC");
-    let quote5 = Quote::new(10.00, 11.00, 102, "BCD");
+    let quote4 = Arc::new(Quote::new(104.00, 105.00, 102, "ABC"));
+    let quote5 = Arc::new(Quote::new(10.00, 11.00, 102, "BCD"));
 
-    let quote6 = Quote::new(104.00, 105.00, 103, "ABC");
-    let quote7 = Quote::new(12.00, 13.00, 103, "BCD");
+    let quote6 = Arc::new(Quote::new(104.00, 105.00, 103, "ABC"));
+    let quote7 = Arc::new(Quote::new(12.00, 13.00, 103, "BCD"));
 
     prices.insert(100.into(), vec![quote, quote1]);
     prices.insert(101.into(), vec![quote2, quote3]);
@@ -102,11 +103,11 @@ fn trade_execution_logic() {
 
     let source = HashMapInputBuilder::new()
         .with_quotes(prices)
-        .with_clock(Rc::clone(&clock))
+        .with_clock(Arc::clone(&clock))
         .build();
 
     let exchange = DefaultExchangeBuilder::new()
-        .with_clock(Rc::clone(&clock))
+        .with_clock(Arc::clone(&clock))
         .with_data_source(source.clone())
         .build();
 
@@ -120,15 +121,15 @@ fn trade_execution_logic() {
     brkr.send_order(Order::market(OrderType::MarketBuy, "BCD", 100.0));
     brkr.finish();
 
-    clock.borrow_mut().tick();
+    clock.lock().unwrap().tick();
     brkr.check();
     brkr.finish();
 
-    clock.borrow_mut().tick();
+    clock.lock().unwrap().tick();
     brkr.check();
     brkr.finish();
 
-    clock.borrow_mut().tick();
+    clock.lock().unwrap().tick();
     brkr.check();
     brkr.finish();
 }

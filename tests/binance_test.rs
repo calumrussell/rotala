@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 use std::io::{Cursor, Write};
-use std::rc::Rc;
+use std::sync::Arc;
 
 use alator::broker::{BacktestBroker, Dividend, GetsQuote, Order, OrderType, Quote, TransferCash};
 use alator::clock::{Clock, ClockBuilder};
@@ -56,7 +56,7 @@ fn build_data() -> (QuotesHashMap, (i64, i64)) {
                                 date: open_date.into(),
                                 symbol: "BTC".into(),
                             };
-                            quotes.insert(open_date.into(), vec![quote]);
+                            quotes.insert(open_date.into(), vec![Arc::new(quote)]);
                             let close_date = (row[6].parse::<i64>().unwrap()) / 1000;
                             if close_date > max_date {
                                 max_date = close_date;
@@ -67,7 +67,7 @@ fn build_data() -> (QuotesHashMap, (i64, i64)) {
                                 date: close_date.into(),
                                 symbol: "BTC".into(),
                             };
-                            quotes.insert(close_date.into(), vec![quote1]);
+                            quotes.insert(close_date.into(), vec![Arc::new(quote1)]);
                         }
                     }
                 }
@@ -177,8 +177,8 @@ impl Strategy for MovingAverageStrategy {
         //incorrect state, a runtime failure seems most appropriate.
         if let Some(quote) = self.brkr.get_quote("BTC") {
             //Update our moving averages with the latest quote
-            self.ten.update(quote);
-            self.fifty.update(quote);
+            self.ten.update(&quote);
+            self.fifty.update(&quote);
 
             //If we are at the start of the simulation and don't have full data for each moving
             //average then don't trade
@@ -212,7 +212,7 @@ impl Strategy for MovingAverageStrategy {
         let val = self.brkr.get_total_value();
 
         let snap = StrategySnapshot {
-            date: self.clock.borrow().now(),
+            date: self.clock.lock().unwrap().now(),
             portfolio_value: val.clone(),
             net_cash_flow: CashValue::from(0.0),
             inflation: 0.0,
@@ -261,12 +261,12 @@ fn binance_test() {
         .build();
 
     let data = HashMapInputBuilder::new()
-        .with_clock(Rc::clone(&clock))
+        .with_clock(Arc::clone(&clock))
         .with_quotes(quotes)
         .build();
 
     let exchange = DefaultExchangeBuilder::new()
-        .with_clock(Rc::clone(&clock))
+        .with_clock(Arc::clone(&clock))
         .with_data_source(data.clone())
         .build();
 
@@ -275,10 +275,10 @@ fn binance_test() {
         .with_exchange(exchange)
         .build();
 
-    let strat = MovingAverageStrategy::new(simbrkr, Rc::clone(&clock));
+    let strat = MovingAverageStrategy::new(simbrkr, Arc::clone(&clock));
 
     let mut sim = SimContextBuilder::new()
-        .with_clock(Rc::clone(&clock))
+        .with_clock(Arc::clone(&clock))
         .with_strategy(strat)
         .init(&1_000_000.0.into());
 

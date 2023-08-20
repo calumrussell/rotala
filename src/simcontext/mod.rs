@@ -17,8 +17,8 @@ pub struct SimContext<T: Strategy + History> {
 
 impl<T: Strategy + History> SimContext<T> {
     pub fn run(&mut self) {
-        while self.clock.borrow().has_next() {
-            self.clock.borrow_mut().tick();
+        while self.clock.lock().unwrap().has_next() {
+            self.clock.lock().unwrap().tick();
             self.strategy.update();
         }
     }

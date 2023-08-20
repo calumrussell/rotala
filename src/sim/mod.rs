@@ -1,4 +1,5 @@
 use core::panic;
+use std::sync::{Arc, Mutex};
 
 use log::info;
 use std::marker::PhantomData;
@@ -21,7 +22,7 @@ where
     //Cannot run without data but can run with empty trade_costs
     data: Option<T>,
     trade_costs: Vec<BrokerCost>,
-    exchange: Option<DefaultExchange<T, Q, D>>,
+    exchange: Option<Arc<Mutex<DefaultExchange<T, Q, D>>>>,
     _quote: PhantomData<Q>,
     _dividend: PhantomData<D>,
 }
@@ -58,7 +59,7 @@ where
     }
 
     pub fn with_exchange(&mut self, exchange: DefaultExchange<T, Q, D>) -> &mut Self {
-        self.exchange = Some(exchange);
+        self.exchange = Some(Arc::new(Mutex::new(exchange)));
         self
     }
 
@@ -131,7 +132,7 @@ where
     cash: CashValue,
     log: BrokerLog,
     trade_costs: Vec<BrokerCost>,
-    exchange: DefaultExchange<T, Q, D>,
+    exchange: Arc<Mutex<DefaultExchange<T, Q, D>>>,
     ready_state: SimulatedBrokerReadyState,
 }
 
@@ -158,7 +159,10 @@ where
                 self.ready_state = SimulatedBrokerReadyState::Ready;
                 info!("BROKER: Moved into Ready state");
                 self.pay_dividends();
-                self.exchange.check();
+                //Do this at the top-level because we the operations below should be atomic
+                if let Ok(mut exchange) = self.exchange.lock() {
+                    exchange.check();
+                }
                 //Reconcile must come after check so we can immediately reconcile the state of the
                 //exchange with the broker
                 self.reconcile_exchange();
@@ -167,20 +171,24 @@ where
                 self.rebalance_cash();
             }
             SimulatedBrokerReadyState::InsufficientCash => {
-                //Make sure that the exchange state matches this by removing all unexecuted orders
-                self.exchange.clear();
+                if let Ok(mut exchange) = self.exchange.lock() {
+                    //Make sure that the exchange state matches this by removing all unexecuted orders
+                    exchange.clear();
+                }
             }
         }
     }
 
     pub fn finish(&mut self) {
-        self.exchange.finish();
-        self.ready_state = SimulatedBrokerReadyState::Invalid;
+        if let Ok(mut exchange) = self.exchange.lock() {
+            exchange.finish();
+            self.ready_state = SimulatedBrokerReadyState::Invalid;
+        }
     }
 
     fn reconcile_exchange(&mut self) {
         //All trades executed since the last call to this function
-        let executed_trades = self.exchange.flush_buffer();
+        let executed_trades = self.exchange.lock().unwrap().flush_buffer();
         for trade in &executed_trades {
             //TODO: if cash is below zero, we end the simulation. In practice, this shouldn't cause
             //problems because the broker will be unable to fund any future trades but exiting
@@ -460,14 +468,20 @@ where
                     );
                     return BrokerEvent::OrderInvalid(order.clone());
                 }
-                self.exchange.insert_order(order.clone());
-                info!(
-                    "BROKER: Successfully sent {:?} order for {:?} shares of {:?} to exchange",
-                    order.get_order_type(),
-                    order.get_shares(),
-                    order.get_symbol()
-                );
-                BrokerEvent::OrderSentToExchange(order)
+
+                if let Ok(mut exchange) = self.exchange.lock() {
+                    exchange.insert_order(order.clone());
+                    info!(
+                        "BROKER: Successfully sent {:?} order for {:?} shares of {:?} to exchange",
+                        order.get_order_type(),
+                        order.get_shares(),
+                        order.get_symbol()
+                    );
+                    BrokerEvent::OrderSentToExchange(order)
+                } else {
+                    //Unable to get lock on exchange
+                    BrokerEvent::OrderFailure(order.clone())
+                }
             }
             SimulatedBrokerReadyState::Invalid => {
                 panic!("Tried to send order before calling check");
@@ -486,7 +500,9 @@ where
     }
 
     fn clear_pending_market_orders_by_symbol(&mut self, symbol: &str) {
-        self.exchange.clear_pending_market_orders_by_symbol(symbol);
+        if let Ok(mut exchange) = self.exchange.lock() {
+            exchange.clear_pending_market_orders_by_symbol(symbol);
+        }
     }
 }
 
@@ -504,12 +520,12 @@ where
     D: Dividendable,
     T: DataSource<Q, D>,
 {
-    fn get_quote(&self, symbol: &str) -> Option<&Q> {
-        self.exchange.get_quote(symbol)
+    fn get_quote(&self, symbol: &str) -> Option<Arc<Q>> {
+        self.exchange.lock().unwrap().get_quote(symbol)
     }
 
-    fn get_quotes(&self) -> Option<&[Q]> {
-        self.exchange.get_quotes()
+    fn get_quotes(&self) -> Option<Vec<Arc<Q>>> {
+        self.exchange.lock().unwrap().get_quotes()
     }
 }
 
@@ -562,26 +578,26 @@ mod tests {
     use crate::types::{DateTime, Frequency};
 
     use std::collections::HashMap;
-    use std::rc::Rc;
+    use std::sync::Arc;
 
     fn setup() -> (SimulatedBroker<HashMapInput, Quote, Dividend>, Clock) {
-        let mut prices: HashMap<DateTime, Vec<Quote>> = HashMap::new();
-        let mut dividends: HashMap<DateTime, Vec<Dividend>> = HashMap::new();
-        let quote = Quote::new(100.00, 101.00, 100, "ABC");
-        let quote1 = Quote::new(10.00, 11.00, 100, "BCD");
-        let quote2 = Quote::new(104.00, 105.00, 101, "ABC");
-        let quote3 = Quote::new(14.00, 15.00, 101, "BCD");
-        let quote4 = Quote::new(95.00, 96.00, 102, "ABC");
-        let quote5 = Quote::new(10.00, 11.00, 102, "BCD");
-        let quote6 = Quote::new(95.00, 96.00, 103, "ABC");
-        let quote7 = Quote::new(10.00, 11.00, 103, "BCD");
+        let mut prices: HashMap<DateTime, Vec<Arc<Quote>>> = HashMap::new();
+        let mut dividends: HashMap<DateTime, Vec<Arc<Dividend>>> = HashMap::new();
+        let quote = Arc::new(Quote::new(100.00, 101.00, 100, "ABC"));
+        let quote1 = Arc::new(Quote::new(10.00, 11.00, 100, "BCD"));
+        let quote2 = Arc::new(Quote::new(104.00, 105.00, 101, "ABC"));
+        let quote3 = Arc::new(Quote::new(14.00, 15.00, 101, "BCD"));
+        let quote4 = Arc::new(Quote::new(95.00, 96.00, 102, "ABC"));
+        let quote5 = Arc::new(Quote::new(10.00, 11.00, 102, "BCD"));
+        let quote6 = Arc::new(Quote::new(95.00, 96.00, 103, "ABC"));
+        let quote7 = Arc::new(Quote::new(10.00, 11.00, 103, "BCD"));
 
         prices.insert(100.into(), vec![quote, quote1]);
         prices.insert(101.into(), vec![quote2, quote3]);
         prices.insert(102.into(), vec![quote4, quote5]);
         prices.insert(103.into(), vec![quote6, quote7]);
 
-        let divi1 = Dividend::new(5.0, "ABC", 102);
+        let divi1 = Arc::new(Dividend::new(5.0, "ABC", 102));
         dividends.insert(102.into(), vec![divi1]);
 
         let clock = ClockBuilder::with_length_in_seconds(100, 5)
@@ -591,11 +607,11 @@ mod tests {
         let source = HashMapInputBuilder::new()
             .with_quotes(prices)
             .with_dividends(dividends)
-            .with_clock(Rc::clone(&clock))
+            .with_clock(Arc::clone(&clock))
             .build();
 
         let exchange = DefaultExchangeBuilder::new()
-            .with_clock(Rc::clone(&clock))
+            .with_clock(Arc::clone(&clock))
             .with_data_source(source.clone())
             .build();
 
@@ -611,7 +627,7 @@ mod tests {
     fn test_cash_deposit_withdraw() {
         let (mut brkr, clock) = setup();
         brkr.deposit_cash(&100.0);
-        clock.borrow_mut().tick();
+        clock.lock().unwrap().tick();
 
         //Test cash
         assert!(matches!(
@@ -651,7 +667,7 @@ mod tests {
         assert!(matches!(res, BrokerEvent::OrderSentToExchange(..)));
         brkr.finish();
 
-        clock.borrow_mut().tick();
+        clock.lock().unwrap().tick();
         brkr.check();
         brkr.finish();
 
@@ -671,7 +687,7 @@ mod tests {
         assert!(matches!(res, BrokerEvent::OrderInvalid(..)));
         brkr.finish();
 
-        clock.borrow_mut().tick();
+        clock.lock().unwrap().tick();
         brkr.check();
         brkr.finish();
 
@@ -687,12 +703,12 @@ mod tests {
         assert!(matches!(res, BrokerEvent::OrderSentToExchange(..)));
         brkr.finish();
 
-        clock.borrow_mut().tick();
+        clock.lock().unwrap().tick();
         brkr.check();
         brkr.finish();
 
         //Order greater than current holding
-        clock.borrow_mut().tick();
+        clock.lock().unwrap().tick();
         brkr.check();
         let res = brkr.send_order(Order::market(OrderType::MarketSell, "ABC", 105.0));
         assert!(matches!(res, BrokerEvent::OrderInvalid(..)));
@@ -712,18 +728,18 @@ mod tests {
         assert!(matches!(res, BrokerEvent::OrderSentToExchange(..)));
         brkr.finish();
 
-        clock.borrow_mut().tick();
+        clock.lock().unwrap().tick();
         brkr.check();
         brkr.finish();
         let cash = brkr.get_cash_balance();
 
-        clock.borrow_mut().tick();
+        clock.lock().unwrap().tick();
         brkr.check();
         let res = brkr.send_order(Order::market(OrderType::MarketSell, "ABC", 295.0));
         assert!(matches!(res, BrokerEvent::OrderSentToExchange(..)));
         brkr.finish();
 
-        clock.borrow_mut().tick();
+        clock.lock().unwrap().tick();
         brkr.check();
         brkr.finish();
         let cash0 = brkr.get_cash_balance();
@@ -740,12 +756,12 @@ mod tests {
         brkr.send_order(Order::market(OrderType::MarketBuy, "ABC", 495.0));
         brkr.finish();
 
-        clock.borrow_mut().tick();
+        clock.lock().unwrap().tick();
         brkr.check();
         brkr.finish();
         let val = brkr.get_position_value("ABC").unwrap();
 
-        clock.borrow_mut().tick();
+        clock.lock().unwrap().tick();
         brkr.check();
         brkr.finish();
         let val1 = brkr.get_position_value("ABC").unwrap();
@@ -759,11 +775,11 @@ mod tests {
         brkr.send_order(Order::market(OrderType::MarketBuy, "ABC", 495.0));
         brkr.finish();
 
-        clock.borrow_mut().tick();
+        clock.lock().unwrap().tick();
         brkr.check();
         brkr.finish();
 
-        clock.borrow_mut().tick();
+        clock.lock().unwrap().tick();
         brkr.check();
         brkr.finish();
 
@@ -778,12 +794,12 @@ mod tests {
         brkr.send_order(Order::market(OrderType::MarketBuy, "ABC", 495.0));
         brkr.finish();
 
-        clock.borrow_mut().tick();
+        clock.lock().unwrap().tick();
         brkr.check();
         brkr.finish();
         let cash_before_dividend = brkr.get_cash_balance();
 
-        clock.borrow_mut().tick();
+        clock.lock().unwrap().tick();
         brkr.check();
         brkr.finish();
         let cash_after_dividend = brkr.get_cash_balance();
@@ -793,8 +809,8 @@ mod tests {
     #[test]
     #[should_panic]
     fn test_that_broker_builder_fails_without_exchange() {
-        let mut prices: HashMap<DateTime, Vec<Quote>> = HashMap::new();
-        let quote = Quote::new(100.00, 101.00, 100, "ABC");
+        let mut prices: HashMap<DateTime, Vec<Arc<Quote>>> = HashMap::new();
+        let quote = Arc::new(Quote::new(100.00, 101.00, 100, "ABC"));
         prices.insert(100.into(), vec![quote]);
 
         let clock = ClockBuilder::with_length_in_seconds(100, 2)
@@ -803,7 +819,7 @@ mod tests {
 
         let source = HashMapInputBuilder::new()
             .with_quotes(prices)
-            .with_clock(Rc::clone(&clock))
+            .with_clock(Arc::clone(&clock))
             .build();
 
         let _brkr = SimulatedBrokerBuilder::new().with_data(source).build();
@@ -819,11 +835,11 @@ mod tests {
 
     #[test]
     fn test_that_broker_build_passes_without_trade_costs() {
-        let mut prices: HashMap<DateTime, Vec<Quote>> = HashMap::new();
+        let mut prices: HashMap<DateTime, Vec<Arc<Quote>>> = HashMap::new();
 
-        let quote = Quote::new(100.00, 101.00, 100, "ABC");
-        let quote2 = Quote::new(104.00, 105.00, 101, "ABC");
-        let quote4 = Quote::new(95.00, 96.00, 102, "ABC");
+        let quote = Arc::new(Quote::new(100.00, 101.00, 100, "ABC"));
+        let quote2 = Arc::new(Quote::new(104.00, 105.00, 101, "ABC"));
+        let quote4 = Arc::new(Quote::new(95.00, 96.00, 102, "ABC"));
         prices.insert(100.into(), vec![quote]);
         prices.insert(101.into(), vec![quote2]);
         prices.insert(102.into(), vec![quote4]);
@@ -834,11 +850,11 @@ mod tests {
 
         let source = HashMapInputBuilder::new()
             .with_quotes(prices)
-            .with_clock(Rc::clone(&clock))
+            .with_clock(Arc::clone(&clock))
             .build();
 
         let exchange = DefaultExchangeBuilder::new()
-            .with_clock(Rc::clone(&clock))
+            .with_clock(Arc::clone(&clock))
             .with_data_source(source.clone())
             .build();
 
@@ -856,18 +872,18 @@ mod tests {
         //they will ask for a quote, not find one, and then use a value of zero which is
         //incorrect.
 
-        let mut prices: HashMap<DateTime, Vec<Quote>> = HashMap::new();
-        let dividends: HashMap<DateTime, Vec<Dividend>> = HashMap::new();
-        let quote = Quote::new(100.00, 101.00, 100, "ABC");
-        let quote1 = Quote::new(10.00, 11.00, 100, "BCD");
+        let mut prices: HashMap<DateTime, Vec<Arc<Quote>>> = HashMap::new();
+        let dividends: HashMap<DateTime, Vec<Arc<Dividend>>> = HashMap::new();
+        let quote = Arc::new(Quote::new(100.00, 101.00, 100, "ABC"));
+        let quote1 = Arc::new(Quote::new(10.00, 11.00, 100, "BCD"));
 
-        let quote2 = Quote::new(100.00, 101.00, 101, "ABC");
-        let quote3 = Quote::new(10.00, 11.00, 101, "BCD");
+        let quote2 = Arc::new(Quote::new(100.00, 101.00, 101, "ABC"));
+        let quote3 = Arc::new(Quote::new(10.00, 11.00, 101, "BCD"));
 
-        let quote4 = Quote::new(104.00, 105.00, 102, "ABC");
+        let quote4 = Arc::new(Quote::new(104.00, 105.00, 102, "ABC"));
 
-        let quote5 = Quote::new(104.00, 105.00, 103, "ABC");
-        let quote6 = Quote::new(12.00, 13.00, 103, "BCD");
+        let quote5 = Arc::new(Quote::new(104.00, 105.00, 103, "ABC"));
+        let quote6 = Arc::new(Quote::new(12.00, 13.00, 103, "BCD"));
 
         prices.insert(100.into(), vec![quote, quote1]);
         //Trades execute here
@@ -884,11 +900,11 @@ mod tests {
         let source = HashMapInputBuilder::new()
             .with_quotes(prices)
             .with_dividends(dividends)
-            .with_clock(Rc::clone(&clock))
+            .with_clock(Arc::clone(&clock))
             .build();
 
         let exchange = DefaultExchangeBuilder::new()
-            .with_clock(Rc::clone(&clock))
+            .with_clock(Arc::clone(&clock))
             .with_data_source(source.clone())
             .build();
 
@@ -904,12 +920,12 @@ mod tests {
         brkr.finish();
 
         //Trades execute
-        clock.borrow_mut().tick();
+        clock.lock().unwrap().tick();
         brkr.check();
         brkr.finish();
 
         //Missing live quote for BCD
-        clock.borrow_mut().tick();
+        clock.lock().unwrap().tick();
         brkr.check();
         brkr.finish();
         let value = brkr.get_position_value("BCD").unwrap();
@@ -918,7 +934,7 @@ mod tests {
         assert!(*value == 10.0 * 100.0);
 
         //BCD has quote again
-        clock.borrow_mut().tick();
+        clock.lock().unwrap().tick();
         brkr.check();
         brkr.finish();
 
@@ -936,10 +952,10 @@ mod tests {
         //For example, if orders are issued for 100% of the portfolio then if prices rises then we
         //can end up with negative balances.
 
-        let mut prices: HashMap<DateTime, Vec<Quote>> = HashMap::new();
-        let quote = Quote::new(100.00, 101.00, 100, "ABC");
-        let quote1 = Quote::new(150.00, 151.00, 101, "ABC");
-        let quote2 = Quote::new(150.00, 151.00, 102, "ABC");
+        let mut prices: HashMap<DateTime, Vec<Arc<Quote>>> = HashMap::new();
+        let quote = Arc::new(Quote::new(100.00, 101.00, 100, "ABC"));
+        let quote1 = Arc::new(Quote::new(150.00, 151.00, 101, "ABC"));
+        let quote2 = Arc::new(Quote::new(150.00, 151.00, 102, "ABC"));
 
         prices.insert(100.into(), vec![quote]);
         prices.insert(101.into(), vec![quote1]);
@@ -951,11 +967,11 @@ mod tests {
 
         let source = HashMapInputBuilder::new()
             .with_quotes(prices)
-            .with_clock(Rc::clone(&clock))
+            .with_clock(Arc::clone(&clock))
             .build();
 
         let exchange = DefaultExchangeBuilder::new()
-            .with_clock(Rc::clone(&clock))
+            .with_clock(Arc::clone(&clock))
             .with_data_source(source.clone())
             .build();
 
@@ -972,7 +988,7 @@ mod tests {
         brkr.finish();
 
         //Trades execute
-        clock.borrow_mut().tick();
+        clock.lock().unwrap().tick();
         brkr.check();
         brkr.finish();
 
@@ -980,7 +996,7 @@ mod tests {
         assert!(*cash < 0.0);
 
         //Broker rebalances to raise cash
-        clock.borrow_mut().tick();
+        clock.lock().unwrap().tick();
         brkr.check();
         brkr.finish();
         let cash1 = brkr.get_cash_balance();
