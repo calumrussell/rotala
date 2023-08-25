@@ -1,14 +1,15 @@
-use std::sync::{Arc, Mutex};
 use futures::future::join_all;
+use std::sync::{Arc, Mutex};
 
 use crate::clock::Clock;
+use crate::input::QuotesHashMap;
 use crate::perf::{BacktestOutput, PerformanceCalculator};
 use crate::strategy::{History, Strategy};
 use crate::types::{CashValue, Frequency};
 
 pub struct SimContext<T: Strategy + History> {
     clock: Clock,
-    strategy: T
+    strategy: T,
 }
 
 impl<T: Strategy + History> SimContext<T> {
@@ -98,32 +99,33 @@ impl<T: Strategy + History + std::marker::Send + 'static> SimContextBuilder<T> {
     //back to the caller. This mutation ensures that the SimContext is not handed back in an
     //unintialized state that could lead to subtle errors if the client attempts to trade with, for
     //example, no cash balance.
-    pub fn init_first(&self, initial_cash: &CashValue) -> SimContext<T> {
+    pub fn init_first(&mut self, initial_cash: &CashValue) -> SimContext<T> {
         if self.clock.is_none() || self.strategies.is_empty() {
             panic!("SimContext must be called with clock and strategy");
         }
 
+        let strategy = self.strategies.remove(0);
         let mut cxt = SimContext::<T> {
             clock: self.clock.as_ref().unwrap().clone(),
-            strategy: self.strategies.get(0).unwrap().clone(),
+            strategy,
         };
         cxt.init(initial_cash);
         cxt
     }
 
-    pub fn init_all(&self, initial_cash: &CashValue) -> SimContextMulti<T> {
+    pub fn init_all(&mut self, initial_cash: &CashValue) -> SimContextMulti<T> {
         if self.clock.is_none() || self.strategies.is_empty() {
             panic!("SimContext must be called with clock and strategy");
         }
 
         let mut into_arc_mutex = Vec::new();
-        for strategy in &self.strategies {
-            into_arc_mutex.push(Arc::new(Mutex::new(strategy.clone())));
+        for i in 0..self.strategies.len() {
+            into_arc_mutex.push(Arc::new(Mutex::new(self.strategies.remove(i))));
         }
 
         let mut cxt = SimContextMulti::<T> {
             clock: self.clock.as_ref().unwrap().clone(),
-            strategies: into_arc_mutex
+            strategies: into_arc_mutex,
         };
         cxt.init(initial_cash);
         cxt

@@ -71,10 +71,10 @@ async fn full_backtest_random_data() {
 
     let mut sim = SimContextBuilder::new()
         .with_clock(clock.clone())
-        .with_strategy(strat)
-        .init(&initial_cash);
+        .add_strategy(strat)
+        .init_first(&initial_cash);
 
-    sim.run().await;
+    sim.run();
 }
 
 fn trade_execution_logic() {
@@ -134,10 +134,7 @@ fn trade_execution_logic() {
 }
 
 fn benchmarks(c: &mut Criterion) {
-    c.bench_function("full backtest", |b| {
-        let rt = tokio::runtime::Runtime::new().unwrap();
-        b.to_async(&rt).iter(full_backtest_random_data)
-    });
+    c.bench_function("full backtest", |b| b.iter(full_backtest_random_data));
     c.bench_function("trade test", |b| b.iter(trade_execution_logic));
 }
 

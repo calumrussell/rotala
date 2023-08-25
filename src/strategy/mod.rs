@@ -32,7 +32,7 @@ use crate::types::{CashValue, PortfolioAllocation, StrategySnapshot};
 ///components of a backtest, runs it, and offers the interface into the components (like
 ///`Strategy`) to clients. The reasoning for this is explained in the documentation for
 ///`SimContext`.
-pub trait Strategy: TransferTo + Clone {
+pub trait Strategy: TransferTo {
     fn update(&mut self);
     fn init(&mut self, initial_cash: &f64);
 }
@@ -95,14 +95,16 @@ where
     D: Dividendable,
     T: DataSource<Q, D>,
 {
-    pub fn default(&self) -> StaticWeightStrategy<T, Q, D> {
+    pub fn default(&mut self) -> StaticWeightStrategy<T, Q, D> {
         if self.brkr.is_none() || self.weights.is_none() || self.clock.is_none() {
             panic!("Strategy must have broker, weights, and clock");
         }
 
+        let brkr = std::mem::replace(&mut self.brkr, None);
+        let weights = std::mem::replace(&mut self.weights, None);
         StaticWeightStrategy {
-            brkr: self.brkr.clone().unwrap(),
-            target_weights: self.weights.clone().unwrap(),
+            brkr: brkr.unwrap(),
+            target_weights: weights.unwrap(),
             net_cash_flow: 0.0.into(),
             clock: self.clock.as_ref().unwrap().clone(),
             history: Vec::new(),
@@ -146,7 +148,6 @@ where
 
 ///Basic implementation of an investment strategy which takes a set of fixed-weight allocations and
 ///rebalances over time towards those weights.
-#[derive(Clone)]
 pub struct StaticWeightStrategy<T, Q, D>
 where
     Q: Quotable,
@@ -205,7 +206,6 @@ where
                 self.brkr.send_orders(&orders);
             }
         }
-        self.brkr.finish();
     }
 
     fn update(&mut self) {
@@ -220,7 +220,6 @@ where
                 self.brkr.send_orders(&orders);
             }
         }
-        self.brkr.finish();
         let snap = self.get_snapshot();
         self.history.push(snap);
     }

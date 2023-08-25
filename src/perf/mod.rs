@@ -258,7 +258,7 @@ mod tests {
     use std::collections::HashMap;
     use std::sync::Arc;
 
-    use crate::broker::{BrokerCost, Dividend, Quote};
+    use crate::broker::{BrokerCost, Dividend, Order, Quote, Trade};
     use crate::clock::{Clock, ClockBuilder};
     use crate::exchange::DefaultExchangeBuilder;
     use crate::input::{HashMapInput, HashMapInputBuilder};
@@ -298,17 +298,26 @@ mod tests {
             .with_clock(clock.clone())
             .build();
 
-        let exchange = DefaultExchangeBuilder::new()
-            .with_data_source(source.clone())
-            .with_clock(clock.clone())
+        let (price_tx, mut price_rx) = tokio::sync::broadcast::channel::<Vec<Arc<Quote>>>(100);
+        let (notify_tx, mut notify_rx) = tokio::sync::broadcast::channel::<Trade>(100);
+        let (order_tx, order_rx) = tokio::sync::mpsc::channel::<Order>(100);
+
+        let brkr = SimulatedBrokerBuilder::new()
+            .with_data(source.clone())
+            .with_trade_costs(vec![BrokerCost::flat(1.0)])
+            .with_nofify_receiver(notify_tx.subscribe())
+            .with_order_sender(order_tx)
+            .with_price_receiver(price_tx.subscribe())
             .build();
 
-        let sb = SimulatedBrokerBuilder::new()
-            .with_data(source)
-            .with_exchange(exchange)
-            .with_trade_costs(vec![BrokerCost::Flat(0.0.into())])
+        let exchange = DefaultExchangeBuilder::new()
+            .with_clock(clock.clone())
+            .with_data_source(source)
+            .with_notify_sender(notify_tx)
+            .with_order_reciever(order_rx)
+            .with_price_sender(price_tx)
             .build();
-        (sb, clock)
+        (brkr, clock)
     }
 
     #[test]
