@@ -1,5 +1,5 @@
 use alator::clock::{Clock, ClockBuilder};
-use alator::exchange::DefaultExchangeBuilder;
+use alator::exchange::builder::DefaultExchangeBuilder;
 use alator::input::HashMapInputBuilder;
 use alator::strategy::StaticWeightStrategyBuilder;
 use rand::distributions::{Distribution, Uniform};
@@ -57,16 +57,15 @@ async fn staticweight_integration_test() {
     weights.insert("ABC", 0.5);
     weights.insert("BCD", 0.5);
 
-    let exchange = DefaultExchangeBuilder::new()
+    let mut exchange = DefaultExchangeBuilder::new()
         .with_data_source(data.clone())
         .with_clock(clock.clone())
         .build();
 
     let simbrkr = SimulatedBrokerBuilder::new()
         .with_data(data)
-        .with_exchange(exchange)
         .with_trade_costs(vec![BrokerCost::Flat(1.0.into())])
-        .build();
+        .build(&mut exchange);
 
     let strat = StaticWeightStrategyBuilder::new()
         .with_brkr(simbrkr)

@@ -1,5 +1,5 @@
 use alator::clock::{Clock, ClockBuilder};
-use alator::exchange::DefaultExchangeBuilder;
+use alator::exchange::builder::DefaultExchangeBuilder;
 use alator::input::HashMapInputBuilder;
 use alator::strategy::StaticWeightStrategyBuilder;
 use rand::distributions::{Distribution, Uniform};
@@ -65,16 +65,15 @@ async fn staticweight_integration_test() {
     third_weights.insert("ABC", 0.7);
     third_weights.insert("BCD", 0.3);
 
-    let exchange = DefaultExchangeBuilder::new()
+    let mut exchange = DefaultExchangeBuilder::new()
         .with_data_source(data.clone())
         .with_clock(clock.clone())
         .build();
 
     let simbrkr_first = SimulatedBrokerBuilder::new()
         .with_data(data.clone())
-        .with_exchange(exchange.clone())
         .with_trade_costs(vec![BrokerCost::Flat(1.0.into())])
-        .build();
+        .build(&mut exchange);
 
     let strat_first = StaticWeightStrategyBuilder::new()
         .with_brkr(simbrkr_first)
@@ -84,9 +83,8 @@ async fn staticweight_integration_test() {
 
     let simbrkr_second = SimulatedBrokerBuilder::new()
         .with_data(data.clone())
-        .with_exchange(exchange.clone())
         .with_trade_costs(vec![BrokerCost::Flat(1.0.into())])
-        .build();
+        .build(&mut exchange);
 
     let strat_second = StaticWeightStrategyBuilder::new()
         .with_brkr(simbrkr_second)
@@ -96,9 +94,8 @@ async fn staticweight_integration_test() {
 
     let simbrkr_third = SimulatedBrokerBuilder::new()
         .with_data(data.clone())
-        .with_exchange(exchange.clone())
         .with_trade_costs(vec![BrokerCost::Flat(1.0.into())])
-        .build();
+        .build(&mut exchange);
 
     let strat_third = StaticWeightStrategyBuilder::new()
         .with_brkr(simbrkr_third)

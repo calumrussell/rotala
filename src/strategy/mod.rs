@@ -303,6 +303,7 @@ mod tests {
     use super::StaticWeightStrategyBuilder;
     use crate::broker::{BrokerCost, Dividend, Quote};
     use crate::clock::{Clock, ClockBuilder};
+    use crate::exchange::builder::DefaultExchangeBuilder;
     use crate::input::{HashMapInput, HashMapInputBuilder};
     use crate::sim::{SimulatedBroker, SimulatedBrokerBuilder};
     use crate::types::{DateTime, Frequency, PortfolioAllocation};
@@ -326,10 +327,15 @@ mod tests {
             .with_clock(clock.clone())
             .build();
 
+        let mut exchange = DefaultExchangeBuilder::new()
+            .with_clock(clock.clone())
+            .with_data_source(source.clone())
+            .build();
+
         let brkr = SimulatedBrokerBuilder::<HashMapInput, Quote, Dividend>::new()
             .with_data(source)
             .with_trade_costs(vec![BrokerCost::flat(0.1)])
-            .build();
+            .build(&mut exchange);
         (brkr, clock)
     }
 

@@ -4,7 +4,7 @@ use std::sync::Arc;
 
 use alator::broker::{BacktestBroker, Dividend, GetsQuote, Order, OrderType, Quote, TransferCash};
 use alator::clock::{Clock, ClockBuilder};
-use alator::exchange::DefaultExchangeBuilder;
+use alator::exchange::builder::DefaultExchangeBuilder;
 use alator::input::{HashMapInput, HashMapInputBuilder, QuotesHashMap};
 use alator::sim::{SimulatedBroker, SimulatedBrokerBuilder};
 use alator::simcontext::SimContextBuilder;
@@ -117,7 +117,6 @@ impl MovingAverage {
     }
 }
 
-#[derive(Clone)]
 //Our strategy needs a reference to a Broker, and the broker needs a data source that implements
 //the DataSource trait. We are using the default HashMapInput, but it is possible to create your
 //own source.
@@ -265,15 +264,14 @@ async fn binance_test() {
         .with_quotes(quotes)
         .build();
 
-    let exchange = DefaultExchangeBuilder::new()
+    let mut exchange = DefaultExchangeBuilder::new()
         .with_clock(clock.clone())
         .with_data_source(data.clone())
         .build();
 
     let simbrkr = SimulatedBrokerBuilder::new()
         .with_data(data)
-        .with_exchange(exchange)
-        .build();
+        .build(&mut exchange);
 
     let strat = MovingAverageStrategy::new(simbrkr, clock.clone());
 

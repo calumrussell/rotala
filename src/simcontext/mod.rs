@@ -2,7 +2,6 @@ use futures::future::join_all;
 use std::sync::{Arc, Mutex};
 
 use crate::clock::Clock;
-use crate::input::QuotesHashMap;
 use crate::perf::{BacktestOutput, PerformanceCalculator};
 use crate::strategy::{History, Strategy};
 use crate::types::{CashValue, Frequency};

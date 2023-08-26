@@ -1,6 +1,6 @@
 use alator::broker::{BacktestBroker, BrokerCost, Order, OrderType, Quote, TransferCash};
 use alator::clock::ClockBuilder;
-use alator::exchange::DefaultExchangeBuilder;
+use alator::exchange::builder::DefaultExchangeBuilder;
 use alator::input::HashMapInputBuilder;
 use alator::sim::SimulatedBrokerBuilder;
 use alator::simcontext::SimContextBuilder;
@@ -52,16 +52,15 @@ async fn full_backtest_random_data() {
     weights.insert("ABC", 0.5);
     weights.insert("BCD", 0.5);
 
-    let exchange = DefaultExchangeBuilder::new()
+    let mut exchange = DefaultExchangeBuilder::new()
         .with_data_source(data.clone())
         .with_clock(clock.clone())
         .build();
 
     let simbrkr = SimulatedBrokerBuilder::new()
         .with_data(data)
-        .with_exchange(exchange)
         .with_trade_costs(vec![BrokerCost::Flat(1.0.into())])
-        .build();
+        .build(&mut exchange);
 
     let strat = StaticWeightStrategyBuilder::new()
         .with_brkr(simbrkr)
@@ -96,7 +95,7 @@ fn trade_execution_logic() {
     prices.insert(102.into(), vec![quote4, quote5]);
     prices.insert(103.into(), vec![quote6, quote7]);
 
-    let mut clock = ClockBuilder::with_length_in_seconds(100, 5)
+    let clock = ClockBuilder::with_length_in_seconds(100, 5)
         .with_frequency(&Frequency::Second)
         .build();
 
@@ -105,32 +104,27 @@ fn trade_execution_logic() {
         .with_clock(clock.clone())
         .build();
 
-    let exchange = DefaultExchangeBuilder::new()
+    let mut exchange = DefaultExchangeBuilder::new()
         .with_clock(clock.clone())
         .with_data_source(source.clone())
         .build();
 
     let mut brkr = SimulatedBrokerBuilder::new()
         .with_data(source)
-        .with_exchange(exchange)
-        .build();
+        .build(&mut exchange);
 
     brkr.deposit_cash(&100_000.0);
     brkr.send_order(Order::market(OrderType::MarketBuy, "ABC", 100.0));
     brkr.send_order(Order::market(OrderType::MarketBuy, "BCD", 100.0));
-    brkr.finish();
 
-    clock.tick();
+    exchange.check();
     brkr.check();
-    brkr.finish();
 
-    clock.tick();
+    exchange.check();
     brkr.check();
-    brkr.finish();
 
-    clock.tick();
+    exchange.check();
     brkr.check();
-    brkr.finish();
 }
 
 fn benchmarks(c: &mut Criterion) {
