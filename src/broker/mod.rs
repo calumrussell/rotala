@@ -4,7 +4,9 @@ use std::fmt::Formatter;
 use std::sync::Arc;
 use std::{cmp::Ordering, fmt::Display};
 
-use crate::exchange::types::{DefaultSubscriberId, ExchangeOrder, ExchangeTrade};
+use crate::exchange::types::{
+    DefaultSubscriberId, ExchangeOrder, ExchangeOrderMessage, ExchangeTrade,
+};
 use crate::input::{Dividendable, Quotable};
 use crate::types::{
     CashValue, DateTime, PortfolioAllocation, PortfolioHoldings, PortfolioQty, PortfolioValues,
@@ -538,19 +540,22 @@ impl Order {
         }
     }
 
-    pub fn into_exchange(&self, subscriber_id: DefaultSubscriberId) -> ExchangeOrder {
+    pub fn into_exchange_message(
+        &self,
+        subscriber_id: DefaultSubscriberId,
+    ) -> ExchangeOrderMessage {
         let price: Option<f64> = match self.get_price() {
             Some(price) => Some((*price.clone()).into()),
             None => None,
         };
 
-        ExchangeOrder {
+        ExchangeOrderMessage::CreateOrder(ExchangeOrder {
             subscriber_id,
             price,
             shares: **self.get_shares(),
             symbol: self.get_symbol().to_string(),
             order_type: (*self.get_order_type()).into(),
-        }
+        })
     }
 }
 

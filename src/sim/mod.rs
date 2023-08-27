@@ -166,11 +166,16 @@ where
                     //problems because the broker will be unable to fund any future trades but exiting
                     //early will give less confusing output.
                     match notification {
-                        crate::exchange::types::ExchangeNotification::OrderBooked(id, order) => {
+                        crate::exchange::types::ExchangeNotificationMessage::OrderBooked(
+                            id,
+                            order,
+                        ) => {
                             //TODO: when the exchange books an order we should store the change
                             unimplemented!();
                         }
-                        crate::exchange::types::ExchangeNotification::TradeCompleted(trade) => {
+                        crate::exchange::types::ExchangeNotificationMessage::TradeCompleted(
+                            trade,
+                        ) => {
                             match trade.typ {
                                 //Force debit so we can end up with negative cash here
                                 crate::exchange::types::TradeType::Buy => {
@@ -197,6 +202,9 @@ where
 
                             self.update_holdings(&trade.symbol, PortfolioQty::from(updated));
                         }
+                        crate::exchange::types::ExchangeNotificationMessage::OrderDeleted(
+                            _order_id,
+                        ) => (),
                     }
                 }
                 //Previous step can cause negative cash balance so we have to rebalance here, this
@@ -499,7 +507,7 @@ where
                 //TODO: should this be blocking_send?
                 let _ = self
                     .order_sender
-                    .blocking_send(order.into_exchange(self.exchange_subscriber_id));
+                    .blocking_send(order.into_exchange_message(self.exchange_subscriber_id));
                 info!(
                     "BROKER: Successfully sent {:?} order for {:?} shares of {:?} to exchange",
                     order.get_order_type(),

@@ -111,8 +111,8 @@ where
         types::OrderSender,
     ) {
         let price_channel = tokio::sync::mpsc::channel::<Vec<Arc<Q>>>(100);
-        let notify_channel = tokio::sync::mpsc::channel::<types::ExchangeNotification>(100);
-        let order_channel = tokio::sync::mpsc::channel::<types::ExchangeOrder>(100);
+        let notify_channel = tokio::sync::mpsc::channel::<types::ExchangeNotificationMessage>(100);
+        let order_channel = tokio::sync::mpsc::channel::<types::ExchangeOrderMessage>(100);
 
         let subscriber_id = self.last_subscriber_id;
         self.last_subscriber_id += 1;
@@ -155,20 +155,46 @@ where
         let mut tmp = Vec::new();
         //Pull orders received over last tick and add them to book
         for order_reciever in self.order_reciever.iter_mut() {
-            while let Ok(order) = order_reciever.try_recv() {
-                tmp.push(order)
+            while let Ok(order_message) = order_reciever.try_recv() {
+                tmp.push(order_message);
             }
         }
 
-        for order in tmp {
-            let order_id = self.insert_order(order.clone());
-            let notifier = self
-                .notify_sender
-                .get(*order.get_subscriber_id() as usize)
-                .unwrap();
-            let _ = notifier
-                .send(types::ExchangeNotification::OrderBooked(order_id, order))
-                .await;
+        for message in tmp {
+            match message {
+                types::ExchangeOrderMessage::CreateOrder(order) => {
+                    let order_id = self.insert_order(order.clone());
+                    let notifier = self
+                        .notify_sender
+                        .get(*order.get_subscriber_id() as usize)
+                        .unwrap();
+                    let _ = notifier
+                        .send(types::ExchangeNotificationMessage::OrderBooked(
+                            order_id, order,
+                        ))
+                        .await;
+                }
+                types::ExchangeOrderMessage::DeleteOrder(subscriber_id, order_id) => {
+                    //TODO: we don't check the subscriber_id so subscribers can delete orders
+                    //for different subscribers
+                    self.delete_order(order_id);
+                    let notifier = self.notify_sender.get(subscriber_id as usize).unwrap();
+                    let _ = notifier
+                        .send(types::ExchangeNotificationMessage::OrderDeleted(order_id))
+                        .await;
+                }
+                types::ExchangeOrderMessage::ClearOrdersBySymbol(subscriber_id, symbol) => {
+                    //TODO: there is a bug here with operation ordering whereby an order can get executed before
+                    //it gets cleared by a later operation
+                    let removed = self.clear_orders_by_symbol(symbol.as_str());
+                    for order_id in removed {
+                        let notifier = self.notify_sender.get(subscriber_id as usize).unwrap();
+                        let _ = notifier
+                            .send(types::ExchangeNotificationMessage::OrderDeleted(order_id))
+                            .await;
+                    }
+                }
+            }
         }
 
         let execute_buy = |quote: &Q, order: &types::ExchangeOrder| -> types::ExchangeTrade {
@@ -251,7 +277,9 @@ where
                         .get(*order.get_subscriber_id() as usize)
                         .unwrap();
                     let _ = notifier
-                        .send(types::ExchangeNotification::TradeCompleted(trade.clone()))
+                        .send(types::ExchangeNotificationMessage::TradeCompleted(
+                            trade.clone(),
+                        ))
                         .await;
                     executed_trades.push(trade);
                     removed_keys.push(*key);
@@ -277,25 +305,21 @@ where
         last
     }
 
-    fn clear(&mut self) {
-        self.orderbook = HashMap::new();
+    fn is_empty(&self) -> bool {
+        self.orderbook.is_empty()
     }
 
-    fn clear_pending_market_orders_by_symbol(&mut self, symbol: &str) {
+    fn clear_orders_by_symbol(&mut self, symbol: &str) -> Vec<types::DefaultExchangeOrderId> {
         let mut to_remove = Vec::new();
         for (key, order) in self.orderbook.iter() {
-            match order.get_order_type() {
-                types::OrderType::MarketBuy | types::OrderType::MarketSell => {
-                    if order.get_symbol() == symbol {
-                        to_remove.push(*key);
-                    }
-                }
-                _ => {}
+            if order.get_symbol() == symbol {
+                to_remove.push(*key);
             }
         }
-        for key in to_remove {
-            self.delete_order(key);
+        for key in &to_remove {
+            self.delete_order(*key);
         }
+        to_remove
     }
 }
 
@@ -308,8 +332,8 @@ mod tests {
 
     use super::builder::DefaultExchangeBuilder;
     use super::types::{
-        DefaultSubscriberId, ExchangeNotification, ExchangeOrder, NotifyReceiver, OrderSender,
-        PriceReceiver,
+        DefaultSubscriberId, ExchangeNotificationMessage, ExchangeOrderMessage, NotifyReceiver,
+        OrderSender, PriceReceiver,
     };
     use super::DefaultExchange;
     use crate::broker::{Dividend, Quote};
@@ -367,7 +391,7 @@ mod tests {
     async fn test_that_buy_market_executes_incrementing_trade_log() {
         let (mut exchange, id, _price_rx, order_tx, _notify_rx) = setup();
         order_tx
-            .send(ExchangeOrder::market_buy(id, "ABC", 100.0))
+            .send(ExchangeOrderMessage::market_buy(id, "ABC", 100.0))
             .await
             .unwrap();
         join!(exchange.check());
@@ -398,14 +422,14 @@ mod tests {
         let (mut exchange, id, _price_rx, order_tx, mut notify_rx) = setup();
 
         order_tx
-            .send(ExchangeOrder::market_buy(id, "ABC", 100.0))
+            .send(ExchangeOrderMessage::market_buy(id, "ABC", 100.0))
             .await
             .unwrap();
 
         join!(exchange.check());
         while let Ok(trade) = notify_rx.try_recv() {
             match trade {
-                ExchangeNotification::TradeCompleted(trade) => assert_eq!(*trade.date, 101),
+                ExchangeNotificationMessage::TradeCompleted(trade) => assert_eq!(*trade.date, 101),
                 _ => (),
             }
             return;
@@ -419,22 +443,22 @@ mod tests {
         let (mut exchange, id, _price_rx, order_tx, _notify_rx) = setup();
 
         order_tx
-            .send(ExchangeOrder::market_buy(id, "ABC", 25.0))
+            .send(ExchangeOrderMessage::market_buy(id, "ABC", 25.0))
             .await
             .unwrap();
 
         order_tx
-            .send(ExchangeOrder::market_buy(id, "ABC", 25.0))
+            .send(ExchangeOrderMessage::market_buy(id, "ABC", 25.0))
             .await
             .unwrap();
 
         order_tx
-            .send(ExchangeOrder::market_buy(id, "ABC", 25.0))
+            .send(ExchangeOrderMessage::market_buy(id, "ABC", 25.0))
             .await
             .unwrap();
 
         order_tx
-            .send(ExchangeOrder::market_buy(id, "ABC", 25.0))
+            .send(ExchangeOrderMessage::market_buy(id, "ABC", 25.0))
             .await
             .unwrap();
 
@@ -447,23 +471,23 @@ mod tests {
         let (mut exchange, id, _price_rx, order_tx, _notify_rx) = setup();
 
         order_tx
-            .send(ExchangeOrder::market_buy(id, "ABC", 25.0))
+            .send(ExchangeOrderMessage::market_buy(id, "ABC", 25.0))
             .await
             .unwrap();
 
         order_tx
-            .send(ExchangeOrder::market_buy(id, "ABC", 25.0))
+            .send(ExchangeOrderMessage::market_buy(id, "ABC", 25.0))
             .await
             .unwrap();
         join!(exchange.check());
 
         order_tx
-            .send(ExchangeOrder::market_buy(id, "ABC", 25.0))
+            .send(ExchangeOrderMessage::market_buy(id, "ABC", 25.0))
             .await
             .unwrap();
 
         order_tx
-            .send(ExchangeOrder::market_buy(id, "ABC", 25.0))
+            .send(ExchangeOrderMessage::market_buy(id, "ABC", 25.0))
             .await
             .unwrap();
         join!(exchange.check());
@@ -476,7 +500,7 @@ mod tests {
         let (mut exchange, id, _price_rx, order_tx, _notify_rx) = setup();
 
         order_tx
-            .send(ExchangeOrder::market_buy(id, "ABC", 100.0))
+            .send(ExchangeOrderMessage::market_buy(id, "ABC", 100.0))
             .await
             .unwrap();
 
@@ -493,7 +517,7 @@ mod tests {
         let (mut exchange, id, _price_rx, order_tx, _notify_rx) = setup();
 
         order_tx
-            .send(ExchangeOrder::market_buy(id, "ABC", 100.0))
+            .send(ExchangeOrderMessage::market_buy(id, "ABC", 100.0))
             .await
             .unwrap();
 
@@ -510,13 +534,13 @@ mod tests {
         let (mut exchange, id, _price_rx, order_tx, _notify_rx) = setup();
 
         order_tx
-            .send(ExchangeOrder::limit_buy(id, "ABC", 100.0, 100.0))
+            .send(ExchangeOrderMessage::limit_buy(id, "ABC", 100.0, 100.0))
             .await
             .unwrap();
 
         //This order has a price above the current price, so shouldn't execute
         order_tx
-            .send(ExchangeOrder::limit_buy(id, "ABC", 100.0, 105.0))
+            .send(ExchangeOrderMessage::limit_buy(id, "ABC", 100.0, 105.0))
             .await
             .unwrap();
 
@@ -532,13 +556,13 @@ mod tests {
         let (mut exchange, id, _price_rx, order_tx, _notify_rx) = setup();
 
         order_tx
-            .send(ExchangeOrder::limit_sell(id, "ABC", 100.0, 100.0))
+            .send(ExchangeOrderMessage::limit_sell(id, "ABC", 100.0, 100.0))
             .await
             .unwrap();
 
         //This order has a price above the current price, so shouldn't execute
         order_tx
-            .send(ExchangeOrder::limit_sell(id, "ABC", 100.0, 105.0))
+            .send(ExchangeOrderMessage::limit_sell(id, "ABC", 100.0, 105.0))
             .await
             .unwrap();
 
@@ -554,13 +578,13 @@ mod tests {
         let (mut exchange, id, _price_rx, order_tx, _notify_rx) = setup();
 
         order_tx
-            .send(ExchangeOrder::stop_buy(id, "ABC", 100.0, 100.0))
+            .send(ExchangeOrderMessage::stop_buy(id, "ABC", 100.0, 100.0))
             .await
             .unwrap();
 
         //This order has a price above the current price, so shouldn't execute
         order_tx
-            .send(ExchangeOrder::stop_buy(id, "ABC", 100.0, 105.0))
+            .send(ExchangeOrderMessage::stop_buy(id, "ABC", 100.0, 105.0))
             .await
             .unwrap();
 
@@ -578,13 +602,13 @@ mod tests {
         let (mut exchange, id, _price_rx, order_tx, _notify_rx) = setup();
 
         order_tx
-            .send(ExchangeOrder::stop_sell(id, "ABC", 100.0, 100.0))
+            .send(ExchangeOrderMessage::stop_sell(id, "ABC", 100.0, 100.0))
             .await
             .unwrap();
 
         //This order has a price above the current price, so shouldn't execute
         order_tx
-            .send(ExchangeOrder::stop_sell(id, "ABC", 100.0, 105.0))
+            .send(ExchangeOrderMessage::stop_sell(id, "ABC", 100.0, 105.0))
             .await
             .unwrap();
 
@@ -599,7 +623,7 @@ mod tests {
     async fn test_that_order_for_nonexistent_stock_fails_silently() {
         let (mut exchange, id, _price_rx, order_tx, _notify_rx) = setup();
         order_tx
-            .send(ExchangeOrder::market_buy(id, "XYZ", 100.0))
+            .send(ExchangeOrderMessage::market_buy(id, "XYZ", 100.0))
             .await
             .unwrap();
         join!(exchange.check());
@@ -608,12 +632,68 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_that_delete_and_insert_dont_conflict() {
-        unimplemented!()
+    async fn test_that_orderbook_clears_by_symbol() {
+        let (mut exchange, id, _price_rx, order_tx, _notify_rx) = setup();
+        //This order should never execute, we are putting it in the book and then taking it away
+        order_tx
+            .send(ExchangeOrderMessage::limit_buy(id, "XYZ", 100.00, 200.0))
+            .await
+            .unwrap();
+        join!(exchange.check());
+
+        assert!(!exchange.is_empty());
+
+        order_tx
+            .send(ExchangeOrderMessage::ClearOrdersBySymbol(id, "XYZ".into()))
+            .await
+            .unwrap();
+        join!(exchange.check());
+
+        assert!(exchange.is_empty());
     }
 
     #[tokio::test]
     async fn test_that_order_with_missing_price_executes_later() {
-        unimplemented!()
+        let mut quotes: QuotesHashMap = HashMap::new();
+        quotes.insert(
+            DateTime::from(100),
+            vec![Arc::new(Quote::new(101.00, 102.00, 100, "ABC"))],
+        );
+        quotes.insert(DateTime::from(101), vec![]);
+        quotes.insert(
+            DateTime::from(102),
+            vec![Arc::new(Quote::new(105.00, 106.00, 102, "ABC"))],
+        );
+
+        let clock = crate::clock::ClockBuilder::with_length_in_seconds(100, 3)
+            .with_frequency(&crate::types::Frequency::Second)
+            .build();
+
+        let source = crate::input::HashMapInputBuilder::new()
+            .with_clock(clock.clone())
+            .with_quotes(quotes)
+            .build();
+
+        let mut exchange = DefaultExchangeBuilder::new()
+            .with_clock(clock.clone())
+            .with_data_source(source)
+            .build();
+
+        let (id, _price_rx, _notify_rx, order_tx) = exchange.subscribe();
+
+        order_tx
+            .send(ExchangeOrderMessage::market_buy(id, "ABC", 100.00))
+            .await
+            .unwrap();
+
+        join!(exchange.check());
+
+        //Orderbook should have one order and trade log has no executed trades
+        assert_eq!(exchange.trade_log.len(), 0);
+
+        join!(exchange.check());
+
+        //Order should execute now
+        assert_eq!(exchange.trade_log.len(), 1);
     }
 }

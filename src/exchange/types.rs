@@ -4,10 +4,10 @@ use crate::types::DateTime;
 
 pub type PriceSender<Q> = tokio::sync::mpsc::Sender<Vec<Arc<Q>>>;
 pub type PriceReceiver<Q> = tokio::sync::mpsc::Receiver<Vec<Arc<Q>>>;
-pub type NotifySender = tokio::sync::mpsc::Sender<ExchangeNotification>;
-pub type NotifyReceiver = tokio::sync::mpsc::Receiver<ExchangeNotification>;
-pub type OrderSender = tokio::sync::mpsc::Sender<ExchangeOrder>;
-pub type OrderReciever = tokio::sync::mpsc::Receiver<ExchangeOrder>;
+pub type NotifySender = tokio::sync::mpsc::Sender<ExchangeNotificationMessage>;
+pub type NotifyReceiver = tokio::sync::mpsc::Receiver<ExchangeNotificationMessage>;
+pub type OrderSender = tokio::sync::mpsc::Sender<ExchangeOrderMessage>;
+pub type OrderReciever = tokio::sync::mpsc::Receiver<ExchangeOrderMessage>;
 
 pub(crate) type DefaultExchangeOrderId = u32;
 pub(crate) type DefaultSubscriberId = u8;
@@ -203,7 +203,88 @@ impl PartialEq for ExchangeTrade {
     }
 }
 
-pub enum ExchangeNotification {
+pub enum ExchangeNotificationMessage {
     TradeCompleted(ExchangeTrade),
     OrderBooked(DefaultExchangeOrderId, ExchangeOrder),
+    OrderDeleted(DefaultExchangeOrderId),
+}
+
+pub enum ExchangeOrderMessage {
+    CreateOrder(ExchangeOrder),
+    DeleteOrder(DefaultSubscriberId, DefaultExchangeOrderId),
+    ClearOrdersBySymbol(DefaultSubscriberId, String),
+}
+
+impl ExchangeOrderMessage {
+    pub fn market_buy(
+        subscriber_id: DefaultSubscriberId,
+        symbol: impl Into<String>,
+        shares: f64,
+    ) -> Self {
+        ExchangeOrderMessage::CreateOrder(ExchangeOrder::market_buy(subscriber_id, symbol, shares))
+    }
+
+    pub fn market_sell(
+        subscriber_id: DefaultSubscriberId,
+        symbol: impl Into<String>,
+        shares: f64,
+    ) -> Self {
+        ExchangeOrderMessage::CreateOrder(ExchangeOrder::market_sell(subscriber_id, symbol, shares))
+    }
+
+    pub fn stop_buy(
+        subscriber_id: DefaultSubscriberId,
+        symbol: impl Into<String>,
+        shares: f64,
+        price: f64,
+    ) -> Self {
+        ExchangeOrderMessage::CreateOrder(ExchangeOrder::stop_buy(
+            subscriber_id,
+            symbol,
+            shares,
+            price,
+        ))
+    }
+
+    pub fn stop_sell(
+        subscriber_id: DefaultSubscriberId,
+        symbol: impl Into<String>,
+        shares: f64,
+        price: f64,
+    ) -> Self {
+        ExchangeOrderMessage::CreateOrder(ExchangeOrder::stop_sell(
+            subscriber_id,
+            symbol,
+            shares,
+            price,
+        ))
+    }
+
+    pub fn limit_buy(
+        subscriber_id: DefaultSubscriberId,
+        symbol: impl Into<String>,
+        shares: f64,
+        price: f64,
+    ) -> Self {
+        ExchangeOrderMessage::CreateOrder(ExchangeOrder::limit_buy(
+            subscriber_id,
+            symbol,
+            shares,
+            price,
+        ))
+    }
+
+    pub fn limit_sell(
+        subscriber_id: DefaultSubscriberId,
+        symbol: impl Into<String>,
+        shares: f64,
+        price: f64,
+    ) -> Self {
+        ExchangeOrderMessage::CreateOrder(ExchangeOrder::limit_sell(
+            subscriber_id,
+            symbol,
+            shares,
+            price,
+        ))
+    }
 }
