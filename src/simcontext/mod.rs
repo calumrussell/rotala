@@ -34,6 +34,7 @@ where
     S: Strategy + History,
 {
     pub async fn run(&mut self) {
+        dbg!(self.clock.has_next());
         while self.clock.has_next() {
             self.exchange.check().await;
             self.strategy.update().await;

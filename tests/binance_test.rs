@@ -11,6 +11,7 @@ use alator::simcontext::SimContextBuilder;
 use alator::strategy::{History, Strategy, StrategyEvent, TransferTo};
 use alator::types::{CashValue, Frequency, StrategySnapshot};
 use async_trait::async_trait;
+use log::info;
 
 /* Get the data from Binance, build quote from open and close of candle, insert the quotes into
  * QuotesHashMap using those dates.
@@ -177,6 +178,7 @@ impl Strategy for MovingAverageStrategy {
         //which there is no quote at that time then the system will panic and exit. This behaviour
         //may change in the future but as this implies that the strategy is in some kind of
         //incorrect state, a runtime failure seems most appropriate.
+        self.brkr.check().await;
         if let Some(quote) = self.brkr.get_quote("BTC") {
             //Update our moving averages with the latest quote
             self.ten.update(&quote);
