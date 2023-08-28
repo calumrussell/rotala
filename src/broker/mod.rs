@@ -1085,7 +1085,8 @@ mod tests {
         let mut brkr = SimulatedBrokerBuilder::new()
             .with_data(input)
             .with_trade_costs(vec![BrokerCost::flat(1.0)])
-            .build(&mut exchange).await;
+            .build(&mut exchange)
+            .await;
 
         let mut weights = PortfolioAllocation::new();
         weights.insert("ABC", 1.0);
@@ -1118,7 +1119,8 @@ mod tests {
         let mut brkr = SimulatedBrokerBuilder::new()
             .with_data(input)
             .with_trade_costs(vec![BrokerCost::flat(1.0)])
-            .build(&mut exchange).await;
+            .build(&mut exchange)
+            .await;
 
         let mut weights = PortfolioAllocation::new();
         weights.insert("ABC", 1.0);
@@ -1164,7 +1166,8 @@ mod tests {
         let mut brkr = SimulatedBrokerBuilder::new()
             .with_data(input)
             .with_trade_costs(vec![BrokerCost::flat(1.0)])
-            .build(&mut exchange).await;
+            .build(&mut exchange)
+            .await;
 
         let mut weights = PortfolioAllocation::new();
         weights.insert("ABC", 0.5);
@@ -1198,7 +1201,8 @@ mod tests {
         let mut brkr = SimulatedBrokerBuilder::new()
             .with_data(input)
             .with_trade_costs(vec![BrokerCost::flat(1.0)])
-            .build(&mut exchange).await;
+            .build(&mut exchange)
+            .await;
 
         let mut weights = PortfolioAllocation::new();
         weights.insert("ABC", 1.0);
@@ -1268,7 +1272,8 @@ mod tests {
 
         let mut brkr = SimulatedBrokerBuilder::new()
             .with_data(source)
-            .build(&mut exchange).await;
+            .build(&mut exchange)
+            .await;
 
         brkr.deposit_cash(&100_000.0);
 
@@ -1318,7 +1323,7 @@ mod tests {
         prices.insert(103.into(), vec![quote2]);
         prices.insert(104.into(), vec![quote3]);
 
-        let mut clock = ClockBuilder::with_length_in_seconds(100, 5)
+        let clock = ClockBuilder::with_length_in_seconds(100, 5)
             .with_frequency(&Frequency::Second)
             .build();
 
@@ -1334,7 +1339,8 @@ mod tests {
 
         let mut brkr = SimulatedBrokerBuilder::new()
             .with_data(source)
-            .build(&mut exchange).await;
+            .build(&mut exchange)
+            .await;
 
         brkr.deposit_cash(&100_000.0);
         let mut target_weights = PortfolioAllocation::new();
@@ -1350,7 +1356,7 @@ mod tests {
 
         exchange.check().await;
         brkr.check().await;
- 
+
         exchange.check().await;
         brkr.check().await;
 
@@ -1359,7 +1365,7 @@ mod tests {
         println!("{:?}", orders1);
 
         brkr.send_orders(&orders1).await;
- 
+
         exchange.check().await;
         brkr.check().await;
 

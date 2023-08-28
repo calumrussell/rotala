@@ -203,11 +203,11 @@ impl Strategy for MovingAverageStrategy {
                     //I am not sure if the result is correct.
                     let qty = (f64::from(pct_value) / (*quote.ask)).floor();
                     let order = Order::market(OrderType::MarketBuy, "BTC", qty);
-                    let _ = self.brkr.send_order(order);
+                    let _ = self.brkr.send_order(order).await;
                 }
             } else if let Some(qty) = self.brkr.get_position_qty("BTC") {
                 let order = Order::market(OrderType::MarketSell, "BTC", qty.clone());
-                let _ = self.brkr.send_order(order);
+                let _ = self.brkr.send_order(order).await;
             }
         }
 
@@ -280,9 +280,11 @@ async fn binance_test() {
 
     let mut sim = SimContextBuilder::new()
         .with_clock(clock.clone())
+        .with_exchange(exchange)
         .add_strategy(strat)
-        .init_first(&1_000_000.0.into());
+        .init_first(&1_000_000.0.into())
+        .await;
 
-    sim.run();
+    sim.run().await;
     let _perf = sim.perf(Frequency::Daily);
 }

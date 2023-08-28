@@ -108,10 +108,12 @@ async fn staticweight_integration_test() {
 
     let mut sim = SimContextBuilder::new()
         .with_clock(clock.clone())
+        .with_exchange(exchange)
         .add_strategy(strat_first)
         .add_strategy(strat_second)
         .add_strategy(strat_third)
-        .init_all(&initial_cash);
+        .init_all(&initial_cash)
+        .await;
 
     sim.run().await;
 

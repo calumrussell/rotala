@@ -167,7 +167,7 @@ where
             //problems because the broker will be unable to fund any future trades but exiting
             //early will give less confusing output.
             match notification {
-                crate::exchange::types::ExchangeNotificationMessage::OrderBooked(id, order) => {
+                crate::exchange::types::ExchangeNotificationMessage::OrderBooked(_id, _order) => {
                     //TODO: when the exchange books an order we should store the change
                     ()
                 }
@@ -236,7 +236,7 @@ where
         }
 
         let mut tmp = Vec::new();
-        for (symbol, quote) in &self.latest_quotes {
+        for (_symbol, quote) in &self.latest_quotes {
             tmp.push(Arc::clone(quote));
         }
         Some(tmp)

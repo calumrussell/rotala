@@ -110,9 +110,10 @@ where
         types::NotifyReceiver,
         types::OrderSender,
     ) {
-        let price_channel = tokio::sync::mpsc::channel::<Vec<Arc<Q>>>(100);
-        let notify_channel = tokio::sync::mpsc::channel::<types::ExchangeNotificationMessage>(100);
-        let order_channel = tokio::sync::mpsc::channel::<types::ExchangeOrderMessage>(100);
+        let price_channel = tokio::sync::mpsc::channel::<Vec<Arc<Q>>>(100000);
+        let notify_channel =
+            tokio::sync::mpsc::channel::<types::ExchangeNotificationMessage>(100000);
+        let order_channel = tokio::sync::mpsc::channel::<types::ExchangeOrderMessage>(100000);
 
         //Initialize the price channel
         match self.data_source.get_quotes() {
