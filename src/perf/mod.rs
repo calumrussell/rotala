@@ -261,6 +261,7 @@ mod tests {
     use crate::broker::{BrokerCost, Dividend, Quote};
     use crate::clock::{Clock, ClockBuilder};
     use crate::exchange::builder::DefaultExchangeBuilder;
+    use crate::exchange::DefaultExchange;
     use crate::input::{HashMapInput, HashMapInputBuilder};
     use crate::perf::StrategySnapshot;
     use crate::sim::{SimulatedBroker, SimulatedBrokerBuilder};
@@ -271,7 +272,11 @@ mod tests {
     use super::PerformanceCalculator;
     use super::PortfolioCalculations;
 
-    async fn setup() -> (SimulatedBroker<HashMapInput, Quote, Dividend>, Clock) {
+    async fn setup() -> (
+        SimulatedBroker<HashMapInput, Quote, Dividend>,
+        DefaultExchange<HashMapInput, Quote, Dividend>,
+        Clock,
+    ) {
         let mut raw_data: HashMap<DateTime, Vec<Arc<Quote>>> = HashMap::new();
 
         let quote_a1 = Arc::new(Quote::new(101.0, 102.0, 100, "ABC"));
@@ -309,7 +314,7 @@ mod tests {
             .build(&mut exchange)
             .await;
 
-        (brkr, clock)
+        (brkr, exchange, clock)
     }
 
     #[test]
@@ -351,7 +356,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_that_portfolio_calculates_performance_accurately() {
-        let (brkr, mut clock) = setup().await;
+        let (brkr, mut exchange, clock) = setup().await;
         //We use less than 100% because some bugs become possible when you are allocating the full
         //portfolio which perturb the order of operations leading to different perf outputs.
         let mut target_weights = PortfolioAllocation::new();
@@ -364,16 +369,16 @@ mod tests {
             .with_clock(clock.clone())
             .default();
 
-        strat.init(&100_000.0);
+        strat.init(&100_000.0).await;
 
-        clock.tick();
-        strat.update();
+        exchange.check().await;
+        strat.update().await;
 
-        clock.tick();
-        strat.update();
+        exchange.check().await;
+        strat.update().await;
 
-        clock.tick();
-        strat.update();
+        exchange.check().await;
+        strat.update().await;
 
         let output = strat.get_history();
         println!("{:?}", output);

@@ -32,9 +32,10 @@ use crate::types::{CashValue, PortfolioAllocation, StrategySnapshot};
 ///components of a backtest, runs it, and offers the interface into the components (like
 ///`Strategy`) to clients. The reasoning for this is explained in the documentation for
 ///`SimContext`.
+#[async_trait]
 pub trait Strategy: TransferTo {
-    fn update(&mut self);
-    fn init(&mut self, initial_cash: &f64);
+    async fn update(&mut self);
+    async fn init(&mut self, initial_cash: &f64);
 }
 
 ///Defines events that can be triggered by the client that modify the internal state of the
@@ -196,7 +197,7 @@ where
     D: Dividendable,
     T: DataSource<Q, D>,
 {
-    fn init(&mut self, initital_cash: &f64) {
+    async fn init(&mut self, initital_cash: &f64) {
         self.deposit_cash(initital_cash);
         if DefaultTradingSchedule::should_trade(&self.clock.now()) {
             let orders = BrokerCalculations::diff_brkr_against_target_weights(
@@ -204,13 +205,13 @@ where
                 &mut self.brkr,
             );
             if !orders.is_empty() {
-                self.brkr.send_orders(&orders);
+                self.brkr.send_orders(&orders).await;
             }
         }
     }
 
-    fn update(&mut self) {
-        self.brkr.check();
+    async fn update(&mut self) {
+        self.brkr.check().await;
         let now = self.clock.now();
         if DefaultTradingSchedule::should_trade(&now) {
             let orders = BrokerCalculations::diff_brkr_against_target_weights(
@@ -218,7 +219,7 @@ where
                 &mut self.brkr,
             );
             if !orders.is_empty() {
-                self.brkr.send_orders(&orders);
+                self.brkr.send_orders(&orders).await;
             }
         }
         let snap = self.get_snapshot();

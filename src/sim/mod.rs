@@ -1,6 +1,7 @@
 use async_trait::async_trait;
 use core::panic;
 use log::info;
+use std::collections::HashMap;
 use std::marker::PhantomData;
 use std::sync::Arc;
 
@@ -43,9 +44,11 @@ where
 
         let (subscriber_id, mut price_rx, notify_rx, order_tx) = exchange.subscribe().await;
 
-        let mut first_quotes = Vec::new();
+        let mut first_quotes = HashMap::new();
         while let Ok(quotes) = price_rx.try_recv() {
-            first_quotes.extend(quotes);
+            for quote in &quotes {
+                first_quotes.insert(quote.get_symbol().to_string(), Arc::clone(quote));
+            }
         }
 
         let holdings = PortfolioHoldings::new();
@@ -140,7 +143,7 @@ where
     notify_receiver: NotifyReceiver,
     order_sender: OrderSender,
     exchange_subscriber_id: DefaultSubscriberId,
-    latest_quotes: Vec<Arc<Q>>,
+    latest_quotes: HashMap<String, Arc<Q>>,
     _dividend: PhantomData<D>,
 }
 
@@ -166,7 +169,7 @@ where
             match notification {
                 crate::exchange::types::ExchangeNotificationMessage::OrderBooked(id, order) => {
                     //TODO: when the exchange books an order we should store the change
-                    unimplemented!();
+                    ()
                 }
                 crate::exchange::types::ExchangeNotificationMessage::TradeCompleted(trade) => {
                     match trade.typ {
@@ -195,10 +198,12 @@ where
 
         //Update prices, these prices are not tradable
         while let Ok(quotes) = self.price_receiver.try_recv() {
-            self.latest_quotes = quotes;
+            for quote in &quotes {
+                self.latest_quotes
+                    .insert(quote.get_symbol().to_string(), Arc::clone(quote));
+            }
         }
     }
-
     async fn rebalance_cash(&mut self) {
         //Has to be less than, we can have zero value without needing to liquidate if we initialize
         //the portfolio but exchange doesn't execute any trades. This can happen if we are missing
@@ -222,12 +227,7 @@ where
     T: DataSource<Q, D>,
 {
     fn get_quote(&self, symbol: &str) -> Option<Arc<Q>> {
-        for quote in &self.latest_quotes {
-            if quote.get_symbol() == symbol {
-                return Some(Arc::clone(quote));
-            }
-        }
-        None
+        self.latest_quotes.get(symbol).cloned()
     }
 
     fn get_quotes(&self) -> Option<Vec<Arc<Q>>> {
@@ -236,7 +236,7 @@ where
         }
 
         let mut tmp = Vec::new();
-        for quote in &self.latest_quotes {
+        for (symbol, quote) in &self.latest_quotes {
             tmp.push(Arc::clone(quote));
         }
         Some(tmp)
@@ -732,33 +732,6 @@ mod tests {
         join!(brkr.check());
         let cash_after_dividend = brkr.get_cash_balance();
         assert_ne!(cash_before_dividend, cash_after_dividend);
-    }
-
-    #[tokio::test]
-    #[should_panic]
-    async fn test_that_broker_builder_fails_without_exchange() {
-        let mut prices: HashMap<DateTime, Vec<Arc<Quote>>> = HashMap::new();
-        let quote = Arc::new(Quote::new(100.00, 101.00, 100, "ABC"));
-        prices.insert(100.into(), vec![quote]);
-
-        let clock = ClockBuilder::with_length_in_seconds(100, 2)
-            .with_frequency(&Frequency::Second)
-            .build();
-
-        let source = HashMapInputBuilder::new()
-            .with_quotes(prices)
-            .with_clock(clock.clone())
-            .build();
-
-        let mut exchange = DefaultExchangeBuilder::new()
-            .with_clock(clock.clone())
-            .with_data_source(source.clone())
-            .build();
-
-        let _brkr = SimulatedBrokerBuilder::new()
-            .with_data(source)
-            .build(&mut exchange)
-            .await;
     }
 
     #[tokio::test]

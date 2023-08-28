@@ -11,6 +11,7 @@ use criterion::{criterion_group, criterion_main, Criterion};
 use rand::distributions::Uniform;
 use rand::thread_rng;
 use rand_distr::Distribution;
+use tokio::join;
 
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -117,13 +118,13 @@ fn trade_execution_logic() {
     brkr.send_order(Order::market(OrderType::MarketBuy, "ABC", 100.0));
     brkr.send_order(Order::market(OrderType::MarketBuy, "BCD", 100.0));
 
-    exchange.check();
+    join!(exchange.check());
     join!(brkr.check());
 
-    exchange.check();
+    join!(exchange.check());
     join!(brkr.check());
 
-    exchange.check();
+    join!(exchange.check());
     join!(brkr.check());
 }
 
