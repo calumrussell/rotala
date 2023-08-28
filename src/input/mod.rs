@@ -14,14 +14,14 @@ use pyo3::pycell::PyCell;
 #[cfg(feature = "python")]
 use pyo3::types::{PyDict, PyList};
 
-pub trait Quotable: Clone {
+pub trait Quotable: Clone + std::marker::Send + std::marker::Sync {
     fn get_bid(&self) -> &Price;
     fn get_ask(&self) -> &Price;
     fn get_date(&self) -> &DateTime;
     fn get_symbol(&self) -> &String;
 }
 
-pub trait Dividendable: Clone {
+pub trait Dividendable: Clone + std::marker::Send + std::marker::Sync {
     fn get_symbol(&self) -> &String;
     fn get_date(&self) -> &DateTime;
     fn get_value(&self) -> &Price;

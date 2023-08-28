@@ -73,7 +73,8 @@ async fn staticweight_integration_test() {
     let simbrkr_first = SimulatedBrokerBuilder::new()
         .with_data(data.clone())
         .with_trade_costs(vec![BrokerCost::Flat(1.0.into())])
-        .build(&mut exchange);
+        .build(&mut exchange)
+        .await;
 
     let strat_first = StaticWeightStrategyBuilder::new()
         .with_brkr(simbrkr_first)
@@ -84,7 +85,8 @@ async fn staticweight_integration_test() {
     let simbrkr_second = SimulatedBrokerBuilder::new()
         .with_data(data.clone())
         .with_trade_costs(vec![BrokerCost::Flat(1.0.into())])
-        .build(&mut exchange);
+        .build(&mut exchange)
+        .await;
 
     let strat_second = StaticWeightStrategyBuilder::new()
         .with_brkr(simbrkr_second)
@@ -95,7 +97,8 @@ async fn staticweight_integration_test() {
     let simbrkr_third = SimulatedBrokerBuilder::new()
         .with_data(data.clone())
         .with_trade_costs(vec![BrokerCost::Flat(1.0.into())])
-        .build(&mut exchange);
+        .build(&mut exchange)
+        .await;
 
     let strat_third = StaticWeightStrategyBuilder::new()
         .with_brkr(simbrkr_third)

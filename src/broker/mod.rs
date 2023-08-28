@@ -1,3 +1,4 @@
+use async_trait::async_trait;
 use log::info;
 use std::error::Error;
 use std::fmt::Formatter;
@@ -678,6 +679,7 @@ impl BrokerCost {
 ///
 ///Clients should not be able to call debit or credit themselves. Deposits or withdrawals are
 ///implemented through [TransferCash] trait.
+#[async_trait]
 pub trait BacktestBroker {
     fn get_position_profit(&self, symbol: &str) -> Option<CashValue> {
         if let Some(cost) = self.get_position_cost(symbol) {
@@ -751,8 +753,8 @@ pub trait BacktestBroker {
     fn calc_trade_impact(&self, budget: &f64, price: &f64, is_buy: bool) -> (CashValue, Price);
     fn update_holdings(&mut self, symbol: &str, change: PortfolioQty);
     fn pay_dividends(&mut self);
-    fn send_order(&mut self, order: Order) -> BrokerEvent;
-    fn send_orders(&mut self, order: &[Order]) -> Vec<BrokerEvent>;
+    async fn send_order(&mut self, order: Order) -> BrokerEvent;
+    async fn send_orders(&mut self, order: &[Order]) -> Vec<BrokerEvent>;
     fn debit(&mut self, value: &f64) -> BrokerCashEvent;
     fn credit(&mut self, value: &f64) -> BrokerCashEvent;
     //Can leave the client with a negative cash balance
@@ -830,7 +832,7 @@ impl BrokerCalculations {
     //The primary use-case for this functionality is for clients that implement tax payments: these are
     //mandatory reductions in cash that have to be paid before the simulation can proceed to the next
     //valid state.
-    pub fn withdraw_cash_with_liquidation<
+    pub async fn withdraw_cash_with_liquidation<
         Q: Quotable,
         D: Dividendable,
         T: BacktestBroker + GetsQuote<Q, D>,
@@ -891,7 +893,7 @@ impl BrokerCalculations {
             if (total_sold).eq(&0.0) {
                 //The portfolio can provide enough cash so we can execute the sell orders
                 //We leave the portfolio in the wrong state for the client to deal with
-                brkr.send_orders(&sell_orders);
+                brkr.send_orders(&sell_orders).await;
                 info!("BROKER: Succesfully withdrew {:?} with liquidation", cash);
                 BrokerCashEvent::WithdrawSuccess(CashValue::from(*cash))
             } else {
@@ -1101,7 +1103,7 @@ mod tests {
 
         brkr.deposit_cash(&100_000.0);
         join!(exchange.check());
-        brkr.check();
+        join!(brkr.check());
 
         let orders = BrokerCalculations::diff_brkr_against_target_weights(&weights, &mut brkr);
         println!("{:?}", orders);
@@ -1147,10 +1149,10 @@ mod tests {
         brkr.send_orders(&orders);
 
         join!(exchange.check());
-        brkr.check();
+        join!(brkr.check());
 
         join!(exchange.check());
-        brkr.check();
+        join!(brkr.check());
         let mut weights1 = PortfolioAllocation::new();
         //This weight needs to very small because it is possible for the data generator to generate
         //a price that drops significantly meaning that rebalancing requires a buy not a sell. This
@@ -1204,7 +1206,7 @@ mod tests {
 
         brkr.deposit_cash(&100_000.0);
         join!(exchange.check());
-        brkr.check();
+        join!(brkr.check());
         let orders = BrokerCalculations::diff_brkr_against_target_weights(&weights, &mut brkr);
         assert!(orders.len() == 1);
     }
@@ -1244,7 +1246,7 @@ mod tests {
         weights.insert("ABC", 1.0);
 
         join!(exchange.check());
-        brkr.check();
+        join!(brkr.check());
         BrokerCalculations::diff_brkr_against_target_weights(&weights, &mut brkr);
     }
 
@@ -1325,10 +1327,10 @@ mod tests {
 
         //No price for security so we haven't diffed correctly
         join!(exchange.check());
-        brkr.check();
+        join!(brkr.check());
 
         join!(exchange.check());
-        brkr.check();
+        join!(brkr.check());
 
         let mut target_weights = PortfolioAllocation::new();
         target_weights.insert("ABC", 0.9);
@@ -1337,14 +1339,14 @@ mod tests {
             BrokerCalculations::diff_brkr_against_target_weights(&target_weights, &mut brkr);
         brkr.send_orders(&orders);
         join!(exchange.check());
-        brkr.check();
+        join!(brkr.check());
 
         let orders1 =
             BrokerCalculations::diff_brkr_against_target_weights(&target_weights, &mut brkr);
 
         brkr.send_orders(&orders1);
         join!(exchange.check());
-        brkr.check();
+        join!(brkr.check());
 
         //If the logic isn't correct the orders will have doubled up to 1800
         assert_eq!(*(*brkr.get_position_qty("ABC").unwrap()), 900.0);
@@ -1406,13 +1408,13 @@ mod tests {
 
         //No price for security so we haven't diffed correctly
         join!(exchange.check());
-        brkr.check();
+        join!(brkr.check());
 
         join!(exchange.check());
-        brkr.check();
+        join!(brkr.check());
 
         join!(exchange.check());
-        brkr.check();
+        join!(brkr.check());
 
 
         let orders1 =
@@ -1421,7 +1423,7 @@ mod tests {
 
         brkr.send_orders(&orders1);
         join!(exchange.check());
-        brkr.check();
+        join!(brkr.check());
 
         println!("{:?}", brkr.get_holdings());
         //If the logic isn't correct then the order will be for less shares than is actually

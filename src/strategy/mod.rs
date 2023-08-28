@@ -66,9 +66,10 @@ pub trait TransferTo {
 ///Trait to withdraw cash from a strategy, typically whilst it is running. This is a separate trait
 ///as some clients may wish to create strategies from which no cash can be withdrawn whilst the
 ///simulation is running.
+#[async_trait]
 pub trait TransferFrom {
     fn withdraw_cash(&mut self, cash: &f64) -> StrategyEvent;
-    fn withdraw_cash_with_liquidation(&mut self, cash: &f64) -> StrategyEvent;
+    async fn withdraw_cash_with_liquidation(&mut self, cash: &f64) -> StrategyEvent;
 }
 
 ///Strategy records and can return history to client. This history is used for performance
@@ -239,6 +240,7 @@ where
     }
 }
 
+#[async_trait]
 impl<T, Q, D> TransferFrom for StaticWeightStrategy<T, Q, D>
 where
     Q: Quotable,
@@ -255,11 +257,11 @@ where
         StrategyEvent::WithdrawFailure(CashValue::from(*cash))
     }
 
-    fn withdraw_cash_with_liquidation(&mut self, cash: &f64) -> StrategyEvent {
+    async fn withdraw_cash_with_liquidation(&mut self, cash: &f64) -> StrategyEvent {
         if let BrokerCashEvent::WithdrawSuccess(withdrawn) =
             //No logging here because the implementation is fully logged due to the greater
             //complexity of this task vs standard withdraw
-            BrokerCalculations::withdraw_cash_with_liquidation(cash, &mut self.brkr)
+            BrokerCalculations::withdraw_cash_with_liquidation(cash, &mut self.brkr).await
         {
             self.net_cash_flow = CashValue::from(*self.net_cash_flow - *withdrawn);
             return StrategyEvent::WithdrawSuccess(CashValue::from(*cash));
@@ -308,7 +310,7 @@ mod tests {
     use crate::sim::{SimulatedBroker, SimulatedBrokerBuilder};
     use crate::types::{DateTime, Frequency, PortfolioAllocation};
 
-    fn setup() -> (SimulatedBroker<HashMapInput, Quote, Dividend>, Clock) {
+    async fn setup() -> (SimulatedBroker<HashMapInput, Quote, Dividend>, Clock) {
         let mut prices: HashMap<DateTime, Vec<Arc<Quote>>> = HashMap::new();
 
         let quote = Arc::new(Quote::new(100.00, 101.00, 100, "ABC"));
@@ -335,24 +337,25 @@ mod tests {
         let brkr = SimulatedBrokerBuilder::<HashMapInput, Quote, Dividend>::new()
             .with_data(source)
             .with_trade_costs(vec![BrokerCost::flat(0.1)])
-            .build(&mut exchange);
+            .build(&mut exchange)
+            .await;
         (brkr, clock)
     }
 
-    #[test]
+    #[tokio::test]
     #[should_panic]
-    fn test_that_static_builder_fails_without_weights() {
-        let comp = setup();
+    async fn test_that_static_builder_fails_without_weights() {
+        let comp = setup().await;
         let _strat = StaticWeightStrategyBuilder::<HashMapInput, Quote, Dividend>::new()
             .with_brkr(comp.0)
             .with_clock(comp.1)
             .default();
     }
 
-    #[test]
+    #[tokio::test]
     #[should_panic]
-    fn test_that_static_builder_fails_without_brkr() {
-        let comp = setup();
+    async fn test_that_static_builder_fails_without_brkr() {
+        let comp = setup().await;
         let weights = PortfolioAllocation::new();
         let _strat = StaticWeightStrategyBuilder::<HashMapInput, Quote, Dividend>::new()
             .with_weights(weights)
@@ -360,10 +363,10 @@ mod tests {
             .default();
     }
 
-    #[test]
+    #[tokio::test]
     #[should_panic]
-    fn test_that_static_builder_fails_without_clock() {
-        let comp = setup();
+    async fn test_that_static_builder_fails_without_clock() {
+        let comp = setup().await;
         let weights = PortfolioAllocation::new();
         let _strat = StaticWeightStrategyBuilder::<HashMapInput, Quote, Dividend>::new()
             .with_weights(weights)

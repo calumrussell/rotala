@@ -65,7 +65,8 @@ async fn staticweight_integration_test() {
     let simbrkr = SimulatedBrokerBuilder::new()
         .with_data(data)
         .with_trade_costs(vec![BrokerCost::Flat(1.0.into())])
-        .build(&mut exchange);
+        .build(&mut exchange)
+        .await;
 
     let strat = StaticWeightStrategyBuilder::new()
         .with_brkr(simbrkr)

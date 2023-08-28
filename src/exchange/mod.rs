@@ -102,7 +102,7 @@ where
     D: Dividendable,
     T: DataSource<Q, D>,
 {
-    pub fn subscribe(
+    pub async fn subscribe(
         &mut self,
     ) -> (
         types::DefaultSubscriberId,
@@ -113,6 +113,12 @@ where
         let price_channel = tokio::sync::mpsc::channel::<Vec<Arc<Q>>>(100);
         let notify_channel = tokio::sync::mpsc::channel::<types::ExchangeNotificationMessage>(100);
         let order_channel = tokio::sync::mpsc::channel::<types::ExchangeOrderMessage>(100);
+
+        //Initialize the price channel
+        match self.data_source.get_quotes() {
+            Some(quotes) => price_channel.0.send(quotes).await.unwrap(),
+            None => panic!("Missing data source, cannot initialize exchange"),
+        };
 
         let subscriber_id = self.last_subscriber_id;
         self.last_subscriber_id += 1;
@@ -340,7 +346,7 @@ mod tests {
     use crate::input::{HashMapInput, QuotesHashMap};
     use crate::types::DateTime;
 
-    fn setup() -> (
+    async fn setup() -> (
         DefaultExchange<HashMapInput, Quote, Dividend>,
         DefaultSubscriberId,
         PriceReceiver<Quote>,
@@ -375,13 +381,13 @@ mod tests {
             .with_data_source(source)
             .build();
 
-        let (id, price_rx, notify_rx, order_tx) = exchange.subscribe();
+        let (id, price_rx, notify_rx, order_tx) = exchange.subscribe().await;
         (exchange, id, price_rx, order_tx, notify_rx)
     }
 
     #[tokio::test]
     async fn can_tick_without_blocking() {
-        let (mut exchange, _id, _price_rx, _order_tx, _notify_rx) = setup();
+        let (mut exchange, _id, _price_rx, _order_tx, _notify_rx) = setup().await;
         join!(exchange.check());
         join!(exchange.check());
         join!(exchange.check());
@@ -389,7 +395,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_that_buy_market_executes_incrementing_trade_log() {
-        let (mut exchange, id, _price_rx, order_tx, _notify_rx) = setup();
+        let (mut exchange, id, _price_rx, order_tx, _notify_rx) = setup().await;
         order_tx
             .send(ExchangeOrderMessage::market_buy(id, "ABC", 100.0))
             .await
@@ -401,7 +407,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_that_exchange_emits_prices() {
-        let (mut exchange, _id, mut price_rx, _order_tx, _notify_rx) = setup();
+        let (mut exchange, _id, mut price_rx, _order_tx, _notify_rx) = setup().await;
 
         join!(exchange.check());
         while let Ok(prices) = price_rx.try_recv() {
@@ -419,7 +425,7 @@ mod tests {
     #[tokio::test]
     async fn test_that_exchange_notifies_completed_trades() {
         //This should be temporary as exchange needs to offer a variety of notifications
-        let (mut exchange, id, _price_rx, order_tx, mut notify_rx) = setup();
+        let (mut exchange, id, _price_rx, order_tx, mut notify_rx) = setup().await;
 
         order_tx
             .send(ExchangeOrderMessage::market_buy(id, "ABC", 100.0))
@@ -440,7 +446,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_that_multiple_orders_are_executed_on_same_tick() {
-        let (mut exchange, id, _price_rx, order_tx, _notify_rx) = setup();
+        let (mut exchange, id, _price_rx, order_tx, _notify_rx) = setup().await;
 
         order_tx
             .send(ExchangeOrderMessage::market_buy(id, "ABC", 25.0))
@@ -468,7 +474,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_that_multiple_orders_are_executed_on_consecutive_tick() {
-        let (mut exchange, id, _price_rx, order_tx, _notify_rx) = setup();
+        let (mut exchange, id, _price_rx, order_tx, _notify_rx) = setup().await;
 
         order_tx
             .send(ExchangeOrderMessage::market_buy(id, "ABC", 25.0))
@@ -497,7 +503,7 @@ mod tests {
     #[tokio::test]
     async fn test_that_buy_market_executes_on_next_tick() {
         //Verifies that trades do not execute instaneously removing lookahead bias
-        let (mut exchange, id, _price_rx, order_tx, _notify_rx) = setup();
+        let (mut exchange, id, _price_rx, order_tx, _notify_rx) = setup().await;
 
         order_tx
             .send(ExchangeOrderMessage::market_buy(id, "ABC", 100.0))
@@ -514,7 +520,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_that_sell_market_executes_on_next_tick() {
-        let (mut exchange, id, _price_rx, order_tx, _notify_rx) = setup();
+        let (mut exchange, id, _price_rx, order_tx, _notify_rx) = setup().await;
 
         order_tx
             .send(ExchangeOrderMessage::market_buy(id, "ABC", 100.0))
@@ -531,7 +537,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_that_buy_limit_triggers_correctly() {
-        let (mut exchange, id, _price_rx, order_tx, _notify_rx) = setup();
+        let (mut exchange, id, _price_rx, order_tx, _notify_rx) = setup().await;
 
         order_tx
             .send(ExchangeOrderMessage::limit_buy(id, "ABC", 100.0, 100.0))
@@ -553,7 +559,7 @@ mod tests {
         //This will execute even when the client doesn't hold any shares, this provides
         //functionality for shorting but the guards against generating revenue by fake
         //sales should be within broker
-        let (mut exchange, id, _price_rx, order_tx, _notify_rx) = setup();
+        let (mut exchange, id, _price_rx, order_tx, _notify_rx) = setup().await;
 
         order_tx
             .send(ExchangeOrderMessage::limit_sell(id, "ABC", 100.0, 100.0))
@@ -575,7 +581,7 @@ mod tests {
         //We are short from 90, and we put a StopBuy of 100 & 105 to take
         //off the position. If we are quoted 102/103 then our 100 order
         //should be executed.
-        let (mut exchange, id, _price_rx, order_tx, _notify_rx) = setup();
+        let (mut exchange, id, _price_rx, order_tx, _notify_rx) = setup().await;
 
         order_tx
             .send(ExchangeOrderMessage::stop_buy(id, "ABC", 100.0, 100.0))
@@ -599,7 +605,7 @@ mod tests {
     async fn test_that_sell_stop_triggers_correctly() {
         //Long from 110, we place orders to exit at 100 and 105.
         //If we are quoted 102/103 then our 105 StopSell is executed.
-        let (mut exchange, id, _price_rx, order_tx, _notify_rx) = setup();
+        let (mut exchange, id, _price_rx, order_tx, _notify_rx) = setup().await;
 
         order_tx
             .send(ExchangeOrderMessage::stop_sell(id, "ABC", 100.0, 100.0))
@@ -621,7 +627,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_that_order_for_nonexistent_stock_fails_silently() {
-        let (mut exchange, id, _price_rx, order_tx, _notify_rx) = setup();
+        let (mut exchange, id, _price_rx, order_tx, _notify_rx) = setup().await;
         order_tx
             .send(ExchangeOrderMessage::market_buy(id, "XYZ", 100.0))
             .await
@@ -633,7 +639,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_that_orderbook_clears_by_symbol() {
-        let (mut exchange, id, _price_rx, order_tx, _notify_rx) = setup();
+        let (mut exchange, id, _price_rx, order_tx, _notify_rx) = setup().await;
         //This order should never execute, we are putting it in the book and then taking it away
         order_tx
             .send(ExchangeOrderMessage::limit_buy(id, "XYZ", 100.00, 200.0))
@@ -679,7 +685,7 @@ mod tests {
             .with_data_source(source)
             .build();
 
-        let (id, _price_rx, _notify_rx, order_tx) = exchange.subscribe();
+        let (id, _price_rx, _notify_rx, order_tx) = exchange.subscribe().await;
 
         order_tx
             .send(ExchangeOrderMessage::market_buy(id, "ABC", 100.00))

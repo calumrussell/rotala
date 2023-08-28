@@ -271,7 +271,7 @@ mod tests {
     use super::PerformanceCalculator;
     use super::PortfolioCalculations;
 
-    fn setup() -> (SimulatedBroker<HashMapInput, Quote, Dividend>, Clock) {
+    async fn setup() -> (SimulatedBroker<HashMapInput, Quote, Dividend>, Clock) {
         let mut raw_data: HashMap<DateTime, Vec<Arc<Quote>>> = HashMap::new();
 
         let quote_a1 = Arc::new(Quote::new(101.0, 102.0, 100, "ABC"));
@@ -306,7 +306,8 @@ mod tests {
         let brkr = SimulatedBrokerBuilder::new()
             .with_data(source)
             .with_trade_costs(vec![BrokerCost::PctOfValue(0.01)])
-            .build(&mut exchange);
+            .build(&mut exchange)
+            .await;
 
         (brkr, clock)
     }
@@ -348,9 +349,9 @@ mod tests {
         );
     }
 
-    #[test]
-    fn test_that_portfolio_calculates_performance_accurately() {
-        let (brkr, mut clock) = setup();
+    #[tokio::test]
+    async fn test_that_portfolio_calculates_performance_accurately() {
+        let (brkr, mut clock) = setup().await;
         //We use less than 100% because some bugs become possible when you are allocating the full
         //portfolio which perturb the order of operations leading to different perf outputs.
         let mut target_weights = PortfolioAllocation::new();

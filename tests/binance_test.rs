@@ -156,7 +156,7 @@ impl Strategy for MovingAverageStrategy {
 
     fn update(&mut self) {
         //If you need to use dividends or place non-market orders then we need to call:
-        //self.brkr.check(); somewhere here. We don't use these features so this call is
+        //self.join!(brkr.check()); somewhere here. We don't use these features so this call is
         //excluded.
 
         //The simulation does not run at the same frequency as the strategy, we are only trading
@@ -201,11 +201,11 @@ impl Strategy for MovingAverageStrategy {
                     //I am not sure if the result is correct.
                     let qty = (f64::from(pct_value) / (*quote.ask)).floor();
                     let order = Order::market(OrderType::MarketBuy, "BTC", qty);
-                    self.brkr.send_order(order);
+                    let _ = self.brkr.send_order(order);
                 }
             } else if let Some(qty) = self.brkr.get_position_qty("BTC") {
                 let order = Order::market(OrderType::MarketSell, "BTC", qty.clone());
-                self.brkr.send_order(order);
+                let _ = self.brkr.send_order(order);
             }
         }
 
@@ -271,7 +271,8 @@ async fn binance_test() {
 
     let simbrkr = SimulatedBrokerBuilder::new()
         .with_data(data)
-        .build(&mut exchange);
+        .build(&mut exchange)
+        .await;
 
     let strat = MovingAverageStrategy::new(simbrkr, clock.clone());
 
