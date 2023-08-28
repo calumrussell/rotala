@@ -11,7 +11,6 @@ use alator::simcontext::SimContextBuilder;
 use alator::strategy::{History, Strategy, StrategyEvent, TransferTo};
 use alator::types::{CashValue, Frequency, StrategySnapshot};
 use async_trait::async_trait;
-use log::info;
 
 /* Get the data from Binance, build quote from open and close of candle, insert the quotes into
  * QuotesHashMap using those dates.
@@ -159,7 +158,7 @@ impl Strategy for MovingAverageStrategy {
 
     async fn update(&mut self) {
         //If you need to use dividends or place non-market orders then we need to call:
-        //self.join!(brkr.check()); somewhere here. We don't use these features so this call is
+        //self.brkr.check().await; somewhere here. We don't use these features so this call is
         //excluded.
 
         //The simulation does not run at the same frequency as the strategy, we are only trading

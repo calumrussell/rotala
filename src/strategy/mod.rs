@@ -102,8 +102,8 @@ where
             panic!("Strategy must have broker, weights, and clock");
         }
 
-        let brkr = std::mem::replace(&mut self.brkr, None);
-        let weights = std::mem::replace(&mut self.weights, None);
+        let brkr = self.brkr.take();
+        let weights = self.weights.take();
         StaticWeightStrategy {
             brkr: brkr.unwrap(),
             target_weights: weights.unwrap(),

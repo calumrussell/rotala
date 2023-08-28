@@ -173,10 +173,10 @@ impl ExchangeTrade {
         typ: TradeType,
     ) -> Self {
         Self {
-            subscriber_id: subscriber_id,
+            subscriber_id,
             symbol: symbol.into(),
-            value: value.into(),
-            quantity: quantity.into(),
+            value,
+            quantity,
             date: date.into(),
             typ,
         }

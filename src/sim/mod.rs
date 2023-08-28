@@ -169,7 +169,6 @@ where
             match notification {
                 crate::exchange::types::ExchangeNotificationMessage::OrderBooked(_id, _order) => {
                     //TODO: when the exchange books an order we should store the change
-                    ()
                 }
                 crate::exchange::types::ExchangeNotificationMessage::TradeCompleted(trade) => {
                     match trade.typ {
@@ -231,12 +230,12 @@ where
     }
 
     fn get_quotes(&self) -> Option<Vec<Arc<Q>>> {
-        if self.latest_quotes.len() == 0 {
+        if self.latest_quotes.is_empty() {
             return None;
         }
 
         let mut tmp = Vec::new();
-        for (_symbol, quote) in &self.latest_quotes {
+        for quote in self.latest_quotes.values() {
             tmp.push(Arc::clone(quote));
         }
         Some(tmp)
@@ -495,8 +494,6 @@ where
 #[cfg(test)]
 mod tests {
 
-    use tokio::join;
-
     use super::{SimulatedBroker, SimulatedBrokerBuilder};
     use crate::broker::{
         BacktestBroker, BrokerCashEvent, BrokerCost, BrokerEvent, Dividend, Quote, TransferCash,
@@ -563,8 +560,8 @@ mod tests {
         let (mut brkr, mut exchange) = setup().await;
         brkr.deposit_cash(&100.0);
 
-        join!(exchange.check());
-        join!(brkr.check());
+        exchange.check().await;
+        brkr.check().await;
 
         //Test cash
         assert!(matches!(
@@ -605,8 +602,8 @@ mod tests {
         println!("{:?}", res);
         assert!(matches!(res, BrokerEvent::OrderSentToExchange(..)));
 
-        join!(exchange.check());
-        join!(brkr.check());
+        exchange.check().await;
+        brkr.check().await;
 
         let cash = brkr.get_cash_balance();
         assert!(*cash < 100_000.0);
@@ -624,8 +621,8 @@ mod tests {
             .send_order(Order::market(OrderType::MarketBuy, "ABC", 495.0))
             .await;
         assert!(matches!(res, BrokerEvent::OrderInvalid(..)));
-        join!(exchange.check());
-        join!(brkr.check());
+        exchange.check().await;
+        brkr.check().await;
 
         let cash = brkr.get_cash_balance();
         assert!(*cash == 100.0);
@@ -639,12 +636,12 @@ mod tests {
             .send_order(Order::market(OrderType::MarketBuy, "ABC", 100.0))
             .await;
         assert!(matches!(res, BrokerEvent::OrderSentToExchange(..)));
-        join!(exchange.check());
-        join!(brkr.check());
+        exchange.check().await;
+        brkr.check().await;
 
         //Order greater than current holding
-        join!(exchange.check());
-        join!(brkr.check());
+        exchange.check().await;
+        brkr.check().await;
         let res = brkr
             .send_order(Order::market(OrderType::MarketSell, "ABC", 105.0))
             .await;
@@ -664,19 +661,19 @@ mod tests {
             .send_order(Order::market(OrderType::MarketBuy, "ABC", 495.0))
             .await;
         assert!(matches!(res, BrokerEvent::OrderSentToExchange(..)));
-        join!(exchange.check());
-        join!(brkr.check());
+        exchange.check().await;
+        brkr.check().await;
         let cash = brkr.get_cash_balance();
 
-        join!(exchange.check());
-        join!(brkr.check());
+        exchange.check().await;
+        brkr.check().await;
         let res = brkr
             .send_order(Order::market(OrderType::MarketSell, "ABC", 295.0))
             .await;
         assert!(matches!(res, BrokerEvent::OrderSentToExchange(..)));
 
-        join!(exchange.check());
-        join!(brkr.check());
+        exchange.check().await;
+        brkr.check().await;
         let cash0 = brkr.get_cash_balance();
 
         let qty = brkr.get_position_qty("ABC").unwrap();
@@ -690,13 +687,13 @@ mod tests {
         brkr.deposit_cash(&100_000.0);
         brkr.send_order(Order::market(OrderType::MarketBuy, "ABC", 495.0))
             .await;
-        join!(exchange.check());
-        join!(brkr.check());
+        exchange.check().await;
+        brkr.check().await;
 
         let val = brkr.get_position_value("ABC").unwrap();
 
-        join!(exchange.check());
-        join!(brkr.check());
+        exchange.check().await;
+        brkr.check().await;
         let val1 = brkr.get_position_value("ABC").unwrap();
         assert_ne!(val, val1);
     }
@@ -707,11 +704,11 @@ mod tests {
         brkr.deposit_cash(&100_000.0);
         brkr.send_order(Order::market(OrderType::MarketBuy, "ABC", 495.0))
             .await;
-        join!(exchange.check());
-        join!(brkr.check());
+        exchange.check().await;
+        brkr.check().await;
 
-        join!(exchange.check());
-        join!(brkr.check());
+        exchange.check().await;
+        brkr.check().await;
 
         let profit = brkr.get_position_profit("ABC").unwrap();
         assert_eq!(*profit, -4950.00);
@@ -724,12 +721,12 @@ mod tests {
         brkr.send_order(Order::market(OrderType::MarketBuy, "ABC", 495.0))
             .await;
 
-        join!(exchange.check());
-        join!(brkr.check());
+        exchange.check().await;
+        brkr.check().await;
         let cash_before_dividend = brkr.get_cash_balance();
 
-        join!(exchange.check());
-        join!(brkr.check());
+        exchange.check().await;
+        brkr.check().await;
         let cash_after_dividend = brkr.get_cash_balance();
         assert_ne!(cash_before_dividend, cash_after_dividend);
     }
@@ -822,20 +819,20 @@ mod tests {
         brkr.send_order(Order::market(OrderType::MarketBuy, "BCD", 100.0))
             .await;
 
-        join!(exchange.check());
-        join!(brkr.check());
+        exchange.check().await;
+        brkr.check().await;
 
         //Missing live quote for BCD
-        join!(exchange.check());
-        join!(brkr.check());
+        exchange.check().await;
+        brkr.check().await;
         let value = brkr.get_position_value("BCD").unwrap();
         println!("{:?}", value);
         //We test against the bid price, which gives us the value exclusive of the price paid at ask
         assert!(*value == 10.0 * 100.0);
 
         //BCD has quote again
-        join!(exchange.check());
-        join!(brkr.check());
+        exchange.check().await;
+        brkr.check().await;
 
         let value1 = brkr.get_position_value("BCD").unwrap();
         println!("{:?}", value1);
@@ -887,15 +884,15 @@ mod tests {
             .await;
 
         //Trades execute
-        join!(exchange.check());
-        join!(brkr.check());
+        exchange.check().await;
+        brkr.check().await;
 
         let cash = brkr.get_cash_balance();
         assert!(*cash < 0.0);
 
         //Broker rebalances to raise cash
-        join!(exchange.check());
-        join!(brkr.check());
+        exchange.check().await;
+        brkr.check().await;
         let cash1 = brkr.get_cash_balance();
         assert!(*cash1 > 0.0);
     }

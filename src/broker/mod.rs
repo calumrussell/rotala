@@ -545,10 +545,7 @@ impl Order {
         &self,
         subscriber_id: DefaultSubscriberId,
     ) -> ExchangeOrderMessage {
-        let price: Option<f64> = match self.get_price() {
-            Some(price) => Some((*price.clone()).into()),
-            None => None,
-        };
+        let price: Option<f64> = self.get_price().as_ref().map(|price| (**price));
 
         ExchangeOrderMessage::CreateOrder(ExchangeOrder {
             subscriber_id,
@@ -572,11 +569,7 @@ impl PartialEq for Order {
 
 impl From<ExchangeOrder> for Order {
     fn from(value: ExchangeOrder) -> Self {
-        let price: Option<Price> = match value.get_price() {
-            Some(price) => Some((*price).into()),
-            None => None,
-        };
-
+        let price: Option<Price> = value.get_price().as_ref().map(|price| (*price).into());
         Self {
             order_type: (*value.get_order_type()).into(),
             symbol: value.get_symbol().into(),

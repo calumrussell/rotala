@@ -34,7 +34,6 @@ where
     S: Strategy + History,
 {
     pub async fn run(&mut self) {
-        dbg!(self.clock.has_next());
         while self.clock.has_next() {
             self.exchange.check().await;
             self.strategy.update().await;
@@ -97,7 +96,7 @@ where
     pub async fn init(&mut self, initial_cash: &CashValue) {
         let mut handles = Vec::new();
         for strategy in &mut self.strategies {
-            handles.push(strategy.init(&initial_cash));
+            handles.push(strategy.init(initial_cash));
         }
         join_all(handles).await;
     }
@@ -113,6 +112,18 @@ where
     clock: Option<Clock>,
     strategies: Vec<S>,
     exchange: Option<DefaultExchange<T, Q, D>>,
+}
+
+impl<Q, D, T, S> Default for SimContextBuilder<Q, D, T, S>
+where
+    Q: Quotable,
+    D: Dividendable,
+    T: DataSource<Q, D>,
+    S: Strategy + History,
+{
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl<Q, D, T, S> SimContextBuilder<Q, D, T, S>
@@ -148,7 +159,7 @@ where
 
         let strategy = self.strategies.remove(0);
         //Move exchange out of builder to save clone
-        let exchange = std::mem::replace(&mut self.exchange, None);
+        let exchange = self.exchange.take();
         let mut cxt = SimContext::<Q, D, T, S> {
             clock: self.clock.as_ref().unwrap().clone(),
             strategy,
@@ -169,7 +180,7 @@ where
             strategies.push(strategy);
         }
 
-        let exchange = std::mem::replace(&mut self.exchange, None);
+        let exchange = self.exchange.take();
         let mut cxt = SimContextMulti::<Q, D, T, S> {
             clock: self.clock.as_ref().unwrap().clone(),
             strategies,

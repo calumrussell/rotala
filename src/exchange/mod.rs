@@ -312,7 +312,7 @@ where
         last
     }
 
-    fn is_empty(&self) -> bool {
+    pub fn is_empty(&self) -> bool {
         self.orderbook.is_empty()
     }
 
@@ -334,8 +334,6 @@ where
 mod tests {
     use std::collections::HashMap;
     use std::sync::Arc;
-
-    use tokio::join;
 
     use super::builder::DefaultExchangeBuilder;
     use super::types::{
@@ -389,9 +387,9 @@ mod tests {
     #[tokio::test]
     async fn can_tick_without_blocking() {
         let (mut exchange, _id, _price_rx, _order_tx, _notify_rx) = setup().await;
-        join!(exchange.check());
-        join!(exchange.check());
-        join!(exchange.check());
+        exchange.check().await;
+        exchange.check().await;
+        exchange.check().await;
     }
 
     #[tokio::test]
@@ -401,7 +399,7 @@ mod tests {
             .send(ExchangeOrderMessage::market_buy(id, "ABC", 100.0))
             .await
             .unwrap();
-        join!(exchange.check());
+        exchange.check().await;
 
         assert_eq!(exchange.trade_log.len(), 1);
     }
@@ -410,12 +408,12 @@ mod tests {
     async fn test_that_exchange_emits_prices() {
         let (mut exchange, _id, mut price_rx, _order_tx, _notify_rx) = setup().await;
 
-        join!(exchange.check());
+        exchange.check().await;
         while let Ok(prices) = price_rx.try_recv() {
             assert_eq!(prices.len(), 1);
         }
         //Check that len decrements when price is received
-        join!(exchange.check());
+        exchange.check().await;
         while let Ok(prices) = price_rx.try_recv() {
             assert_eq!(prices.len(), 1);
             return;
@@ -433,7 +431,7 @@ mod tests {
             .await
             .unwrap();
 
-        join!(exchange.check());
+        exchange.check().await;
         while let Ok(trade) = notify_rx.try_recv() {
             match trade {
                 ExchangeNotificationMessage::TradeCompleted(trade) => assert_eq!(*trade.date, 101),
@@ -469,7 +467,7 @@ mod tests {
             .await
             .unwrap();
 
-        join!(exchange.check());
+        exchange.check().await;
         assert_eq!(exchange.trade_log.len(), 4);
     }
 
@@ -486,7 +484,7 @@ mod tests {
             .send(ExchangeOrderMessage::market_buy(id, "ABC", 25.0))
             .await
             .unwrap();
-        join!(exchange.check());
+        exchange.check().await;
 
         order_tx
             .send(ExchangeOrderMessage::market_buy(id, "ABC", 25.0))
@@ -497,7 +495,7 @@ mod tests {
             .send(ExchangeOrderMessage::market_buy(id, "ABC", 25.0))
             .await
             .unwrap();
-        join!(exchange.check());
+        exchange.check().await;
         assert_eq!(exchange.trade_log.len(), 4);
     }
 
@@ -511,7 +509,7 @@ mod tests {
             .await
             .unwrap();
 
-        join!(exchange.check());
+        exchange.check().await;
         assert_eq!(exchange.trade_log.len(), 1);
         let trade = exchange.trade_log.remove(0);
         //Trade executes at 101 so trade price should be 103
@@ -528,7 +526,7 @@ mod tests {
             .await
             .unwrap();
 
-        join!(exchange.check());
+        exchange.check().await;
         assert_eq!(exchange.trade_log.len(), 1);
         let trade = exchange.trade_log.remove(0);
         //Trade executes at 101 so trade price should be 103
@@ -551,7 +549,7 @@ mod tests {
             .await
             .unwrap();
 
-        join!(exchange.check());
+        exchange.check().await;
         assert_eq!(exchange.trade_log.len(), 1);
     }
 
@@ -573,7 +571,7 @@ mod tests {
             .await
             .unwrap();
 
-        join!(exchange.check());
+        exchange.check().await;
         assert_eq!(exchange.trade_log.len(), 1);
     }
 
@@ -595,7 +593,7 @@ mod tests {
             .await
             .unwrap();
 
-        join!(exchange.check());
+        exchange.check().await;
         assert_eq!(exchange.trade_log.len(), 1);
         let trade = exchange.trade_log.remove(0);
         //Should execute at market price, not order price
@@ -619,7 +617,7 @@ mod tests {
             .await
             .unwrap();
 
-        join!(exchange.check());
+        exchange.check().await;
         assert_eq!(exchange.trade_log.len(), 1);
         let trade = exchange.trade_log.remove(0);
         //Should execute at market price, not order price
@@ -633,7 +631,7 @@ mod tests {
             .send(ExchangeOrderMessage::market_buy(id, "XYZ", 100.0))
             .await
             .unwrap();
-        join!(exchange.check());
+        exchange.check().await;
 
         assert_eq!(exchange.trade_log.len(), 0);
     }
@@ -646,7 +644,7 @@ mod tests {
             .send(ExchangeOrderMessage::limit_buy(id, "XYZ", 100.00, 200.0))
             .await
             .unwrap();
-        join!(exchange.check());
+        exchange.check().await;
 
         assert!(!exchange.is_empty());
 
@@ -654,7 +652,7 @@ mod tests {
             .send(ExchangeOrderMessage::ClearOrdersBySymbol(id, "XYZ".into()))
             .await
             .unwrap();
-        join!(exchange.check());
+        exchange.check().await;
 
         assert!(exchange.is_empty());
     }
@@ -693,12 +691,12 @@ mod tests {
             .await
             .unwrap();
 
-        join!(exchange.check());
+        exchange.check().await;
 
         //Orderbook should have one order and trade log has no executed trades
         assert_eq!(exchange.trade_log.len(), 0);
 
-        join!(exchange.check());
+        exchange.check().await;
 
         //Order should execute now
         assert_eq!(exchange.trade_log.len(), 1);

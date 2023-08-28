@@ -119,13 +119,13 @@ fn trade_execution_logic() {
     brkr.send_order(Order::market(OrderType::MarketBuy, "BCD", 100.0));
 
     join!(exchange.check());
-    join!(brkr.check());
+    brkr.check().await;
 
     join!(exchange.check());
-    join!(brkr.check());
+    brkr.check().await;
 
     join!(exchange.check());
-    join!(brkr.check());
+    brkr.check().await;
 }
 
 fn benchmarks(c: &mut Criterion) {
