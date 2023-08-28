@@ -1059,9 +1059,8 @@ impl Display for UnexecutableOrderError {
 #[cfg(test)]
 mod tests {
 
-    /*
-    use crate::broker::{BacktestBroker, Order, OrderType, Trade};
-    use crate::exchange::DefaultExchangeBuilder;
+    use crate::broker::{BacktestBroker, OrderType, TransferCash};
+    use crate::exchange::builder::DefaultExchangeBuilder;
     use crate::input::{fake_data_generator, HashMapInputBuilder};
     use crate::sim::SimulatedBrokerBuilder;
     use crate::types::{DateTime, PortfolioAllocation};
@@ -1069,41 +1068,31 @@ mod tests {
     use std::collections::HashMap;
     use std::sync::Arc;
 
-    use super::{BrokerCalculations, BrokerCost, Quote, TransferCash};
+    use super::{BrokerCalculations, BrokerCost, Quote};
 
-    #[test]
-    fn diff_direction_correct_if_need_to_buy() {
-        let mut clock = ClockBuilder::with_length_in_days(0, 10)
+    #[tokio::test]
+    async fn diff_direction_correct_if_need_to_buy() {
+        let clock = ClockBuilder::with_length_in_days(0, 10)
             .with_frequency(&Frequency::Daily)
             .build();
         let input = fake_data_generator(clock.clone());
 
-        let (price_tx, mut price_rx)= tokio::sync::broadcast::channel::<Vec<Arc<Quote>>>(100);
-        let (notify_tx, mut notify_rx) = tokio::sync::broadcast::channel::<Trade>(100);
-        let (order_tx, order_rx) = tokio::sync::mpsc::channel::<Order>(100);
+        let mut exchange = DefaultExchangeBuilder::new()
+            .with_clock(clock.clone())
+            .with_data_source(input.clone())
+            .build();
 
         let mut brkr = SimulatedBrokerBuilder::new()
             .with_data(input)
             .with_trade_costs(vec![BrokerCost::flat(1.0)])
-            .with_nofify_receiver(notify_tx.subscribe())
-            .with_order_sender(order_tx)
-            .with_price_receiver(price_tx.subscribe())
-            .build();
-
-        let mut exchange = DefaultExchangeBuilder::new()
-            .with_clock(clock.clone())
-            .with_data_source(input)
-            .with_notify_sender(notify_tx)
-            .with_order_reciever(order_rx)
-            .with_price_sender(price_tx)
-            .build();
+            .build(&mut exchange).await;
 
         let mut weights = PortfolioAllocation::new();
         weights.insert("ABC", 1.0);
 
         brkr.deposit_cash(&100_000.0);
-        join!(exchange.check());
-        join!(brkr.check());
+        exchange.check().await;
+        brkr.check().await;
 
         let orders = BrokerCalculations::diff_brkr_against_target_weights(&weights, &mut brkr);
         println!("{:?}", orders);
@@ -1111,48 +1100,39 @@ mod tests {
         assert!(matches!(first.order_type, OrderType::MarketBuy { .. }));
     }
 
-    #[test]
-    fn diff_direction_correct_if_need_to_sell() {
+    #[tokio::test]
+    async fn diff_direction_correct_if_need_to_sell() {
         //This is connected to the previous test, if the above fails then this will never pass.
         //However, if the above passes this could still fail.
-        let mut clock = ClockBuilder::with_length_in_days(0, 10)
+        let clock = ClockBuilder::with_length_in_days(0, 10)
             .with_frequency(&Frequency::Daily)
             .build();
 
         let input = fake_data_generator(clock.clone());
 
-        let (price_tx, mut price_rx)= tokio::sync::broadcast::channel::<Vec<Arc<Quote>>>(100);
-        let (notify_tx, mut notify_rx) = tokio::sync::broadcast::channel::<Trade>(100);
-        let (order_tx, order_rx) = tokio::sync::mpsc::channel::<Order>(100);
+        let mut exchange = DefaultExchangeBuilder::new()
+            .with_clock(clock.clone())
+            .with_data_source(input.clone())
+            .build();
 
         let mut brkr = SimulatedBrokerBuilder::new()
             .with_data(input)
             .with_trade_costs(vec![BrokerCost::flat(1.0)])
-            .with_nofify_receiver(notify_tx.subscribe())
-            .with_order_sender(order_tx)
-            .with_price_receiver(price_tx.subscribe())
-            .build();
-
-        let mut exchange = DefaultExchangeBuilder::new()
-            .with_clock(clock.clone())
-            .with_data_source(input)
-            .with_notify_sender(notify_tx)
-            .with_order_reciever(order_rx)
-            .with_price_sender(price_tx)
-            .build();
+            .build(&mut exchange).await;
 
         let mut weights = PortfolioAllocation::new();
         weights.insert("ABC", 1.0);
 
         brkr.deposit_cash(&100_000.0);
         let orders = BrokerCalculations::diff_brkr_against_target_weights(&weights, &mut brkr);
-        brkr.send_orders(&orders);
+        brkr.send_orders(&orders).await;
 
-        join!(exchange.check());
-        join!(brkr.check());
+        exchange.check().await;
+        brkr.check().await;
 
-        join!(exchange.check());
-        join!(brkr.check());
+        exchange.check().await;
+        brkr.check().await;
+
         let mut weights1 = PortfolioAllocation::new();
         //This weight needs to very small because it is possible for the data generator to generate
         //a price that drops significantly meaning that rebalancing requires a buy not a sell. This
@@ -1165,37 +1145,26 @@ mod tests {
         assert!(matches!(first.order_type, OrderType::MarketSell { .. }));
     }
 
-    /*
-    #[test]
-    fn diff_continues_if_security_missing() {
+    #[tokio::test]
+    async fn diff_continues_if_security_missing() {
         //In this scenario, the user has inserted incorrect information but this scenario can also occur if there is no quote
         //for a given security on a certain date. We are interested in the latter case, not the former but it is more
         //difficult to test for the latter, and the code should be the same.
-        let mut clock = ClockBuilder::with_length_in_days(0, 10)
+        let clock = ClockBuilder::with_length_in_days(0, 10)
             .with_frequency(&Frequency::Daily)
             .build();
 
         let input = fake_data_generator(clock.clone());
 
-        let (price_tx, mut price_rx)= tokio::sync::broadcast::channel::<Vec<Arc<Quote>>>(100);
-        let (notify_tx, mut notify_rx) = tokio::sync::broadcast::channel::<Trade>(100);
-        let (order_tx, order_rx) = tokio::sync::mpsc::channel::<Order>(100);
+        let mut exchange = DefaultExchangeBuilder::new()
+            .with_clock(clock.clone())
+            .with_data_source(input.clone())
+            .build();
 
         let mut brkr = SimulatedBrokerBuilder::new()
             .with_data(input)
             .with_trade_costs(vec![BrokerCost::flat(1.0)])
-            .with_nofify_receiver(notify_tx.subscribe())
-            .with_order_sender(order_tx)
-            .with_price_receiver(price_tx.subscribe())
-            .build();
-
-        let mut exchange = DefaultExchangeBuilder::new()
-            .with_clock(clock.clone())
-            .with_data_source(input)
-            .with_notify_sender(notify_tx)
-            .with_order_reciever(order_rx)
-            .with_price_sender(price_tx)
-            .build();
+            .build(&mut exchange).await;
 
         let mut weights = PortfolioAllocation::new();
         weights.insert("ABC", 0.5);
@@ -1205,48 +1174,37 @@ mod tests {
         weights.insert("XYZ", 0.5);
 
         brkr.deposit_cash(&100_000.0);
-        join!(exchange.check());
-        join!(brkr.check());
+        exchange.check().await;
+        brkr.check().await;
         let orders = BrokerCalculations::diff_brkr_against_target_weights(&weights, &mut brkr);
         assert!(orders.len() == 1);
     }
-    */
 
-    #[test]
+    #[tokio::test]
     #[should_panic]
-    fn diff_panics_if_brkr_has_no_cash() {
+    async fn diff_panics_if_brkr_has_no_cash() {
         //If we get to a point where the client is diffing without cash, we can assume that no further operations are possible
         //and we should panic
-        let mut clock = ClockBuilder::with_length_in_days(0, 10)
+        let clock = ClockBuilder::with_length_in_days(0, 10)
             .with_frequency(&Frequency::Daily)
             .build();
         let input = fake_data_generator(clock.clone());
 
-        let (price_tx, mut price_rx)= tokio::sync::broadcast::channel::<Vec<Arc<Quote>>>(100);
-        let (notify_tx, mut notify_rx) = tokio::sync::broadcast::channel::<Trade>(100);
-        let (order_tx, order_rx) = tokio::sync::mpsc::channel::<Order>(100);
+        let mut exchange = DefaultExchangeBuilder::new()
+            .with_clock(clock.clone())
+            .with_data_source(input.clone())
+            .build();
 
         let mut brkr = SimulatedBrokerBuilder::new()
             .with_data(input)
             .with_trade_costs(vec![BrokerCost::flat(1.0)])
-            .with_nofify_receiver(notify_tx.subscribe())
-            .with_order_sender(order_tx)
-            .with_price_receiver(price_tx.subscribe())
-            .build();
-
-        let mut exchange = DefaultExchangeBuilder::new()
-            .with_clock(clock.clone())
-            .with_data_source(input)
-            .with_notify_sender(notify_tx)
-            .with_order_reciever(order_rx)
-            .with_price_sender(price_tx)
-            .build();
+            .build(&mut exchange).await;
 
         let mut weights = PortfolioAllocation::new();
         weights.insert("ABC", 1.0);
 
-        join!(exchange.check());
-        join!(brkr.check());
+        exchange.check().await;
+        brkr.check().await;
         BrokerCalculations::diff_brkr_against_target_weights(&weights, &mut brkr);
     }
 
@@ -1274,8 +1232,8 @@ mod tests {
         assert!((*initial.1).eq(&1.1));
     }
 
-    #[test]
-    fn diff_handles_sent_but_unexecuted_orders() {
+    #[tokio::test]
+    async fn diff_handles_sent_but_unexecuted_orders() {
         //It is possible for the client to issue orders for infinitely increasing numbers of shares
         //if there is a gap between orders being issued and executed. For example, if we are
         //missing price data the client could think we need 100 shares, that order doesn't get
@@ -1294,7 +1252,7 @@ mod tests {
         prices.insert(102.into(), vec![]);
         prices.insert(103.into(), vec![quote2]);
 
-        let mut clock = ClockBuilder::with_length_in_seconds(100, 5)
+        let clock = ClockBuilder::with_length_in_seconds(100, 5)
             .with_frequency(&Frequency::Second)
             .build();
 
@@ -1303,57 +1261,48 @@ mod tests {
             .with_clock(clock.clone())
             .build();
 
-        let (price_tx, mut price_rx)= tokio::sync::broadcast::channel::<Vec<Arc<Quote>>>(100);
-        let (notify_tx, mut notify_rx) = tokio::sync::broadcast::channel::<Trade>(100);
-        let (order_tx, order_rx) = tokio::sync::mpsc::channel::<Order>(100);
+        let mut exchange = DefaultExchangeBuilder::new()
+            .with_clock(clock.clone())
+            .with_data_source(source.clone())
+            .build();
 
         let mut brkr = SimulatedBrokerBuilder::new()
             .with_data(source)
-            .with_trade_costs(vec![BrokerCost::flat(1.0)])
-            .with_nofify_receiver(notify_tx.subscribe())
-            .with_order_sender(order_tx)
-            .with_price_receiver(price_tx.subscribe())
-            .build();
-
-        let mut exchange = DefaultExchangeBuilder::new()
-            .with_clock(clock.clone())
-            .with_data_source(source)
-            .with_notify_sender(notify_tx)
-            .with_order_reciever(order_rx)
-            .with_price_sender(price_tx)
-            .build();
+            .build(&mut exchange).await;
 
         brkr.deposit_cash(&100_000.0);
 
         //No price for security so we haven't diffed correctly
-        join!(exchange.check());
-        join!(brkr.check());
+        exchange.check().await;
+        brkr.check().await;
 
-        join!(exchange.check());
-        join!(brkr.check());
+        exchange.check().await;
+        brkr.check().await;
 
         let mut target_weights = PortfolioAllocation::new();
         target_weights.insert("ABC", 0.9);
 
         let orders =
             BrokerCalculations::diff_brkr_against_target_weights(&target_weights, &mut brkr);
-        brkr.send_orders(&orders);
-        join!(exchange.check());
-        join!(brkr.check());
+        brkr.send_orders(&orders).await;
+
+        exchange.check().await;
+        brkr.check().await;
 
         let orders1 =
             BrokerCalculations::diff_brkr_against_target_weights(&target_weights, &mut brkr);
 
-        brkr.send_orders(&orders1);
-        join!(exchange.check());
-        join!(brkr.check());
+        brkr.send_orders(&orders1).await;
+        exchange.check().await;
+        brkr.check().await;
 
+        dbg!(brkr.get_position_qty("ABC"));
         //If the logic isn't correct the orders will have doubled up to 1800
         assert_eq!(*(*brkr.get_position_qty("ABC").unwrap()), 900.0);
     }
 
-    #[test]
-    fn diff_handles_case_when_existing_order_requires_sell_to_rebalance() {
+    #[tokio::test]
+    async fn diff_handles_case_when_existing_order_requires_sell_to_rebalance() {
         //Tests similar scenario to previous test but for the situation in which the price is
         //missing, and we try to rebalance by buying but the pending order is for a significantly
         //greater amount of shares than we now need (e.g. we have a price of X, we miss a price,
@@ -1378,25 +1327,14 @@ mod tests {
             .with_clock(clock.clone())
             .build();
 
-        let (price_tx, mut price_rx)= tokio::sync::broadcast::channel::<Vec<Arc<Quote>>>(100);
-        let (notify_tx, mut notify_rx) = tokio::sync::broadcast::channel::<Trade>(100);
-        let (order_tx, order_rx) = tokio::sync::mpsc::channel::<Order>(100);
+        let mut exchange = DefaultExchangeBuilder::new()
+            .with_clock(clock.clone())
+            .with_data_source(source.clone())
+            .build();
 
         let mut brkr = SimulatedBrokerBuilder::new()
             .with_data(source)
-            .with_trade_costs(vec![BrokerCost::flat(1.0)])
-            .with_nofify_receiver(notify_tx.subscribe())
-            .with_order_sender(order_tx)
-            .with_price_receiver(price_tx.subscribe())
-            .build();
-
-        let mut exchange = DefaultExchangeBuilder::new()
-            .with_clock(clock.clone())
-            .with_data_source(source)
-            .with_notify_sender(notify_tx)
-            .with_order_reciever(order_rx)
-            .with_price_sender(price_tx)
-            .build();
+            .build(&mut exchange).await;
 
         brkr.deposit_cash(&100_000.0);
         let mut target_weights = PortfolioAllocation::new();
@@ -1404,31 +1342,30 @@ mod tests {
         let orders =
             BrokerCalculations::diff_brkr_against_target_weights(&target_weights, &mut brkr);
         println!("{:?}", orders);
-        brkr.send_orders(&orders);
+        brkr.send_orders(&orders).await;
 
         //No price for security so we haven't diffed correctly
-        join!(exchange.check());
-        join!(brkr.check());
+        exchange.check().await;
+        brkr.check().await;
 
-        join!(exchange.check());
-        join!(brkr.check());
-
-        join!(exchange.check());
-        join!(brkr.check());
-
+        exchange.check().await;
+        brkr.check().await;
+ 
+        exchange.check().await;
+        brkr.check().await;
 
         let orders1 =
             BrokerCalculations::diff_brkr_against_target_weights(&target_weights, &mut brkr);
         println!("{:?}", orders1);
 
-        brkr.send_orders(&orders1);
-        join!(exchange.check());
-        join!(brkr.check());
+        brkr.send_orders(&orders1).await;
+ 
+        exchange.check().await;
+        brkr.check().await;
 
         println!("{:?}", brkr.get_holdings());
         //If the logic isn't correct then the order will be for less shares than is actually
         //required by the newest price
         assert_eq!(*(*brkr.get_position_qty("ABC").unwrap()), 1200.0);
     }
-    */
 }
