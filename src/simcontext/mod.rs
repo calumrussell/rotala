@@ -1,7 +1,7 @@
 use futures::future::join_all;
 
 use crate::clock::Clock;
-use crate::exchange::DefaultExchange;
+use crate::exchange::ConcurrentExchange;
 use crate::input::{DataSource, Dividendable, Quotable};
 use crate::perf::{BacktestOutput, PerformanceCalculator};
 use crate::strategy::{History, Strategy};
@@ -23,7 +23,7 @@ where
 {
     clock: Clock,
     strategy: S,
-    exchange: DefaultExchange<T, Q, D>,
+    exchange: ConcurrentExchange<T, Q, D>,
 }
 
 impl<Q, D, T, S> SimContext<Q, D, T, S>
@@ -60,7 +60,7 @@ where
 {
     clock: Clock,
     strategies: Vec<S>,
-    exchange: DefaultExchange<T, Q, D>,
+    exchange: ConcurrentExchange<T, Q, D>,
 }
 
 impl<Q, D, T, S> SimContextMulti<Q, D, T, S>
@@ -111,7 +111,7 @@ where
 {
     clock: Option<Clock>,
     strategies: Vec<S>,
-    exchange: Option<DefaultExchange<T, Q, D>>,
+    exchange: Option<ConcurrentExchange<T, Q, D>>,
 }
 
 impl<Q, D, T, S> Default for SimContextBuilder<Q, D, T, S>
@@ -143,7 +143,7 @@ where
         self
     }
 
-    pub fn with_exchange(&mut self, exchange: DefaultExchange<T, Q, D>) -> &mut Self {
+    pub fn with_exchange(&mut self, exchange: ConcurrentExchange<T, Q, D>) -> &mut Self {
         self.exchange = Some(exchange);
         self
     }

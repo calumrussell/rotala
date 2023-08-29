@@ -10,8 +10,9 @@ use crate::broker::{
     BacktestBroker, BrokerCalculations, BrokerCashEvent, BrokerCost, BrokerEvent, DividendPayment,
     EventLog, GetsQuote, Order, OrderType, Trade, TransferCash,
 };
-use crate::exchange::types::{DefaultSubscriberId, NotifyReceiver, OrderSender, PriceReceiver};
-use crate::exchange::DefaultExchange;
+use crate::exchange::{
+    ConcurrentExchange, DefaultSubscriberId, NotifyReceiver, OrderSender, PriceReceiver,
+};
 use crate::input::{DataSource, Dividendable, Quotable};
 use crate::types::{CashValue, PortfolioHoldings, PortfolioQty, Price};
 
@@ -36,7 +37,7 @@ where
 {
     pub async fn build(
         &mut self,
-        exchange: &mut DefaultExchange<T, Q, D>,
+        exchange: &mut ConcurrentExchange<T, Q, D>,
     ) -> SimulatedBroker<T, Q, D> {
         if self.data.is_none() {
             panic!("Cannot build broker without data");
@@ -167,14 +168,14 @@ where
             //problems because the broker will be unable to fund any future trades but exiting
             //early will give less confusing output.
             match notification {
-                crate::exchange::types::ExchangeNotificationMessage::OrderBooked(_id, _order) => {
+                crate::exchange::ExchangeNotificationMessage::OrderBooked(_id, _order) => {
                     //TODO: when the exchange books an order we should store the change
                 }
-                crate::exchange::types::ExchangeNotificationMessage::TradeCompleted(trade) => {
+                crate::exchange::ExchangeNotificationMessage::TradeCompleted(trade) => {
                     match trade.typ {
                         //Force debit so we can end up with negative cash here
-                        crate::exchange::types::TradeType::Buy => self.debit_force(&trade.value),
-                        crate::exchange::types::TradeType::Sell => self.credit(&trade.value),
+                        crate::exchange::TradeType::Buy => self.debit_force(&trade.value),
+                        crate::exchange::TradeType::Sell => self.credit(&trade.value),
                     };
                     self.log.record::<Trade>(trade.clone().into());
 
@@ -182,13 +183,13 @@ where
                     let curr_position = self.get_position_qty(&trade.symbol).unwrap_or(&default);
 
                     let updated = match trade.typ {
-                        crate::exchange::types::TradeType::Buy => **curr_position + trade.quantity,
-                        crate::exchange::types::TradeType::Sell => **curr_position - trade.quantity,
+                        crate::exchange::TradeType::Buy => **curr_position + trade.quantity,
+                        crate::exchange::TradeType::Sell => **curr_position - trade.quantity,
                     };
 
                     self.update_holdings(&trade.symbol, PortfolioQty::from(updated));
                 }
-                crate::exchange::types::ExchangeNotificationMessage::OrderDeleted(_order_id) => (),
+                crate::exchange::ExchangeNotificationMessage::OrderDeleted(_order_id) => (),
             }
         }
         //Previous step can cause negative cash balance so we have to rebalance here, this
@@ -500,8 +501,7 @@ mod tests {
     };
     use crate::broker::{Order, OrderType};
     use crate::clock::ClockBuilder;
-    use crate::exchange::builder::DefaultExchangeBuilder;
-    use crate::exchange::DefaultExchange;
+    use crate::exchange::{ConcurrentExchange, ConcurrentExchangeBuilder};
     use crate::input::{HashMapInput, HashMapInputBuilder};
     use crate::types::{DateTime, Frequency};
 
@@ -510,7 +510,7 @@ mod tests {
 
     async fn setup() -> (
         SimulatedBroker<HashMapInput, Quote, Dividend>,
-        DefaultExchange<HashMapInput, Quote, Dividend>,
+        ConcurrentExchange<HashMapInput, Quote, Dividend>,
     ) {
         let mut prices: HashMap<DateTime, Vec<Arc<Quote>>> = HashMap::new();
         let mut dividends: HashMap<DateTime, Vec<Arc<Dividend>>> = HashMap::new();
@@ -541,7 +541,7 @@ mod tests {
             .with_dividends(dividends)
             .build();
 
-        let mut exchange = DefaultExchangeBuilder::new()
+        let mut exchange = ConcurrentExchangeBuilder::new()
             .with_clock(clock.clone())
             .with_data_source(source.clone())
             .build();
@@ -751,7 +751,7 @@ mod tests {
             .with_clock(clock.clone())
             .build();
 
-        let mut exchange = DefaultExchangeBuilder::new()
+        let mut exchange = ConcurrentExchangeBuilder::new()
             .with_clock(clock.clone())
             .with_data_source(source.clone())
             .build();
@@ -802,7 +802,7 @@ mod tests {
             .with_clock(clock.clone())
             .build();
 
-        let mut exchange = DefaultExchangeBuilder::new()
+        let mut exchange = ConcurrentExchangeBuilder::new()
             .with_clock(clock.clone())
             .with_data_source(source.clone())
             .build();
@@ -866,7 +866,7 @@ mod tests {
             .with_clock(clock.clone())
             .build();
 
-        let mut exchange = DefaultExchangeBuilder::new()
+        let mut exchange = ConcurrentExchangeBuilder::new()
             .with_clock(clock.clone())
             .with_data_source(source.clone())
             .build();

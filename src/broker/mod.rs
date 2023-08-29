@@ -5,9 +5,7 @@ use std::fmt::Formatter;
 use std::sync::Arc;
 use std::{cmp::Ordering, fmt::Display};
 
-use crate::exchange::types::{
-    DefaultSubscriberId, ExchangeOrder, ExchangeOrderMessage, ExchangeTrade,
-};
+use crate::exchange::{DefaultSubscriberId, ExchangeOrder, ExchangeOrderMessage, ExchangeTrade};
 use crate::input::{Dividendable, Quotable};
 use crate::types::{
     CashValue, DateTime, PortfolioAllocation, PortfolioHoldings, PortfolioQty, PortfolioValues,
@@ -302,11 +300,11 @@ pub enum TradeType {
     Sell,
 }
 
-impl From<crate::exchange::types::TradeType> for TradeType {
-    fn from(value: crate::exchange::types::TradeType) -> Self {
+impl From<crate::exchange::TradeType> for TradeType {
+    fn from(value: crate::exchange::TradeType) -> Self {
         match value {
-            crate::exchange::types::TradeType::Buy => TradeType::Buy,
-            crate::exchange::types::TradeType::Sell => TradeType::Sell,
+            crate::exchange::TradeType::Buy => TradeType::Buy,
+            crate::exchange::TradeType::Sell => TradeType::Sell,
         }
     }
 }
@@ -439,28 +437,28 @@ pub enum OrderType {
     StopBuy,
 }
 
-impl From<crate::exchange::types::OrderType> for OrderType {
-    fn from(value: crate::exchange::types::OrderType) -> Self {
+impl From<crate::exchange::OrderType> for OrderType {
+    fn from(value: crate::exchange::OrderType) -> Self {
         match value {
-            crate::exchange::types::OrderType::LimitBuy => OrderType::LimitBuy,
-            crate::exchange::types::OrderType::LimitSell => OrderType::LimitSell,
-            crate::exchange::types::OrderType::MarketBuy => OrderType::MarketBuy,
-            crate::exchange::types::OrderType::MarketSell => OrderType::MarketSell,
-            crate::exchange::types::OrderType::StopBuy => OrderType::StopBuy,
-            crate::exchange::types::OrderType::StopSell => OrderType::StopSell,
+            crate::exchange::OrderType::LimitBuy => OrderType::LimitBuy,
+            crate::exchange::OrderType::LimitSell => OrderType::LimitSell,
+            crate::exchange::OrderType::MarketBuy => OrderType::MarketBuy,
+            crate::exchange::OrderType::MarketSell => OrderType::MarketSell,
+            crate::exchange::OrderType::StopBuy => OrderType::StopBuy,
+            crate::exchange::OrderType::StopSell => OrderType::StopSell,
         }
     }
 }
 
-impl From<OrderType> for crate::exchange::types::OrderType {
+impl From<OrderType> for crate::exchange::OrderType {
     fn from(value: OrderType) -> Self {
         match value {
-            OrderType::LimitBuy => crate::exchange::types::OrderType::LimitBuy,
-            OrderType::LimitSell => crate::exchange::types::OrderType::LimitSell,
-            OrderType::MarketBuy => crate::exchange::types::OrderType::MarketBuy,
-            OrderType::MarketSell => crate::exchange::types::OrderType::MarketSell,
-            OrderType::StopBuy => crate::exchange::types::OrderType::StopBuy,
-            OrderType::StopSell => crate::exchange::types::OrderType::StopSell,
+            OrderType::LimitBuy => crate::exchange::OrderType::LimitBuy,
+            OrderType::LimitSell => crate::exchange::OrderType::LimitSell,
+            OrderType::MarketBuy => crate::exchange::OrderType::MarketBuy,
+            OrderType::MarketSell => crate::exchange::OrderType::MarketSell,
+            OrderType::StopBuy => crate::exchange::OrderType::StopBuy,
+            OrderType::StopSell => crate::exchange::OrderType::StopSell,
         }
     }
 }
@@ -1053,7 +1051,7 @@ impl Display for UnexecutableOrderError {
 mod tests {
 
     use crate::broker::{BacktestBroker, OrderType, TransferCash};
-    use crate::exchange::builder::DefaultExchangeBuilder;
+    use crate::exchange::ConcurrentExchangeBuilder;
     use crate::input::{fake_data_generator, HashMapInputBuilder};
     use crate::sim::SimulatedBrokerBuilder;
     use crate::types::{DateTime, PortfolioAllocation};
@@ -1070,7 +1068,7 @@ mod tests {
             .build();
         let input = fake_data_generator(clock.clone());
 
-        let mut exchange = DefaultExchangeBuilder::new()
+        let mut exchange = ConcurrentExchangeBuilder::new()
             .with_clock(clock.clone())
             .with_data_source(input.clone())
             .build();
@@ -1104,7 +1102,7 @@ mod tests {
 
         let input = fake_data_generator(clock.clone());
 
-        let mut exchange = DefaultExchangeBuilder::new()
+        let mut exchange = ConcurrentExchangeBuilder::new()
             .with_clock(clock.clone())
             .with_data_source(input.clone())
             .build();
@@ -1151,7 +1149,7 @@ mod tests {
 
         let input = fake_data_generator(clock.clone());
 
-        let mut exchange = DefaultExchangeBuilder::new()
+        let mut exchange = ConcurrentExchangeBuilder::new()
             .with_clock(clock.clone())
             .with_data_source(input.clone())
             .build();
@@ -1186,7 +1184,7 @@ mod tests {
             .build();
         let input = fake_data_generator(clock.clone());
 
-        let mut exchange = DefaultExchangeBuilder::new()
+        let mut exchange = ConcurrentExchangeBuilder::new()
             .with_clock(clock.clone())
             .with_data_source(input.clone())
             .build();
@@ -1258,7 +1256,7 @@ mod tests {
             .with_clock(clock.clone())
             .build();
 
-        let mut exchange = DefaultExchangeBuilder::new()
+        let mut exchange = ConcurrentExchangeBuilder::new()
             .with_clock(clock.clone())
             .with_data_source(source.clone())
             .build();
@@ -1325,7 +1323,7 @@ mod tests {
             .with_clock(clock.clone())
             .build();
 
-        let mut exchange = DefaultExchangeBuilder::new()
+        let mut exchange = ConcurrentExchangeBuilder::new()
             .with_clock(clock.clone())
             .with_data_source(source.clone())
             .build();

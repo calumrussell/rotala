@@ -9,8 +9,8 @@ pub type NotifyReceiver = tokio::sync::mpsc::Receiver<ExchangeNotificationMessag
 pub type OrderSender = tokio::sync::mpsc::Sender<ExchangeOrderMessage>;
 pub type OrderReciever = tokio::sync::mpsc::Receiver<ExchangeOrderMessage>;
 
-pub(crate) type DefaultExchangeOrderId = u32;
-pub(crate) type DefaultSubscriberId = u8;
+pub type DefaultExchangeOrderId = u32;
+pub type DefaultSubscriberId = u8;
 
 //Supported order types for the exchange
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]

@@ -260,8 +260,7 @@ mod tests {
 
     use crate::broker::{BrokerCost, Dividend, Quote};
     use crate::clock::{Clock, ClockBuilder};
-    use crate::exchange::builder::DefaultExchangeBuilder;
-    use crate::exchange::DefaultExchange;
+    use crate::exchange::{ConcurrentExchange, ConcurrentExchangeBuilder};
     use crate::input::{HashMapInput, HashMapInputBuilder};
     use crate::perf::StrategySnapshot;
     use crate::sim::{SimulatedBroker, SimulatedBrokerBuilder};
@@ -274,7 +273,7 @@ mod tests {
 
     async fn setup() -> (
         SimulatedBroker<HashMapInput, Quote, Dividend>,
-        DefaultExchange<HashMapInput, Quote, Dividend>,
+        ConcurrentExchange<HashMapInput, Quote, Dividend>,
         Clock,
     ) {
         let mut raw_data: HashMap<DateTime, Vec<Arc<Quote>>> = HashMap::new();
@@ -303,7 +302,7 @@ mod tests {
             .with_clock(clock.clone())
             .build();
 
-        let mut exchange = DefaultExchangeBuilder::new()
+        let mut exchange = ConcurrentExchangeBuilder::new()
             .with_clock(clock.clone())
             .with_data_source(source.clone())
             .build();

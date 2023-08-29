@@ -4,7 +4,7 @@ use std::sync::Arc;
 
 use alator::broker::{BacktestBroker, Dividend, GetsQuote, Order, OrderType, Quote, TransferCash};
 use alator::clock::{Clock, ClockBuilder};
-use alator::exchange::builder::DefaultExchangeBuilder;
+use alator::exchange::ConcurrentExchangeBuilder;
 use alator::input::{HashMapInput, HashMapInputBuilder, QuotesHashMap};
 use alator::sim::{SimulatedBroker, SimulatedBrokerBuilder};
 use alator::simcontext::SimContextBuilder;
@@ -267,7 +267,7 @@ async fn binance_test() {
         .with_quotes(quotes)
         .build();
 
-    let mut exchange = DefaultExchangeBuilder::new()
+    let mut exchange = ConcurrentExchangeBuilder::new()
         .with_clock(clock.clone())
         .with_data_source(data.clone())
         .build();

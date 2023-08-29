@@ -1,5 +1,5 @@
 use alator::clock::{Clock, ClockBuilder};
-use alator::exchange::builder::DefaultExchangeBuilder;
+use alator::exchange::ConcurrentExchangeBuilder;
 use alator::input::HashMapInputBuilder;
 use alator::strategy::StaticWeightStrategyBuilder;
 use rand::distributions::{Distribution, Uniform};
@@ -65,7 +65,7 @@ async fn staticweight_integration_test() {
     third_weights.insert("ABC", 0.7);
     third_weights.insert("BCD", 0.3);
 
-    let mut exchange = DefaultExchangeBuilder::new()
+    let mut exchange = ConcurrentExchangeBuilder::new()
         .with_data_source(data.clone())
         .with_clock(clock.clone())
         .build();
