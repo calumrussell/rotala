@@ -1,107 +1,21 @@
+mod builder;
+
+pub use builder::ConcurrentBrokerBuilder;
+
 use async_trait::async_trait;
-use core::panic;
 use log::info;
 use std::collections::HashMap;
 use std::marker::PhantomData;
 use std::sync::Arc;
 
-use crate::broker::record::BrokerLog;
-use crate::broker::{
-    BacktestBroker, BrokerCalculations, BrokerCashEvent, BrokerCost, BrokerEvent, DividendPayment,
-    EventLog, GetsQuote, Order, OrderType, Trade, TransferCash,
-};
-use crate::exchange::{
-    ConcurrentExchange, DefaultSubscriberId, NotifyReceiver, OrderSender, PriceReceiver,
-};
+use crate::exchange::{DefaultSubscriberId, NotifyReceiver, OrderSender, PriceReceiver};
 use crate::input::{DataSource, Dividendable, Quotable};
 use crate::types::{CashValue, PortfolioHoldings, PortfolioQty, Price};
 
-pub struct SimulatedBrokerBuilder<T, Q, D>
-where
-    Q: Quotable,
-    D: Dividendable,
-    T: DataSource<Q, D>,
-{
-    //Cannot run without data but can run with empty trade_costs
-    data: Option<T>,
-    trade_costs: Vec<BrokerCost>,
-    _quote: PhantomData<Q>,
-    _dividend: PhantomData<D>,
-}
-
-impl<T, Q, D> SimulatedBrokerBuilder<T, Q, D>
-where
-    Q: Quotable,
-    D: Dividendable,
-    T: DataSource<Q, D>,
-{
-    pub async fn build(
-        &mut self,
-        exchange: &mut ConcurrentExchange<T, Q, D>,
-    ) -> SimulatedBroker<T, Q, D> {
-        if self.data.is_none() {
-            panic!("Cannot build broker without data");
-        }
-
-        let (subscriber_id, mut price_rx, notify_rx, order_tx) = exchange.subscribe().await;
-
-        let mut first_quotes = HashMap::new();
-        while let Ok(quotes) = price_rx.try_recv() {
-            for quote in &quotes {
-                first_quotes.insert(quote.get_symbol().to_string(), Arc::clone(quote));
-            }
-        }
-
-        let holdings = PortfolioHoldings::new();
-        let log = BrokerLog::new();
-
-        SimulatedBroker {
-            data: self.data.as_ref().unwrap().clone(),
-            //Intialised as invalid so errors throw if client tries to run before init
-            holdings,
-            cash: CashValue::from(0.0),
-            log,
-            trade_costs: self.trade_costs.clone(),
-            //Initialized as ready because there is no state to catch up with when we create it
-            price_receiver: price_rx,
-            order_sender: order_tx,
-            notify_receiver: notify_rx,
-            exchange_subscriber_id: subscriber_id,
-            latest_quotes: first_quotes,
-            _dividend: PhantomData,
-        }
-    }
-
-    pub fn with_data(&mut self, data: T) -> &mut Self {
-        self.data = Some(data);
-        self
-    }
-
-    pub fn with_trade_costs(&mut self, trade_costs: Vec<BrokerCost>) -> &mut Self {
-        self.trade_costs = trade_costs;
-        self
-    }
-
-    pub fn new() -> Self {
-        SimulatedBrokerBuilder {
-            data: None,
-            trade_costs: Vec::new(),
-            _quote: PhantomData,
-            _dividend: PhantomData,
-        }
-    }
-}
-
-impl<T, Q, D> Default for SimulatedBrokerBuilder<T, Q, D>
-where
-    Q: Quotable,
-    D: Dividendable,
-    T: DataSource<Q, D>,
-{
-    fn default() -> Self {
-        Self::new()
-    }
-}
+use super::{
+    BacktestBroker, BrokerCalculations, BrokerCashEvent, BrokerCost, BrokerEvent, BrokerLog,
+    DividendPayment, EventLog, GetsQuote, Order, OrderType, Trade, TransferCash,
+};
 
 ///Broker implementation that can be used to replicate the execution logic and data structures of a
 ///broker. Created through the Builder struct, and requires an implementation of `DataSource` to
@@ -115,7 +29,7 @@ where
 ///Supports multiple `BrokerCost` models defined in broker/mod.rs: Flat, PerShare, PctOfValue.
 ///
 ///Cash balance held in single currency, which is assumed to be the same currency used in all
-///quotes found in the implementation of `DataSource` passed to `SimulatedBroker`. Cash balance can
+///quotes found in the implementation of `DataSource` passed to `ConcurrentBroker`. Cash balance can
 ///be negative due to the non-immediate execution of trades. Broker will try to re-balance
 ///automatically.
 ///
@@ -128,7 +42,7 @@ where
 ///Keeps an internal log of trades executed and dividends received/paid. The events supported by
 ///the `BrokerLog` are stored in the `BrokerRecordedEvent` enum in broker/mod.rs.
 #[derive(Debug)]
-pub struct SimulatedBroker<T, Q, D>
+pub struct ConcurrentBroker<T, Q, D>
 where
     Q: Quotable,
     D: Dividendable,
@@ -148,7 +62,7 @@ where
     _dividend: PhantomData<D>,
 }
 
-impl<T, Q, D> SimulatedBroker<T, Q, D>
+impl<T, Q, D> ConcurrentBroker<T, Q, D>
 where
     Q: Quotable,
     D: Dividendable,
@@ -220,7 +134,7 @@ where
     }
 }
 
-impl<T, Q, D> GetsQuote<Q, D> for SimulatedBroker<T, Q, D>
+impl<T, Q, D> GetsQuote<Q, D> for ConcurrentBroker<T, Q, D>
 where
     Q: Quotable,
     D: Dividendable,
@@ -244,7 +158,7 @@ where
 }
 
 #[async_trait]
-impl<T, Q, D> BacktestBroker for SimulatedBroker<T, Q, D>
+impl<T, Q, D> BacktestBroker for ConcurrentBroker<T, Q, D>
 where
     Q: Quotable,
     D: Dividendable,
@@ -453,7 +367,7 @@ where
     }
 }
 
-impl<T, Q, D> TransferCash for SimulatedBroker<T, Q, D>
+impl<T, Q, D> TransferCash for ConcurrentBroker<T, Q, D>
 where
     Q: Quotable,
     D: Dividendable,
@@ -461,7 +375,7 @@ where
 {
 }
 
-impl<T, Q, D> EventLog for SimulatedBroker<T, Q, D>
+impl<T, Q, D> EventLog for ConcurrentBroker<T, Q, D>
 where
     Q: Quotable,
     D: Dividendable,
@@ -476,7 +390,7 @@ where
     }
 }
 
-unsafe impl<T, Q, D> Send for SimulatedBroker<T, Q, D>
+unsafe impl<T, Q, D> Send for ConcurrentBroker<T, Q, D>
 where
     Q: Quotable,
     D: Dividendable,
@@ -484,7 +398,7 @@ where
 {
 }
 
-unsafe impl<T, Q, D> Sync for SimulatedBroker<T, Q, D>
+unsafe impl<T, Q, D> Sync for ConcurrentBroker<T, Q, D>
 where
     Q: Quotable,
     D: Dividendable,
@@ -495,11 +409,10 @@ where
 #[cfg(test)]
 mod tests {
 
-    use super::{SimulatedBroker, SimulatedBrokerBuilder};
     use crate::broker::{
-        BacktestBroker, BrokerCashEvent, BrokerCost, BrokerEvent, Dividend, Quote, TransferCash,
+        BacktestBroker, BrokerCashEvent, BrokerCost, BrokerEvent, ConcurrentBroker,
+        ConcurrentBrokerBuilder, Dividend, Order, OrderType, Quote, TransferCash,
     };
-    use crate::broker::{Order, OrderType};
     use crate::clock::ClockBuilder;
     use crate::exchange::{ConcurrentExchange, ConcurrentExchangeBuilder};
     use crate::input::{HashMapInput, HashMapInputBuilder};
@@ -509,7 +422,7 @@ mod tests {
     use std::sync::Arc;
 
     async fn setup() -> (
-        SimulatedBroker<HashMapInput, Quote, Dividend>,
+        ConcurrentBroker<HashMapInput, Quote, Dividend>,
         ConcurrentExchange<HashMapInput, Quote, Dividend>,
     ) {
         let mut prices: HashMap<DateTime, Vec<Arc<Quote>>> = HashMap::new();
@@ -546,7 +459,7 @@ mod tests {
             .with_data_source(source.clone())
             .build();
 
-        let brkr = SimulatedBrokerBuilder::new()
+        let brkr = ConcurrentBrokerBuilder::new()
             .with_data(source)
             .with_trade_costs(vec![BrokerCost::PctOfValue(0.01)])
             .build(&mut exchange)
@@ -756,7 +669,7 @@ mod tests {
             .with_data_source(source.clone())
             .build();
 
-        let _brkr = SimulatedBrokerBuilder::new()
+        let _brkr = ConcurrentBrokerBuilder::new()
             .with_data(source)
             .with_trade_costs(vec![BrokerCost::PctOfValue(0.01)])
             .build(&mut exchange)
@@ -807,7 +720,7 @@ mod tests {
             .with_data_source(source.clone())
             .build();
 
-        let mut brkr = SimulatedBrokerBuilder::new()
+        let mut brkr = ConcurrentBrokerBuilder::new()
             .with_data(source)
             .with_trade_costs(vec![BrokerCost::PctOfValue(0.01)])
             .build(&mut exchange)
@@ -871,7 +784,7 @@ mod tests {
             .with_data_source(source.clone())
             .build();
 
-        let mut brkr = SimulatedBrokerBuilder::new()
+        let mut brkr = ConcurrentBrokerBuilder::new()
             .with_data(source)
             .with_trade_costs(vec![BrokerCost::PctOfValue(0.01)])
             .build(&mut exchange)

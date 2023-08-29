@@ -2,13 +2,12 @@ use async_trait::async_trait;
 use log::info;
 
 use crate::broker::{
-    BacktestBroker, BrokerCalculations, BrokerCashEvent, DividendPayment, EventLog, Trade,
-    TransferCash,
+    BacktestBroker, BrokerCalculations, BrokerCashEvent, ConcurrentBroker, DividendPayment,
+    EventLog, Trade, TransferCash,
 };
 use crate::clock::Clock;
 use crate::input::{DataSource, Dividendable, Quotable};
 use crate::schedule::{DefaultTradingSchedule, TradingSchedule};
-use crate::sim::SimulatedBroker;
 use crate::types::{CashValue, PortfolioAllocation, StrategySnapshot};
 
 ///Strategies define an a set of operations that should be performed on some schedule to bring the
@@ -86,7 +85,7 @@ where
     T: DataSource<Q, D>,
 {
     //If missing either field, we cannot run this strategy
-    brkr: Option<SimulatedBroker<T, Q, D>>,
+    brkr: Option<ConcurrentBroker<T, Q, D>>,
     weights: Option<PortfolioAllocation>,
     clock: Option<Clock>,
 }
@@ -118,7 +117,7 @@ where
         self
     }
 
-    pub fn with_brkr(&mut self, brkr: SimulatedBroker<T, Q, D>) -> &mut Self {
+    pub fn with_brkr(&mut self, brkr: ConcurrentBroker<T, Q, D>) -> &mut Self {
         self.brkr = Some(brkr);
         self
     }
@@ -156,7 +155,7 @@ where
     D: Dividendable,
     T: DataSource<Q, D>,
 {
-    brkr: SimulatedBroker<T, Q, D>,
+    brkr: ConcurrentBroker<T, Q, D>,
     target_weights: PortfolioAllocation,
     net_cash_flow: CashValue,
     clock: Clock,
@@ -304,14 +303,13 @@ mod tests {
     use std::sync::Arc;
 
     use super::StaticWeightStrategyBuilder;
-    use crate::broker::{BrokerCost, Dividend, Quote};
+    use crate::broker::{BrokerCost, ConcurrentBroker, ConcurrentBrokerBuilder, Dividend, Quote};
     use crate::clock::{Clock, ClockBuilder};
     use crate::exchange::ConcurrentExchangeBuilder;
     use crate::input::{HashMapInput, HashMapInputBuilder};
-    use crate::sim::{SimulatedBroker, SimulatedBrokerBuilder};
     use crate::types::{DateTime, Frequency, PortfolioAllocation};
 
-    async fn setup() -> (SimulatedBroker<HashMapInput, Quote, Dividend>, Clock) {
+    async fn setup() -> (ConcurrentBroker<HashMapInput, Quote, Dividend>, Clock) {
         let mut prices: HashMap<DateTime, Vec<Arc<Quote>>> = HashMap::new();
 
         let quote = Arc::new(Quote::new(100.00, 101.00, 100, "ABC"));
@@ -335,7 +333,7 @@ mod tests {
             .with_data_source(source.clone())
             .build();
 
-        let brkr = SimulatedBrokerBuilder::<HashMapInput, Quote, Dividend>::new()
+        let brkr = ConcurrentBrokerBuilder::<HashMapInput, Quote, Dividend>::new()
             .with_data(source)
             .with_trade_costs(vec![BrokerCost::flat(0.1)])
             .build(&mut exchange)

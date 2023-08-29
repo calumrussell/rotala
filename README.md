@@ -38,7 +38,7 @@ An example backtest (with data creation excluded):
         .with_clock(clock.clone())
         .build();
 
-    let simbrkr = SimulatedBrokerBuilder::new()
+    let simbrkr = ConcurrentBrokerBuilder::new()
         .with_data(data)
         .with_exchange(exchange)
         .with_trade_costs(vec![BrokerCost::Flat(1.0)])

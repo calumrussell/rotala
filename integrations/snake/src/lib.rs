@@ -5,7 +5,7 @@ use alator::exchange::builder::DefaultExchangeBuilder;
 use alator::input::PyInput;
 use alator::strategy::StaticWeightStrategyBuilder;
 use alator::broker::{BrokerCost, PyQuote, PyDividend};
-use alator::sim::SimulatedBrokerBuilder;
+use alator::sim::ConcurrentBrokerBuilder;
 use alator::simcontext::SimContextBuilder;
 use alator::types::{CashValue, Frequency, PortfolioAllocation};
 use pyo3::types::PyDict;
@@ -39,7 +39,7 @@ fn staticweight_example(quotes_any: &PyAny, dividends_any: &PyAny, tickers_any: 
         .with_clock(clock.clone())
         .build();
 
-    let simbrkr = SimulatedBrokerBuilder::new()
+    let simbrkr = ConcurrentBrokerBuilder::new()
         .with_data(input)
         .with_trade_costs(vec![BrokerCost::Flat(1.0.into())])
         .build(&mut exchange);

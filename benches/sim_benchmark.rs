@@ -2,7 +2,7 @@ use alator::broker::{BacktestBroker, BrokerCost, Order, OrderType, Quote, Transf
 use alator::clock::ClockBuilder;
 use alator::exchange::builder::DefaultExchangeBuilder;
 use alator::input::HashMapInputBuilder;
-use alator::sim::SimulatedBrokerBuilder;
+use alator::sim::ConcurrentBrokerBuilder;
 use alator::simcontext::SimContextBuilder;
 use alator::strategy::StaticWeightStrategyBuilder;
 use alator::types::{CashValue, DateTime, Frequency, PortfolioAllocation};
@@ -58,7 +58,7 @@ async fn full_backtest_random_data() {
         .with_clock(clock.clone())
         .build();
 
-    let simbrkr = SimulatedBrokerBuilder::new()
+    let simbrkr = ConcurrentBrokerBuilder::new()
         .with_data(data)
         .with_trade_costs(vec![BrokerCost::Flat(1.0.into())])
         .build(&mut exchange);
@@ -110,7 +110,7 @@ fn trade_execution_logic() {
         .with_data_source(source.clone())
         .build();
 
-    let mut brkr = SimulatedBrokerBuilder::new()
+    let mut brkr = ConcurrentBrokerBuilder::new()
         .with_data(source)
         .build(&mut exchange);
 

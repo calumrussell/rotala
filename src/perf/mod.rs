@@ -258,12 +258,11 @@ mod tests {
     use std::collections::HashMap;
     use std::sync::Arc;
 
-    use crate::broker::{BrokerCost, Dividend, Quote};
+    use crate::broker::{BrokerCost, ConcurrentBroker, ConcurrentBrokerBuilder, Dividend, Quote};
     use crate::clock::{Clock, ClockBuilder};
     use crate::exchange::{ConcurrentExchange, ConcurrentExchangeBuilder};
     use crate::input::{HashMapInput, HashMapInputBuilder};
     use crate::perf::StrategySnapshot;
-    use crate::sim::{SimulatedBroker, SimulatedBrokerBuilder};
     use crate::strategy::{History, StaticWeightStrategyBuilder, Strategy};
     use crate::types::{DateTime, PortfolioAllocation};
 
@@ -272,7 +271,7 @@ mod tests {
     use super::PortfolioCalculations;
 
     async fn setup() -> (
-        SimulatedBroker<HashMapInput, Quote, Dividend>,
+        ConcurrentBroker<HashMapInput, Quote, Dividend>,
         ConcurrentExchange<HashMapInput, Quote, Dividend>,
         Clock,
     ) {
@@ -307,7 +306,7 @@ mod tests {
             .with_data_source(source.clone())
             .build();
 
-        let brkr = SimulatedBrokerBuilder::new()
+        let brkr = ConcurrentBrokerBuilder::new()
             .with_data(source)
             .with_trade_costs(vec![BrokerCost::PctOfValue(0.01)])
             .build(&mut exchange)

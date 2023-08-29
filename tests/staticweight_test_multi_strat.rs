@@ -7,9 +7,8 @@ use rand::thread_rng;
 use std::collections::HashMap;
 use std::sync::Arc;
 
-use alator::broker::{BrokerCost, Quote};
+use alator::broker::{BrokerCost, ConcurrentBrokerBuilder, Quote};
 use alator::input::HashMapInput;
-use alator::sim::SimulatedBrokerBuilder;
 use alator::simcontext::SimContextBuilder;
 use alator::types::{CashValue, DateTime, Frequency, PortfolioAllocation};
 
@@ -70,7 +69,7 @@ async fn staticweight_integration_test() {
         .with_clock(clock.clone())
         .build();
 
-    let simbrkr_first = SimulatedBrokerBuilder::new()
+    let simbrkr_first = ConcurrentBrokerBuilder::new()
         .with_data(data.clone())
         .with_trade_costs(vec![BrokerCost::Flat(1.0.into())])
         .build(&mut exchange)
@@ -82,7 +81,7 @@ async fn staticweight_integration_test() {
         .with_clock(clock.clone())
         .default();
 
-    let simbrkr_second = SimulatedBrokerBuilder::new()
+    let simbrkr_second = ConcurrentBrokerBuilder::new()
         .with_data(data.clone())
         .with_trade_costs(vec![BrokerCost::Flat(1.0.into())])
         .build(&mut exchange)
@@ -94,7 +93,7 @@ async fn staticweight_integration_test() {
         .with_clock(clock.clone())
         .default();
 
-    let simbrkr_third = SimulatedBrokerBuilder::new()
+    let simbrkr_third = ConcurrentBrokerBuilder::new()
         .with_data(data.clone())
         .with_trade_costs(vec![BrokerCost::Flat(1.0.into())])
         .build(&mut exchange)
