@@ -2,13 +2,11 @@ mod builder;
 
 pub use builder::ConcurrentExchangeBuilder;
 
-use std::collections::HashMap;
 use std::marker::PhantomData;
 use std::sync::Arc;
 
 use crate::clock::Clock;
 use crate::input::{DataSource, Dividendable, Quotable};
-use crate::types::CashValue;
 
 ///Exchanges accept orders for securities, store them on an internal order book, and then execute
 ///them over time.
@@ -48,8 +46,7 @@ where
     T: DataSource<Q, D>,
 {
     clock: Clock,
-    orderbook: HashMap<super::types::DefaultExchangeOrderId, Arc<super::types::ExchangeOrder>>,
-    last: super::types::DefaultExchangeOrderId,
+    orderbook: super::orderbook::OrderBook,
     data_source: T,
     trade_log: Vec<super::types::ExchangeTrade>,
     price_sender: Vec<super::types::PriceSender<Q>>,
@@ -84,8 +81,7 @@ where
     pub fn new(clock: Clock, data_source: T) -> Self {
         Self {
             clock,
-            orderbook: HashMap::new(),
-            last: 0,
+            orderbook: super::orderbook::OrderBook::new(),
             last_subscriber_id: 0,
             data_source,
             trade_log: Vec::new(),
@@ -156,23 +152,18 @@ where
                 return;
             }
         }
-        //orderbook only contains orders that are pending, once an order has been executed it is
-        //removed from the orderbook so we can just check all orders here
-        let mut executed_trades: Vec<super::types::ExchangeTrade> = Vec::new();
-        let mut removed_keys: Vec<super::types::DefaultExchangeOrderId> = Vec::new();
-
-        let mut tmp = Vec::new();
+        let mut recieved_orders = Vec::new();
         //Pull orders received over last tick and add them to book
         for order_reciever in self.order_reciever.iter_mut() {
             while let Ok(order_message) = order_reciever.try_recv() {
-                tmp.push(order_message);
+                recieved_orders.push(order_message);
             }
         }
 
-        for message in tmp {
+        for message in recieved_orders {
             match message {
                 super::types::ExchangeOrderMessage::CreateOrder(order) => {
-                    let order_id = self.insert_order(order.clone());
+                    let order_id = self.orderbook.insert_order(order.clone());
                     let notifier = self
                         .notify_sender
                         .get(*order.get_subscriber_id() as usize)
@@ -186,7 +177,7 @@ where
                 super::types::ExchangeOrderMessage::DeleteOrder(subscriber_id, order_id) => {
                     //TODO: we don't check the subscriber_id so subscribers can delete orders
                     //for different subscribers
-                    self.delete_order(order_id);
+                    self.orderbook.delete_order(order_id);
                     let notifier = self.notify_sender.get(subscriber_id as usize).unwrap();
                     let _ = notifier
                         .send(super::types::ExchangeNotificationMessage::OrderDeleted(
@@ -197,7 +188,7 @@ where
                 super::types::ExchangeOrderMessage::ClearOrdersBySymbol(subscriber_id, symbol) => {
                     //TODO: there is a bug here with operation ordering whereby an order can get executed before
                     //it gets cleared by a later operation
-                    let removed = self.clear_orders_by_symbol(symbol.as_str());
+                    let removed = self.orderbook.clear_orders_by_symbol(symbol.as_str());
                     for order_id in removed {
                         let notifier = self.notify_sender.get(subscriber_id as usize).unwrap();
                         let _ = notifier
@@ -210,137 +201,21 @@ where
             }
         }
 
-        let execute_buy =
-            |quote: &Q, order: &super::types::ExchangeOrder| -> super::types::ExchangeTrade {
-                let trade_price = quote.get_ask();
-                let value = CashValue::from(**trade_price * *order.get_shares());
-                let date = self.clock.now();
-                super::types::ExchangeTrade::new(
-                    *order.get_subscriber_id(),
-                    order.get_symbol().to_string(),
-                    *value,
-                    *order.get_shares(),
-                    date,
-                    super::types::TradeType::Buy,
-                )
-            };
-
-        let execute_sell =
-            |quote: &Q, order: &super::types::ExchangeOrder| -> super::types::ExchangeTrade {
-                let trade_price = quote.get_bid();
-                let value = CashValue::from(**trade_price * *order.get_shares());
-                let date = self.clock.now();
-                super::types::ExchangeTrade::new(
-                    *order.get_subscriber_id(),
-                    order.get_symbol().to_string(),
-                    *value,
-                    *order.get_shares(),
-                    date,
-                    super::types::TradeType::Sell,
-                )
-            };
-
-        //Execute orders in the orderbook
-        for (key, order) in self.orderbook.iter() {
-            let security_id = order.get_symbol();
-            if let Some(quote) = self.data_source.get_quote(security_id) {
-                let result = match order.get_order_type() {
-                    super::types::OrderType::MarketBuy => Some(execute_buy(&quote, order)),
-                    super::types::OrderType::MarketSell => Some(execute_sell(&quote, order)),
-                    super::types::OrderType::LimitBuy => {
-                        //Unwrap is safe because LimitBuy will always have a price
-                        let order_price = order.get_price().as_ref().unwrap();
-                        if order_price < quote.get_ask() {
-                            Some(execute_buy(&quote, order))
-                        } else {
-                            None
-                        }
-                    }
-                    super::types::OrderType::LimitSell => {
-                        //Unwrap is safe because LimitSell will always have a price
-                        let order_price = order.get_price().as_ref().unwrap();
-                        if order_price > quote.get_bid() {
-                            Some(execute_sell(&quote, order))
-                        } else {
-                            None
-                        }
-                    }
-                    super::types::OrderType::StopBuy => {
-                        //Unwrap is safe because StopBuy will always have a price
-                        let order_price = order.get_price().as_ref().unwrap();
-                        if **quote.get_ask() > *order_price {
-                            Some(execute_buy(&quote, order))
-                        } else {
-                            None
-                        }
-                    }
-                    super::types::OrderType::StopSell => {
-                        //Unwrap is safe because StopSell will always have a price
-                        let order_price = order.get_price().as_ref().unwrap();
-                        if **quote.get_bid() < *order_price {
-                            Some(execute_sell(&quote, order))
-                        } else {
-                            None
-                        }
-                    }
-                };
-
-                if let Some(trade) = result {
-                    //Should always be valid, so we can unwrap
-                    let notifier = self
-                        .notify_sender
-                        .get(*order.get_subscriber_id() as usize)
-                        .unwrap();
-                    let _ = notifier
-                        .send(super::types::ExchangeNotificationMessage::TradeCompleted(
-                            trade.clone(),
-                        ))
-                        .await;
-                    executed_trades.push(trade);
-                    removed_keys.push(*key);
-                }
-            }
+        let now = self.clock.now();
+        let executed_trades = self.orderbook.execute_orders(now, &self.data_source);
+        for trade in executed_trades {
+            //Should always be valid, so we can unwrap
+            let notifier = self
+                .notify_sender
+                .get(trade.subscriber_id as usize)
+                .unwrap();
+            let _ = notifier
+                .send(super::types::ExchangeNotificationMessage::TradeCompleted(
+                    trade.clone(),
+                ))
+                .await;
+            self.trade_log.push(trade);
         }
-
-        //Remove executed orders
-        for key in removed_keys {
-            self.delete_order(key)
-        }
-        self.trade_log.extend(executed_trades.clone());
-    }
-
-    fn delete_order(&mut self, order_id: super::types::DefaultExchangeOrderId) {
-        self.orderbook.remove(&order_id);
-    }
-
-    fn insert_order(
-        &mut self,
-        order: super::types::ExchangeOrder,
-    ) -> super::types::DefaultExchangeOrderId {
-        let last = self.last;
-        self.last = last + 1;
-        self.orderbook.insert(last, Arc::new(order));
-        last
-    }
-
-    pub fn is_empty(&self) -> bool {
-        self.orderbook.is_empty()
-    }
-
-    fn clear_orders_by_symbol(
-        &mut self,
-        symbol: &str,
-    ) -> Vec<super::types::DefaultExchangeOrderId> {
-        let mut to_remove = Vec::new();
-        for (key, order) in self.orderbook.iter() {
-            if order.get_symbol() == symbol {
-                to_remove.push(*key);
-            }
-        }
-        for key in &to_remove {
-            self.delete_order(*key);
-        }
-        to_remove
     }
 }
 
@@ -548,96 +423,6 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_that_buy_limit_triggers_correctly() {
-        let (mut exchange, id, _price_rx, order_tx, _notify_rx) = setup().await;
-
-        order_tx
-            .send(ExchangeOrderMessage::limit_buy(id, "ABC", 100.0, 100.0))
-            .await
-            .unwrap();
-
-        //This order has a price above the current price, so shouldn't execute
-        order_tx
-            .send(ExchangeOrderMessage::limit_buy(id, "ABC", 100.0, 105.0))
-            .await
-            .unwrap();
-
-        exchange.check().await;
-        assert_eq!(exchange.trade_log.len(), 1);
-    }
-
-    #[tokio::test]
-    async fn test_that_sell_limit_triggers_correctly() {
-        //This will execute even when the client doesn't hold any shares, this provides
-        //functionality for shorting but the guards against generating revenue by fake
-        //sales should be within broker
-        let (mut exchange, id, _price_rx, order_tx, _notify_rx) = setup().await;
-
-        order_tx
-            .send(ExchangeOrderMessage::limit_sell(id, "ABC", 100.0, 100.0))
-            .await
-            .unwrap();
-
-        //This order has a price above the current price, so shouldn't execute
-        order_tx
-            .send(ExchangeOrderMessage::limit_sell(id, "ABC", 100.0, 105.0))
-            .await
-            .unwrap();
-
-        exchange.check().await;
-        assert_eq!(exchange.trade_log.len(), 1);
-    }
-
-    #[tokio::test]
-    async fn test_that_buy_stop_triggers_correctly() {
-        //We are short from 90, and we put a StopBuy of 100 & 105 to take
-        //off the position. If we are quoted 102/103 then our 100 order
-        //should be executed.
-        let (mut exchange, id, _price_rx, order_tx, _notify_rx) = setup().await;
-
-        order_tx
-            .send(ExchangeOrderMessage::stop_buy(id, "ABC", 100.0, 100.0))
-            .await
-            .unwrap();
-
-        //This order has a price above the current price, so shouldn't execute
-        order_tx
-            .send(ExchangeOrderMessage::stop_buy(id, "ABC", 100.0, 105.0))
-            .await
-            .unwrap();
-
-        exchange.check().await;
-        assert_eq!(exchange.trade_log.len(), 1);
-        let trade = exchange.trade_log.remove(0);
-        //Should execute at market price, not order price
-        assert_eq!(trade.value / trade.quantity, 103.00);
-    }
-
-    #[tokio::test]
-    async fn test_that_sell_stop_triggers_correctly() {
-        //Long from 110, we place orders to exit at 100 and 105.
-        //If we are quoted 102/103 then our 105 StopSell is executed.
-        let (mut exchange, id, _price_rx, order_tx, _notify_rx) = setup().await;
-
-        order_tx
-            .send(ExchangeOrderMessage::stop_sell(id, "ABC", 100.0, 100.0))
-            .await
-            .unwrap();
-
-        //This order has a price above the current price, so shouldn't execute
-        order_tx
-            .send(ExchangeOrderMessage::stop_sell(id, "ABC", 100.0, 105.0))
-            .await
-            .unwrap();
-
-        exchange.check().await;
-        assert_eq!(exchange.trade_log.len(), 1);
-        let trade = exchange.trade_log.remove(0);
-        //Should execute at market price, not order price
-        assert_eq!(trade.value / trade.quantity, 102.00);
-    }
-
-    #[tokio::test]
     async fn test_that_order_for_nonexistent_stock_fails_silently() {
         let (mut exchange, id, _price_rx, order_tx, _notify_rx) = setup().await;
         order_tx
@@ -647,27 +432,6 @@ mod tests {
         exchange.check().await;
 
         assert_eq!(exchange.trade_log.len(), 0);
-    }
-
-    #[tokio::test]
-    async fn test_that_orderbook_clears_by_symbol() {
-        let (mut exchange, id, _price_rx, order_tx, _notify_rx) = setup().await;
-        //This order should never execute, we are putting it in the book and then taking it away
-        order_tx
-            .send(ExchangeOrderMessage::limit_buy(id, "XYZ", 100.00, 200.0))
-            .await
-            .unwrap();
-        exchange.check().await;
-
-        assert!(!exchange.is_empty());
-
-        order_tx
-            .send(ExchangeOrderMessage::ClearOrdersBySymbol(id, "XYZ".into()))
-            .await
-            .unwrap();
-        exchange.check().await;
-
-        assert!(exchange.is_empty());
     }
 
     #[tokio::test]

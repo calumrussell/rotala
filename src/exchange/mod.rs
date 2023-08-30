@@ -1,10 +1,12 @@
 mod concurrent;
+mod orderbook;
 mod types;
 
 pub use concurrent::ConcurrentExchange;
 pub use concurrent::ConcurrentExchangeBuilder;
 
 pub use types::{
-    DefaultSubscriberId, ExchangeNotificationMessage, ExchangeOrder, ExchangeOrderMessage,
-    ExchangeTrade, NotifyReceiver, OrderSender, OrderType, PriceReceiver, TradeType,
+    DefaultExchangeOrderId, DefaultSubscriberId, ExchangeNotificationMessage, ExchangeOrder,
+    ExchangeOrderMessage, ExchangeTrade, NotifyReceiver, OrderSender, OrderType, PriceReceiver,
+    TradeType,
 };
