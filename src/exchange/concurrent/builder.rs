@@ -32,10 +32,11 @@ where
             panic!("Exchange must have clock");
         }
 
+        let data = std::mem::take(&mut self.data_source).unwrap();
+
         ConcurrentExchange::new(
             self.clock.as_ref().unwrap().clone(),
-            //TODO: !!!!!!!
-            self.data_source.as_ref().unwrap().clone(),
+            data.clone(),
         )
     }
 

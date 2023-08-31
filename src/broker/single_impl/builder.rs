@@ -48,10 +48,10 @@ where
         let log = BrokerLog::new();
 
         let exchange = std::mem::take(&mut self.exchange).unwrap();
+        let data = std::mem::take(&mut self.data).unwrap();
 
         SingleBroker {
-            //TODO: !!!!!!!
-            data: self.data.as_ref().unwrap().clone(),
+            data: data.clone(),
             //Intialised as invalid so errors throw if client tries to run before init
             holdings,
             cash: CashValue::from(0.0),

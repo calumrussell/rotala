@@ -48,20 +48,34 @@ where
 
 ///Implementation of [DataSource trait that wraps around a HashMap. Time is kept with reference to
 ///[Clock].
-#[derive(Clone, Debug)]
+#[derive(Debug)]
 pub struct HashMapInput {
+    inner: std::sync::Arc<HashMapInputInner>,
+}
+
+#[derive(Clone, Debug)]
+struct HashMapInputInner {
     quotes: QuotesHashMap,
     dividends: DividendsHashMap,
     clock: Clock,
 }
 
+
 pub type QuotesHashMap = HashMap<DateTime, Vec<Arc<Quote>>>;
 pub type DividendsHashMap = HashMap<DateTime, Vec<Arc<Dividend>>>;
 
+impl Clone for HashMapInput {
+    fn clone(&self) -> Self {
+        Self {
+            inner: self.inner.clone()
+        }
+    }
+}
+
 impl DataSource<Quote, Dividend> for HashMapInput {
     fn get_quote(&self, symbol: &str) -> Option<Arc<Quote>> {
-        let curr_date = self.clock.now();
-        if let Some(quotes) = self.quotes.get(&curr_date) {
+        let curr_date = self.inner.clock.now();
+        if let Some(quotes) = self.inner.quotes.get(&curr_date) {
             for quote in quotes {
                 if quote.symbol.eq(symbol) {
                     return Some(quote.clone());
@@ -72,16 +86,16 @@ impl DataSource<Quote, Dividend> for HashMapInput {
     }
 
     fn get_quotes(&self) -> Option<Vec<Arc<Quote>>> {
-        let curr_date = self.clock.now();
-        if let Some(quotes) = self.quotes.get(&curr_date) {
+        let curr_date = self.inner.clock.now();
+        if let Some(quotes) = self.inner.quotes.get(&curr_date) {
             return Some(quotes.clone());
         }
         None
     }
 
     fn get_dividends(&self) -> Option<Vec<Arc<Dividend>>> {
-        let curr_date = self.clock.now();
-        if let Some(dividends) = self.dividends.get(&curr_date) {
+        let curr_date = self.inner.clock.now();
+        if let Some(dividends) = self.inner.dividends.get(&curr_date) {
             return Some(dividends.clone());
         }
         None
@@ -110,9 +124,11 @@ impl HashMapInputBuilder {
         }
 
         HashMapInput {
-            quotes,
-            dividends,
-            clock: self.clock.as_ref().unwrap().clone(),
+            inner: Arc::new(HashMapInputInner {
+                quotes,
+                dividends,
+                clock: self.clock.as_ref().unwrap().clone(),
+            })
         }
     }
 

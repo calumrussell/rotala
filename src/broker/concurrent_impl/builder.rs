@@ -42,12 +42,13 @@ where
                 first_quotes.insert(quote.get_symbol().to_string(), Arc::clone(quote));
             }
         }
+        let data = std::mem::take(&mut self.data).unwrap();
 
         let holdings = PortfolioHoldings::new();
         let log = BrokerLog::new();
 
         ConcurrentBroker {
-            data: self.data.as_ref().unwrap().clone(),
+            data: data.clone(),
             //Intialised as invalid so errors throw if client tries to run before init
             holdings,
             cash: CashValue::from(0.0),
