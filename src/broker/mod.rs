@@ -1,7 +1,7 @@
 mod calculations;
 mod concurrent_impl;
-mod single_impl;
 mod record;
+mod single_impl;
 mod types;
 
 pub use calculations::BrokerCalculations;
@@ -220,11 +220,11 @@ mod tests {
         BacktestBroker, BrokerCalculations, BrokerCost, ConcurrentBrokerBuilder, OrderType, Quote,
         TransferCash,
     };
+    use crate::broker::ReceievesOrdersAsync;
     use crate::exchange::ConcurrentExchangeBuilder;
     use crate::input::{fake_data_generator, HashMapInputBuilder};
     use crate::types::{DateTime, PortfolioAllocation};
     use crate::{clock::ClockBuilder, types::Frequency};
-    use crate::broker::ReceievesOrdersAsync;
     use std::collections::HashMap;
     use std::sync::Arc;
 

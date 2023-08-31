@@ -529,12 +529,9 @@ impl Order {
         }
     }
 
-    pub fn into_exchange(
-        &self,
-        subscriber_id: DefaultSubscriberId,
-    ) -> ExchangeOrder {
+    pub fn into_exchange(&self, subscriber_id: DefaultSubscriberId) -> ExchangeOrder {
         let price: Option<f64> = self.get_price().as_ref().map(|price| (**price));
-        
+
         ExchangeOrder {
             subscriber_id,
             price,

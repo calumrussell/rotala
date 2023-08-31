@@ -198,7 +198,6 @@ impl BrokerCalculations {
         }
     }
 
-
     //Calculates the diff between the current state of the portfolio within broker, and the
     //target_weights passed into the function.
     //Returns orders so calling function has control over when orders are executed

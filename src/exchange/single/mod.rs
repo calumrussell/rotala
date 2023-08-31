@@ -5,9 +5,8 @@ pub use builder::SingleExchangeBuilder;
 use std::marker::PhantomData;
 use std::sync::Arc;
 
-use crate::input::{Quotable, Dividendable, DataSource};
 use crate::clock::Clock;
-
+use crate::input::{DataSource, Dividendable, Quotable};
 
 #[derive(Debug)]
 pub struct SingleExchange<T, Q, D>
@@ -96,9 +95,9 @@ mod tests {
     use std::collections::HashMap;
     use std::sync::Arc;
 
+    use crate::broker::{Dividend, Quote};
     use crate::exchange::ExchangeOrder;
     use crate::input::{HashMapInput, QuotesHashMap};
-    use crate::broker::{Quote, Dividend};
     use crate::types::DateTime;
 
     use super::{SingleExchange, SingleExchangeBuilder};
@@ -154,7 +153,7 @@ mod tests {
         exchange.insert_order(ExchangeOrder::market_buy(0, "ABC", 25.0));
         exchange.insert_order(ExchangeOrder::market_buy(0, "ABC", 25.0));
         exchange.insert_order(ExchangeOrder::market_buy(0, "ABC", 25.0));
-        
+
         exchange.check();
         assert_eq!(exchange.trade_log.len(), 4);
     }
@@ -165,11 +164,11 @@ mod tests {
         exchange.insert_order(ExchangeOrder::market_buy(0, "ABC", 25.0));
         exchange.insert_order(ExchangeOrder::market_buy(0, "ABC", 25.0));
         exchange.check();
- 
+
         exchange.insert_order(ExchangeOrder::market_buy(0, "ABC", 25.0));
         exchange.insert_order(ExchangeOrder::market_buy(0, "ABC", 25.0));
         exchange.check();
- 
+
         assert_eq!(exchange.trade_log.len(), 4);
     }
 
@@ -250,7 +249,6 @@ mod tests {
             .with_clock(clock.clone())
             .with_data_source(source)
             .build();
-
 
         exchange.insert_order(ExchangeOrder::market_buy(0, "ABC", 100.0));
         exchange.check();

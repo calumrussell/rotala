@@ -3,7 +3,7 @@ use log::info;
 
 use crate::broker::{
     BacktestBroker, BrokerCalculations, BrokerCashEvent, ConcurrentBroker, DividendPayment,
-    EventLog, Trade, TransferCash, ReceievesOrdersAsync,
+    EventLog, ReceievesOrdersAsync, Trade, TransferCash,
 };
 use crate::clock::Clock;
 use crate::input::{DataSource, Dividendable, Quotable};
@@ -261,7 +261,8 @@ where
         if let BrokerCashEvent::WithdrawSuccess(withdrawn) =
             //No logging here because the implementation is fully logged due to the greater
             //complexity of this task vs standard withdraw
-            BrokerCalculations::withdraw_cash_with_liquidation_async(cash, &mut self.brkr).await
+            BrokerCalculations::withdraw_cash_with_liquidation_async(cash, &mut self.brkr)
+                    .await
         {
             self.net_cash_flow = CashValue::from(*self.net_cash_flow - *withdrawn);
             return StrategyEvent::WithdrawSuccess(CashValue::from(*cash));

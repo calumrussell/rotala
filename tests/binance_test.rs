@@ -4,7 +4,7 @@ use std::sync::Arc;
 
 use alator::broker::{
     BacktestBroker, ConcurrentBroker, ConcurrentBrokerBuilder, Dividend, GetsQuote, Order,
-    OrderType, Quote, TransferCash, ReceievesOrdersAsync,
+    OrderType, Quote, ReceievesOrdersAsync, TransferCash,
 };
 use alator::clock::{Clock, ClockBuilder};
 use alator::exchange::ConcurrentExchangeBuilder;

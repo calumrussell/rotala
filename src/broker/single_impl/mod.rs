@@ -12,7 +12,7 @@ use crate::types::{CashValue, PortfolioHoldings, PortfolioQty, Price};
 
 use super::{
     BacktestBroker, BrokerCalculations, BrokerCashEvent, BrokerCost, BrokerEvent, BrokerLog,
-    DividendPayment, EventLog, GetsQuote, Order, OrderType, Trade, TransferCash, ReceievesOrders,
+    DividendPayment, EventLog, GetsQuote, Order, OrderType, ReceievesOrders, Trade, TransferCash,
 };
 
 #[derive(Debug)]
@@ -78,12 +78,11 @@ where
             };
 
             self.update_holdings(&trade.symbol, PortfolioQty::from(updated));
-            self.last_seen_trade +=1;
+            self.last_seen_trade += 1;
         }
         //Previous step can cause negative cash balance so we have to rebalance here, this
         //is not instant so will never balance properly if the series is very volatile
         self.rebalance_cash();
-
     }
 
     fn rebalance_cash(&mut self) {
@@ -263,7 +262,6 @@ where
         }
         self.credit(&dividend_value);
     }
-
 }
 
 impl<T, Q, D> ReceievesOrders for SingleBroker<T, Q, D>
@@ -366,7 +364,10 @@ mod tests {
     use std::collections::HashMap;
     use std::sync::Arc;
 
-    use crate::broker::{Quote, Dividend, BrokerCost, BrokerCashEvent, TransferCash, BacktestBroker, ReceievesOrders, Order, OrderType, BrokerEvent};
+    use crate::broker::{
+        BacktestBroker, BrokerCashEvent, BrokerCost, BrokerEvent, Dividend, Order, OrderType,
+        Quote, ReceievesOrders, TransferCash,
+    };
     use crate::exchange::SingleExchangeBuilder;
     use crate::input::{HashMapInput, HashMapInputBuilder};
     use crate::types::DateTime;

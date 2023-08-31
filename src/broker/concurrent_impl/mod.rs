@@ -14,7 +14,8 @@ use crate::types::{CashValue, PortfolioHoldings, PortfolioQty, Price};
 
 use super::{
     BacktestBroker, BrokerCalculations, BrokerCashEvent, BrokerCost, BrokerEvent, BrokerLog,
-    DividendPayment, EventLog, GetsQuote, Order, OrderType, Trade, TransferCash, ReceievesOrdersAsync,
+    DividendPayment, EventLog, GetsQuote, Order, OrderType, ReceievesOrdersAsync, Trade,
+    TransferCash,
 };
 
 ///Broker implementation that can be used to replicate the execution logic and data structures of a
@@ -128,7 +129,8 @@ where
             //rebalancing, this amount is arbitrary atm
             let plus_buffer = shortfall + 1000.0;
 
-            let _res = BrokerCalculations::withdraw_cash_with_liquidation_async(&plus_buffer, self).await;
+            let _res =
+                BrokerCalculations::withdraw_cash_with_liquidation_async(&plus_buffer, self).await;
             //TODO: handle insufficient cash state
         }
     }
@@ -373,7 +375,6 @@ where
         }
         self.credit(&dividend_value);
     }
-
 }
 
 impl<T, Q, D> TransferCash for ConcurrentBroker<T, Q, D>
@@ -420,7 +421,8 @@ mod tests {
 
     use crate::broker::{
         BacktestBroker, BrokerCashEvent, BrokerCost, BrokerEvent, ConcurrentBroker,
-        ConcurrentBrokerBuilder, Dividend, Order, OrderType, Quote, TransferCash, ReceievesOrdersAsync,
+        ConcurrentBrokerBuilder, Dividend, Order, OrderType, Quote, ReceievesOrdersAsync,
+        TransferCash,
     };
     use crate::clock::ClockBuilder;
     use crate::exchange::{ConcurrentExchange, ConcurrentExchangeBuilder};

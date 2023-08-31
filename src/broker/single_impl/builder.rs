@@ -26,9 +26,7 @@ where
     D: Dividendable,
     T: DataSource<Q, D>,
 {
-    pub fn build(
-        &mut self,
-    ) -> SingleBroker<T, Q, D> {
+    pub fn build(&mut self) -> SingleBroker<T, Q, D> {
         if self.data.is_none() {
             panic!("Cannot build broker without data");
         }
@@ -100,4 +98,3 @@ where
         Self::new()
     }
 }
-
