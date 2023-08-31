@@ -1,5 +1,5 @@
 use alator::clock::{Clock, ClockBuilder};
-use alator::exchange::ConcurrentExchangeBuilder;
+use alator::exchange::SingleExchangeBuilder;
 use alator::input::HashMapInputBuilder;
 use alator::strategy::StaticWeightStrategyBuilder;
 use rand::distributions::{Distribution, Uniform};
@@ -7,7 +7,7 @@ use rand::thread_rng;
 use std::collections::HashMap;
 use std::sync::Arc;
 
-use alator::broker::{BrokerCost, ConcurrentBrokerBuilder, Quote};
+use alator::broker::{BrokerCost, Quote, SingleBrokerBuilder};
 use alator::input::HashMapInput;
 use alator::simcontext::SimContextBuilder;
 use alator::types::{CashValue, DateTime, Frequency, PortfolioAllocation};
@@ -40,8 +40,8 @@ fn build_data(clock: Clock) -> HashMapInput {
     source
 }
 
-#[tokio::test]
-async fn staticweight_integration_test() {
+#[test]
+fn staticweight_integration_test() {
     env_logger::init();
     let initial_cash: CashValue = 100_000.0.into();
     let length_in_days: i64 = 1000;
@@ -56,16 +56,16 @@ async fn staticweight_integration_test() {
     weights.insert("ABC", 0.5);
     weights.insert("BCD", 0.5);
 
-    let mut exchange = ConcurrentExchangeBuilder::new()
+    let exchange = SingleExchangeBuilder::new()
         .with_data_source(data.clone())
         .with_clock(clock.clone())
         .build();
 
-    let simbrkr = ConcurrentBrokerBuilder::new()
+    let simbrkr = SingleBrokerBuilder::new()
         .with_data(data)
         .with_trade_costs(vec![BrokerCost::Flat(1.0.into())])
-        .build(&mut exchange)
-        .await;
+        .with_exchange(exchange)
+        .build();
 
     let strat = StaticWeightStrategyBuilder::new()
         .with_brkr(simbrkr)
@@ -75,12 +75,10 @@ async fn staticweight_integration_test() {
 
     let mut sim = SimContextBuilder::new()
         .with_clock(clock.clone())
-        .with_exchange(exchange)
-        .add_strategy(strat)
-        .init_first(&initial_cash)
-        .await;
+        .with_strategy(strat)
+        .init(&initial_cash);
 
-    sim.run().await;
+    sim.run();
 
     let _perf = sim.perf(Frequency::Daily);
 }

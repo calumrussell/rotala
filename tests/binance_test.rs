@@ -3,30 +3,28 @@ use std::io::{Cursor, Write};
 use std::sync::Arc;
 
 use alator::broker::{
-    BacktestBroker, ConcurrentBroker, ConcurrentBrokerBuilder, Dividend, GetsQuote, Order,
-    OrderType, Quote, ReceievesOrdersAsync, TransferCash,
+    BacktestBroker, Dividend, GetsQuote, Order, OrderType, Quote, ReceievesOrders, SingleBroker,
+    SingleBrokerBuilder, TransferCash,
 };
 use alator::clock::{Clock, ClockBuilder};
-use alator::exchange::ConcurrentExchangeBuilder;
+use alator::exchange::SingleExchangeBuilder;
 use alator::input::{HashMapInput, HashMapInputBuilder, QuotesHashMap};
 use alator::simcontext::SimContextBuilder;
 use alator::strategy::{History, Strategy, StrategyEvent, TransferTo};
 use alator::types::{CashValue, Frequency, StrategySnapshot};
-use async_trait::async_trait;
 
 /* Get the data from Binance, build quote from open and close of candle, insert the quotes into
  * QuotesHashMap using those dates.
  * We also need to work out the start and end of the simulation to initialise the clock with
  */
-async fn build_data() -> (QuotesHashMap, (i64, i64)) {
+fn build_data() -> (QuotesHashMap, (i64, i64)) {
     let url =
         "https://data.binance.vision/data/spot/daily/klines/BTCUSDT/1m/BTCUSDT-1m-2022-08-03.zip";
     let mut quotes: QuotesHashMap = HashMap::new();
     let mut min_date = i64::MAX;
     let mut max_date = i64::MIN;
-    let client = reqwest::Client::new();
-    if let Ok(resp) = client.get(url).send().await {
-        if let Ok(contents) = resp.bytes().await {
+    if let Ok(resp) = reqwest::blocking::get(url) {
+        if let Ok(contents) = resp.bytes() {
             let mut c = Cursor::new(Vec::new());
             let _res = c.write(&contents);
 
@@ -133,7 +131,7 @@ impl MovingAverage {
 //tracking into the simulation lifecycle.
 struct MovingAverageStrategy {
     clock: Clock,
-    brkr: ConcurrentBroker<HashMapInput, Quote, Dividend>,
+    brkr: SingleBroker<HashMapInput, Quote, Dividend>,
     ten: MovingAverage,
     fifty: MovingAverage,
     history: Vec<StrategySnapshot>,
@@ -152,13 +150,12 @@ impl History for MovingAverageStrategy {
     }
 }
 
-#[async_trait]
 impl Strategy for MovingAverageStrategy {
-    async fn init(&mut self, initial_cash: &f64) {
+    fn init(&mut self, initial_cash: &f64) {
         self.deposit_cash(initial_cash);
     }
 
-    async fn update(&mut self) {
+    fn update(&mut self) {
         //If you need to use dividends or place non-market orders then we need to call:
         //self.brkr.check().await; somewhere here. We don't use these features so this call is
         //excluded.
@@ -179,7 +176,7 @@ impl Strategy for MovingAverageStrategy {
         //which there is no quote at that time then the system will panic and exit. This behaviour
         //may change in the future but as this implies that the strategy is in some kind of
         //incorrect state, a runtime failure seems most appropriate.
-        self.brkr.check().await;
+        self.brkr.check();
         if let Some(quote) = self.brkr.get_quote("BTC") {
             //Update our moving averages with the latest quote
             self.ten.update(&quote);
@@ -206,11 +203,11 @@ impl Strategy for MovingAverageStrategy {
                     //I am not sure if the result is correct.
                     let qty = (f64::from(pct_value) / (*quote.ask)).floor();
                     let order = Order::market(OrderType::MarketBuy, "BTC", qty);
-                    let _ = self.brkr.send_order(order).await;
+                    let _ = self.brkr.send_order(order);
                 }
             } else if let Some(qty) = self.brkr.get_position_qty("BTC") {
                 let order = Order::market(OrderType::MarketSell, "BTC", qty.clone());
-                let _ = self.brkr.send_order(order).await;
+                let _ = self.brkr.send_order(order);
             }
         }
 
@@ -228,7 +225,7 @@ impl Strategy for MovingAverageStrategy {
 }
 
 impl MovingAverageStrategy {
-    fn new(brkr: ConcurrentBroker<HashMapInput, Quote, Dividend>, clock: Clock) -> Self {
+    fn new(brkr: SingleBroker<HashMapInput, Quote, Dividend>, clock: Clock) -> Self {
         let ten = MovingAverage::new(10);
         let fifty = MovingAverage::new(50);
         let history = Vec::new();
@@ -242,8 +239,8 @@ impl MovingAverageStrategy {
     }
 }
 
-#[tokio::test]
-async fn binance_test() {
+#[test]
+fn binance_test() {
     //If you past RUST_LOG=info and fail this test then you will be able to see what each component
     //of the system is doing.
     env_logger::init();
@@ -257,7 +254,7 @@ async fn binance_test() {
      * Messaging systems are far more scalable horizontally but this library is just intended to
      * run backtests, that is it so scalability really isn't a huge consideration.
      */
-    let (quotes, dates) = build_data().await;
+    let (quotes, dates) = build_data();
     //Clock is the only shared reference between backtesting components: it keeps the time inside
     //the simulation and should guard against the accidental use of future data.
     let clock = ClockBuilder::with_length_in_dates(dates.0, dates.1)
@@ -269,25 +266,23 @@ async fn binance_test() {
         .with_quotes(quotes)
         .build();
 
-    let mut exchange = ConcurrentExchangeBuilder::new()
+    let exchange = SingleExchangeBuilder::new()
         .with_clock(clock.clone())
         .with_data_source(data.clone())
         .build();
 
-    let simbrkr = ConcurrentBrokerBuilder::new()
+    let simbrkr = SingleBrokerBuilder::new()
+        .with_exchange(exchange)
         .with_data(data)
-        .build(&mut exchange)
-        .await;
+        .build();
 
     let strat = MovingAverageStrategy::new(simbrkr, clock.clone());
 
     let mut sim = SimContextBuilder::new()
         .with_clock(clock.clone())
-        .with_exchange(exchange)
-        .add_strategy(strat)
-        .init_first(&1_000_000.0.into())
-        .await;
+        .with_strategy(strat)
+        .init(&1_000_000.0.into());
 
-    sim.run().await;
+    sim.run();
     let _perf = sim.perf(Frequency::Daily);
 }

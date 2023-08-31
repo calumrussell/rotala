@@ -1,10 +1,14 @@
+mod builder;
+
+pub use builder::{SimContextBuilder, SimContextMultiBuilder};
+
 use futures::future::join_all;
 
 use crate::clock::Clock;
 use crate::exchange::ConcurrentExchange;
 use crate::input::{DataSource, Dividendable, Quotable};
 use crate::perf::{BacktestOutput, PerformanceCalculator};
-use crate::strategy::{History, Strategy};
+use crate::strategy::{AsyncStrategy, History, Strategy};
 use crate::types::{CashValue, Frequency};
 
 ///Provides context for a single run of a simulation. Once a run has started, all communication
@@ -14,29 +18,21 @@ use crate::types::{CashValue, Frequency};
 ///reference to a `Strategy` to run it. Passing references around with smart pointers would
 ///introduce a level of complexity beyond the requirements of current use-cases. The cost of this
 ///is that `SimContext` is tightly-bound to `Strategy`.
-pub struct SimContext<Q, D, T, S>
+pub struct SimContext<S>
 where
-    Q: Quotable,
-    D: Dividendable,
-    T: DataSource<Q, D>,
     S: Strategy + History,
 {
     clock: Clock,
     strategy: S,
-    exchange: ConcurrentExchange<T, Q, D>,
 }
 
-impl<Q, D, T, S> SimContext<Q, D, T, S>
+impl<S> SimContext<S>
 where
-    Q: Quotable,
-    D: Dividendable,
-    T: DataSource<Q, D>,
     S: Strategy + History,
 {
-    pub async fn run(&mut self) {
+    pub fn run(&mut self) {
         while self.clock.has_next() {
-            self.exchange.check().await;
-            self.strategy.update().await;
+            self.strategy.update();
         }
     }
 
@@ -46,8 +42,8 @@ where
         PerformanceCalculator::calculate(freq, hist)
     }
 
-    pub async fn init(&mut self, initial_cash: &CashValue) {
-        self.strategy.init(initial_cash).await;
+    pub fn init(&mut self, initial_cash: &CashValue) {
+        self.strategy.init(initial_cash);
     }
 }
 
@@ -56,7 +52,7 @@ where
     Q: Quotable,
     D: Dividendable,
     T: DataSource<Q, D>,
-    S: Strategy + History,
+    S: AsyncStrategy + History,
 {
     clock: Clock,
     strategies: Vec<S>,
@@ -68,7 +64,7 @@ where
     Q: Quotable,
     D: Dividendable,
     T: DataSource<Q, D>,
-    S: Strategy + History,
+    S: AsyncStrategy + History,
 {
     pub async fn run(&mut self) {
         while self.clock.has_next() {
@@ -99,102 +95,5 @@ where
             handles.push(strategy.init(initial_cash));
         }
         join_all(handles).await;
-    }
-}
-
-pub struct SimContextBuilder<Q, D, T, S>
-where
-    Q: Quotable,
-    D: Dividendable,
-    T: DataSource<Q, D>,
-    S: Strategy + History,
-{
-    clock: Option<Clock>,
-    strategies: Vec<S>,
-    exchange: Option<ConcurrentExchange<T, Q, D>>,
-}
-
-impl<Q, D, T, S> Default for SimContextBuilder<Q, D, T, S>
-where
-    Q: Quotable,
-    D: Dividendable,
-    T: DataSource<Q, D>,
-    S: Strategy + History,
-{
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
-impl<Q, D, T, S> SimContextBuilder<Q, D, T, S>
-where
-    Q: Quotable,
-    D: Dividendable,
-    T: DataSource<Q, D>,
-    S: Strategy + History,
-{
-    pub fn add_strategy(&mut self, strategy: S) -> &mut Self {
-        self.strategies.push(strategy);
-        self
-    }
-
-    pub fn with_clock(&mut self, clock: Clock) -> &mut Self {
-        self.clock = Some(clock);
-        self
-    }
-
-    pub fn with_exchange(&mut self, exchange: ConcurrentExchange<T, Q, D>) -> &mut Self {
-        self.exchange = Some(exchange);
-        self
-    }
-
-    //Init stage is not idempotent as it builds a SimContext and then mutates it before handing it
-    //back to the caller. This mutation ensures that the SimContext is not handed back in an
-    //unintialized state that could lead to subtle errors if the client attempts to trade with, for
-    //example, no cash balance.
-    pub async fn init_first(&mut self, initial_cash: &CashValue) -> SimContext<Q, D, T, S> {
-        if self.clock.is_none() || self.strategies.is_empty() || self.exchange.is_none() {
-            panic!("SimContext must be called with clock, exchange, and strategy");
-        }
-
-        let strategy = self.strategies.remove(0);
-        //Move exchange out of builder to save clone
-        let exchange = self.exchange.take();
-        let mut cxt = SimContext::<Q, D, T, S> {
-            clock: self.clock.as_ref().unwrap().clone(),
-            strategy,
-            exchange: exchange.unwrap(),
-        };
-        cxt.init(initial_cash).await;
-        cxt
-    }
-
-    pub async fn init_all(&mut self, initial_cash: &CashValue) -> SimContextMulti<Q, D, T, S> {
-        if self.clock.is_none() || self.strategies.is_empty() || self.exchange.is_none() {
-            panic!("SimContext must be called with clock, exchange, and strategy");
-        }
-
-        //Move strategies out of Vec to save clone
-        let mut strategies = Vec::new();
-        while let Some(strategy) = self.strategies.pop() {
-            strategies.push(strategy);
-        }
-
-        let exchange = self.exchange.take();
-        let mut cxt = SimContextMulti::<Q, D, T, S> {
-            clock: self.clock.as_ref().unwrap().clone(),
-            strategies,
-            exchange: exchange.unwrap(),
-        };
-        cxt.init(initial_cash).await;
-        cxt
-    }
-
-    pub fn new() -> Self {
-        Self {
-            clock: None,
-            strategies: Vec::new(),
-            exchange: None,
-        }
     }
 }

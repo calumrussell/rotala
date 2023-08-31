@@ -1,8 +1,9 @@
-use alator::broker::{BacktestBroker, BrokerCost, Order, OrderType, Quote, TransferCash};
+use alator::broker::{
+    BrokerCost, Order, OrderType, Quote, ReceievesOrders, SingleBrokerBuilder, TransferCash,
+};
 use alator::clock::ClockBuilder;
-use alator::exchange::builder::DefaultExchangeBuilder;
+use alator::exchange::SingleExchangeBuilder;
 use alator::input::HashMapInputBuilder;
-use alator::sim::ConcurrentBrokerBuilder;
 use alator::simcontext::SimContextBuilder;
 use alator::strategy::StaticWeightStrategyBuilder;
 use alator::types::{CashValue, DateTime, Frequency, PortfolioAllocation};
@@ -11,7 +12,6 @@ use criterion::{criterion_group, criterion_main, Criterion};
 use rand::distributions::Uniform;
 use rand::thread_rng;
 use rand_distr::Distribution;
-use tokio::join;
 
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -53,15 +53,16 @@ async fn full_backtest_random_data() {
     weights.insert("ABC", 0.5);
     weights.insert("BCD", 0.5);
 
-    let mut exchange = DefaultExchangeBuilder::new()
+    let exchange = SingleExchangeBuilder::new()
         .with_data_source(data.clone())
         .with_clock(clock.clone())
         .build();
 
-    let simbrkr = ConcurrentBrokerBuilder::new()
+    let simbrkr = SingleBrokerBuilder::new()
         .with_data(data)
+        .with_exchange(exchange)
         .with_trade_costs(vec![BrokerCost::Flat(1.0.into())])
-        .build(&mut exchange);
+        .build();
 
     let strat = StaticWeightStrategyBuilder::new()
         .with_brkr(simbrkr)
@@ -71,8 +72,8 @@ async fn full_backtest_random_data() {
 
     let mut sim = SimContextBuilder::new()
         .with_clock(clock.clone())
-        .add_strategy(strat)
-        .init_first(&initial_cash);
+        .with_strategy(strat)
+        .init(&initial_cash);
 
     sim.run();
 }
@@ -105,27 +106,25 @@ fn trade_execution_logic() {
         .with_clock(clock.clone())
         .build();
 
-    let mut exchange = DefaultExchangeBuilder::new()
+    let exchange = SingleExchangeBuilder::new()
         .with_clock(clock.clone())
         .with_data_source(source.clone())
         .build();
 
-    let mut brkr = ConcurrentBrokerBuilder::new()
+    let mut brkr = SingleBrokerBuilder::new()
         .with_data(source)
-        .build(&mut exchange);
+        .with_exchange(exchange)
+        .build();
 
     brkr.deposit_cash(&100_000.0);
     brkr.send_order(Order::market(OrderType::MarketBuy, "ABC", 100.0));
     brkr.send_order(Order::market(OrderType::MarketBuy, "BCD", 100.0));
 
-    join!(exchange.check());
-    brkr.check().await;
+    brkr.check();
 
-    join!(exchange.check());
-    brkr.check().await;
+    brkr.check();
 
-    join!(exchange.check());
-    brkr.check().await;
+    brkr.check();
 }
 
 fn benchmarks(c: &mut Criterion) {

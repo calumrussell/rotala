@@ -7,6 +7,7 @@ mod types;
 pub use calculations::BrokerCalculations;
 pub use concurrent_impl::{ConcurrentBroker, ConcurrentBrokerBuilder};
 pub use record::BrokerLog;
+pub use single_impl::{SingleBroker, SingleBrokerBuilder};
 pub use types::{
     BrokerCashEvent, BrokerCost, BrokerEvent, BrokerRecordedEvent, Dividend, DividendPayment,
     Order, OrderType, Quote, Trade, TradeType,

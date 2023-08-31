@@ -86,7 +86,7 @@ where
         let executed_trades = self.orderbook.execute_orders(now, &self.data_source);
         self.trade_log.extend(executed_trades.clone());
         self.order_buffer.clear();
-        return executed_trades;
+        executed_trades
     }
 }
 
@@ -126,7 +126,7 @@ mod tests {
             .with_quotes(quotes)
             .build();
 
-        let mut exchange = SingleExchangeBuilder::new()
+        let exchange = SingleExchangeBuilder::new()
             .with_clock(clock.clone())
             .with_data_source(source)
             .build();

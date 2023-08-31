@@ -1,11 +1,10 @@
+use alator::exchange::SingleExchangeBuilder;
 use pyo3::prelude::*;
 
 use alator::clock::ClockBuilder;
-use alator::exchange::builder::DefaultExchangeBuilder;
 use alator::input::PyInput;
 use alator::strategy::StaticWeightStrategyBuilder;
-use alator::broker::{BrokerCost, PyQuote, PyDividend};
-use alator::sim::ConcurrentBrokerBuilder;
+use alator::broker::{BrokerCost, PyQuote, PyDividend, SingleBrokerBuilder};
 use alator::simcontext::SimContextBuilder;
 use alator::types::{CashValue, Frequency, PortfolioAllocation};
 use pyo3::types::PyDict;
@@ -34,15 +33,16 @@ fn staticweight_example(quotes_any: &PyAny, dividends_any: &PyAny, tickers_any: 
     weights.insert("ABC", 0.5);
     weights.insert("BCD", 0.5);
 
-    let mut exchange = DefaultExchangeBuilder::<PyInput, PyQuote, PyDividend>::new()
+    let exchange = SingleExchangeBuilder::<PyInput, PyQuote, PyDividend>::new()
         .with_data_source(input.clone())
         .with_clock(clock.clone())
         .build();
 
-    let simbrkr = ConcurrentBrokerBuilder::new()
+    let simbrkr = SingleBrokerBuilder::new()
         .with_data(input)
+        .with_exchange(exchange)
         .with_trade_costs(vec![BrokerCost::Flat(1.0.into())])
-        .build(&mut exchange);
+        .build();
 
     let strat = StaticWeightStrategyBuilder::new()
         .with_brkr(simbrkr)
@@ -52,8 +52,8 @@ fn staticweight_example(quotes_any: &PyAny, dividends_any: &PyAny, tickers_any: 
 
     let mut sim = SimContextBuilder::new()
         .with_clock(clock.clone())
-        .add_strategy(strat)
-        .init_first(&initial_cash);
+        .with_strategy(strat)
+        .init(&initial_cash);
 
     sim.run();
 

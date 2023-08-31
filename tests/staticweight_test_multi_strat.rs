@@ -1,7 +1,7 @@
 use alator::clock::{Clock, ClockBuilder};
 use alator::exchange::ConcurrentExchangeBuilder;
 use alator::input::HashMapInputBuilder;
-use alator::strategy::StaticWeightStrategyBuilder;
+use alator::strategy::AsyncStaticWeightStrategyBuilder;
 use rand::distributions::{Distribution, Uniform};
 use rand::thread_rng;
 use std::collections::HashMap;
@@ -9,7 +9,7 @@ use std::sync::Arc;
 
 use alator::broker::{BrokerCost, ConcurrentBrokerBuilder, Quote};
 use alator::input::HashMapInput;
-use alator::simcontext::SimContextBuilder;
+use alator::simcontext::SimContextMultiBuilder;
 use alator::types::{CashValue, DateTime, Frequency, PortfolioAllocation};
 
 fn build_data(clock: Clock) -> HashMapInput {
@@ -75,7 +75,7 @@ async fn staticweight_integration_test() {
         .build(&mut exchange)
         .await;
 
-    let strat_first = StaticWeightStrategyBuilder::new()
+    let strat_first = AsyncStaticWeightStrategyBuilder::new()
         .with_brkr(simbrkr_first)
         .with_weights(first_weights)
         .with_clock(clock.clone())
@@ -87,7 +87,7 @@ async fn staticweight_integration_test() {
         .build(&mut exchange)
         .await;
 
-    let strat_second = StaticWeightStrategyBuilder::new()
+    let strat_second = AsyncStaticWeightStrategyBuilder::new()
         .with_brkr(simbrkr_second)
         .with_weights(second_weights)
         .with_clock(clock.clone())
@@ -99,19 +99,19 @@ async fn staticweight_integration_test() {
         .build(&mut exchange)
         .await;
 
-    let strat_third = StaticWeightStrategyBuilder::new()
+    let strat_third = AsyncStaticWeightStrategyBuilder::new()
         .with_brkr(simbrkr_third)
         .with_weights(third_weights)
         .with_clock(clock.clone())
         .default();
 
-    let mut sim = SimContextBuilder::new()
+    let mut sim = SimContextMultiBuilder::new()
         .with_clock(clock.clone())
         .with_exchange(exchange)
         .add_strategy(strat_first)
         .add_strategy(strat_second)
         .add_strategy(strat_third)
-        .init_all(&initial_cash)
+        .init(&initial_cash)
         .await;
 
     sim.run().await;

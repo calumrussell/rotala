@@ -258,9 +258,9 @@ mod tests {
     use std::collections::HashMap;
     use std::sync::Arc;
 
-    use crate::broker::{BrokerCost, ConcurrentBroker, ConcurrentBrokerBuilder, Dividend, Quote};
+    use crate::broker::{BrokerCost, Dividend, Quote, SingleBroker, SingleBrokerBuilder};
     use crate::clock::{Clock, ClockBuilder};
-    use crate::exchange::{ConcurrentExchange, ConcurrentExchangeBuilder};
+    use crate::exchange::SingleExchangeBuilder;
     use crate::input::{HashMapInput, HashMapInputBuilder};
     use crate::perf::StrategySnapshot;
     use crate::strategy::{History, StaticWeightStrategyBuilder, Strategy};
@@ -270,11 +270,7 @@ mod tests {
     use super::PerformanceCalculator;
     use super::PortfolioCalculations;
 
-    async fn setup() -> (
-        ConcurrentBroker<HashMapInput, Quote, Dividend>,
-        ConcurrentExchange<HashMapInput, Quote, Dividend>,
-        Clock,
-    ) {
+    fn setup() -> (SingleBroker<HashMapInput, Quote, Dividend>, Clock) {
         let mut raw_data: HashMap<DateTime, Vec<Arc<Quote>>> = HashMap::new();
 
         let quote_a1 = Arc::new(Quote::new(101.0, 102.0, 100, "ABC"));
@@ -301,18 +297,18 @@ mod tests {
             .with_clock(clock.clone())
             .build();
 
-        let mut exchange = ConcurrentExchangeBuilder::new()
+        let exchange = SingleExchangeBuilder::new()
             .with_clock(clock.clone())
             .with_data_source(source.clone())
             .build();
 
-        let brkr = ConcurrentBrokerBuilder::new()
+        let brkr = SingleBrokerBuilder::new()
             .with_data(source)
             .with_trade_costs(vec![BrokerCost::PctOfValue(0.01)])
-            .build(&mut exchange)
-            .await;
+            .with_exchange(exchange)
+            .build();
 
-        (brkr, exchange, clock)
+        (brkr, clock)
     }
 
     #[test]
@@ -352,9 +348,9 @@ mod tests {
         );
     }
 
-    #[tokio::test]
-    async fn test_that_portfolio_calculates_performance_accurately() {
-        let (brkr, mut exchange, clock) = setup().await;
+    #[test]
+    fn test_that_portfolio_calculates_performance_accurately() {
+        let (brkr, clock) = setup();
         //We use less than 100% because some bugs become possible when you are allocating the full
         //portfolio which perturb the order of operations leading to different perf outputs.
         let mut target_weights = PortfolioAllocation::new();
@@ -367,16 +363,13 @@ mod tests {
             .with_clock(clock.clone())
             .default();
 
-        strat.init(&100_000.0).await;
+        strat.init(&100_000.0);
 
-        exchange.check().await;
-        strat.update().await;
+        strat.update();
 
-        exchange.check().await;
-        strat.update().await;
+        strat.update();
 
-        exchange.check().await;
-        strat.update().await;
+        strat.update();
 
         let output = strat.get_history();
         println!("{:?}", output);
