@@ -84,6 +84,10 @@ impl OrderBook {
 
         let mut completed_orderids = Vec::new();
         let mut trade_results = Vec::new();
+        if self.is_empty() {
+            return trade_results;
+        }
+
         //Execute orders in the orderbook
         for (key, order) in self.inner.iter() {
             let security_id = order.get_symbol();
