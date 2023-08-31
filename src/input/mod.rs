@@ -91,19 +91,27 @@ impl DataSource<Quote, Dividend> for HashMapInput {
 //Can run without dividends but users of struct must initialise date and must set quotes
 pub struct HashMapInputBuilder {
     quotes: Option<QuotesHashMap>,
-    dividends: DividendsHashMap,
+    dividends: Option<DividendsHashMap>,
     clock: Option<Clock>,
 }
 
 impl HashMapInputBuilder {
-    pub fn build(&self) -> HashMapInput {
+    pub fn build(&mut self) -> HashMapInput {
         if self.clock.is_none() || self.quotes.is_none() {
             panic!("HashMapInput type must have quotes and must have date initialised");
         }
 
+        let quotes = std::mem::replace(&mut self.quotes, None).unwrap();
+        let dividends;
+        if self.dividends.is_none() {
+            dividends = HashMap::new();
+        } else {
+            dividends = std::mem::replace(&mut self.dividends, None).unwrap();
+        }
+
         HashMapInput {
-            quotes: self.quotes.as_ref().unwrap().clone(),
-            dividends: self.dividends.clone(),
+            quotes,
+            dividends,
             clock: self.clock.as_ref().unwrap().clone(),
         }
     }
@@ -114,7 +122,7 @@ impl HashMapInputBuilder {
     }
 
     pub fn with_dividends(&mut self, dividends: DividendsHashMap) -> &mut Self {
-        self.dividends = dividends;
+        self.dividends = Some(dividends);
         self
     }
 
@@ -126,7 +134,7 @@ impl HashMapInputBuilder {
     pub fn new() -> Self {
         Self {
             quotes: None,
-            dividends: HashMap::new(),
+            dividends: None,
             clock: None,
         }
     }
