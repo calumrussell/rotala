@@ -51,11 +51,15 @@ where
     D: Dividendable,
     T: DataSource<Q, D>,
 {
-    pub fn fetch_prices(&self) -> Vec<Arc<Q>> {
+    pub fn fetch_quotes(&self) -> Vec<Arc<Q>> {
         if let Some(quotes) = self.data_source.get_quotes() {
             return quotes;
         }
         vec![]
+    }
+
+    pub fn fetch_trades(&self, from: usize) -> &[super::ExchangeTrade] {
+        &self.trade_log[from..]
     }
 
     pub fn insert_order(&mut self, order: super::types::ExchangeOrder) {

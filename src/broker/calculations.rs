@@ -5,7 +5,7 @@ use crate::{
     types::{CashValue, PortfolioAllocation, PortfolioQty, Price},
 };
 
-use super::{BacktestBroker, GetsQuote};
+use super::{BacktestBroker, GetsQuote, ReceievesOrders, ReceievesOrdersAsync};
 
 ///Implements functionality that is standard to most brokers. These calculations are generic so are
 ///compiled into functionality for the implementation at run-time. Brokers do not necessarily need
@@ -26,10 +26,102 @@ impl BrokerCalculations {
     //The primary use-case for this functionality is for clients that implement tax payments: these are
     //mandatory reductions in cash that have to be paid before the simulation can proceed to the next
     //valid state.
-    pub async fn withdraw_cash_with_liquidation<
+    pub fn withdraw_cash_with_liquidation<
         Q: Quotable,
         D: Dividendable,
-        T: BacktestBroker + GetsQuote<Q, D>,
+        T: BacktestBroker + GetsQuote<Q, D> + ReceievesOrders,
+    >(
+        cash: &f64,
+        brkr: &mut T,
+    ) -> super::BrokerCashEvent {
+        //TODO:should this execute any trades at all? Would it be better to return a sequence of orders
+        //required to achieve the cash balance, and then leave it up to the calling function to decide
+        //whether to execute?
+        info!("BROKER: Withdrawing {:?} with liquidation", cash);
+        let value = brkr.get_liquidation_value();
+        if cash > &value {
+            //There is no way for the portfolio to recover, we leave the portfolio in an invalid
+            //state because the client may be able to recover later
+            brkr.debit(cash);
+            info!(
+                "BROKER: Failed to withdraw {:?} with liquidation. Deducting value from cash.",
+                cash
+            );
+            super::BrokerCashEvent::WithdrawFailure(CashValue::from(*cash))
+        } else {
+            //This holds how much we have left to generate from the portfolio to produce the cash
+            //required
+            let mut total_sold = *cash;
+
+            let positions = brkr.get_positions();
+            let mut sell_orders: Vec<super::Order> = Vec::new();
+            for ticker in positions {
+                let position_value = brkr.get_position_value(&ticker).unwrap_or_default();
+                //Position won't generate enough cash to fulfill total order
+                //Create orders for selling 100% of position, continue
+                //to next position to see if we can generate enough cash
+                //
+                //Sell 100% of position
+                if *position_value <= total_sold {
+                    //Cannot be called without qty existing
+                    let qty = brkr.get_position_qty(&ticker).unwrap();
+                    let order =
+                        super::Order::market(super::OrderType::MarketSell, ticker, qty.clone());
+                    info!("BROKER: Withdrawing {:?} with liquidation, queueing sale of {:?} shares of {:?}", cash, order.get_shares(), order.get_symbol());
+                    sell_orders.push(order);
+                    total_sold -= *position_value;
+                } else {
+                    //Position can generate all the cash we need
+                    //Create orders to sell 100% of position, don't continue to next stock
+                    //
+                    //Cannot be called without quote existing so unwrap
+                    let quote = brkr.get_quote(&ticker).unwrap();
+                    let price = quote.get_bid();
+                    let shares_req = PortfolioQty::from((total_sold / **price).ceil());
+                    let order =
+                        super::Order::market(super::OrderType::MarketSell, ticker, shares_req);
+                    info!("BROKER: Withdrawing {:?} with liquidation, queueing sale of {:?} shares of {:?}", cash, order.get_shares(), order.get_symbol());
+                    sell_orders.push(order);
+                    total_sold = 0.0;
+                    break;
+                }
+            }
+            if (total_sold).eq(&0.0) {
+                //The portfolio can provide enough cash so we can execute the sell orders
+                //We leave the portfolio in the wrong state for the client to deal with
+                brkr.send_orders(&sell_orders);
+                info!("BROKER: Succesfully withdrew {:?} with liquidation", cash);
+                super::BrokerCashEvent::WithdrawSuccess(CashValue::from(*cash))
+            } else {
+                //For whatever reason, we went through the above process and were unable to find
+                //the cash. Don't send any orders, leave portfolio in invalid state for client to
+                //potentially recover.
+                brkr.debit(cash);
+                info!(
+                    "BROKER: Failed to withdraw {:?} with liquidation. Deducting value from cash.",
+                    cash
+                );
+                super::BrokerCashEvent::WithdrawFailure(CashValue::from(*cash))
+            }
+        }
+    }
+
+    //Withdrawing with liquidation will execute orders in order to generate the target amount of cash
+    //required.
+    //
+    //This function should be used relatively sparingly because it breaks the update cycle between
+    //`Strategy` and `Broker`: the orders are not executed in any particular order so the state within
+    //`Broker` is left in a random state, which may not be immediately clear to clients and can cause
+    //significant unexpected drift in performance if this function is called repeatedly with long
+    //rebalance cycles.
+    //
+    //The primary use-case for this functionality is for clients that implement tax payments: these are
+    //mandatory reductions in cash that have to be paid before the simulation can proceed to the next
+    //valid state.
+    pub async fn withdraw_cash_with_liquidation_async<
+        Q: Quotable,
+        D: Dividendable,
+        T: BacktestBroker + GetsQuote<Q, D> + ReceievesOrdersAsync,
     >(
         cash: &f64,
         brkr: &mut T,
@@ -105,6 +197,7 @@ impl BrokerCalculations {
             }
         }
     }
+
 
     //Calculates the diff between the current state of the portfolio within broker, and the
     //target_weights passed into the function.

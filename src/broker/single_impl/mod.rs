@@ -1,48 +1,22 @@
 mod builder;
+pub use builder::SingleBrokerBuilder;
 
-pub use builder::ConcurrentBrokerBuilder;
-
-use async_trait::async_trait;
 use log::info;
 use std::collections::HashMap;
 use std::marker::PhantomData;
 use std::sync::Arc;
 
-use crate::exchange::{DefaultSubscriberId, NotifyReceiver, OrderSender, PriceReceiver};
+use crate::exchange::SingleExchange;
 use crate::input::{DataSource, Dividendable, Quotable};
 use crate::types::{CashValue, PortfolioHoldings, PortfolioQty, Price};
 
 use super::{
     BacktestBroker, BrokerCalculations, BrokerCashEvent, BrokerCost, BrokerEvent, BrokerLog,
-    DividendPayment, EventLog, GetsQuote, Order, OrderType, Trade, TransferCash, ReceievesOrdersAsync,
+    DividendPayment, EventLog, GetsQuote, Order, OrderType, Trade, TransferCash, ReceievesOrders,
 };
 
-///Broker implementation that can be used to replicate the execution logic and data structures of a
-///broker. Created through the Builder struct, and requires an implementation of `DataSource` to
-///run correctly.
-///
-///Orders are executed through a seperate exchange implementation that is held on the broker
-///implementation. When a broker receives an order from the client, this order cannot be executed
-///immediately but is sent to an exchange that executes the order in the next period for which
-///there is a price. This structure ensures that clients cannot lookahead.
-///
-///Supports multiple `BrokerCost` models defined in broker/mod.rs: Flat, PerShare, PctOfValue.
-///
-///Cash balance held in single currency, which is assumed to be the same currency used in all
-///quotes found in the implementation of `DataSource` passed to `ConcurrentBroker`. Cash balance can
-///be negative due to the non-immediate execution of trades. Broker will try to re-balance
-///automatically.
-///
-///If series has a lot of volatility between periods, this will cause unexpected outcomes as
-///the broker tries to continuously rebalance the negative cash balance.
-///
-///Broker is initialized with a cash buffer. When making transactions to raise cash, this is the
-///value that will be targeted (as opposed to zero).
-///
-///Keeps an internal log of trades executed and dividends received/paid. The events supported by
-///the `BrokerLog` are stored in the `BrokerRecordedEvent` enum in broker/mod.rs.
 #[derive(Debug)]
-pub struct ConcurrentBroker<T, Q, D>
+pub struct SingleBroker<T, Q, D>
 where
     Q: Quotable,
     D: Dividendable,
@@ -50,19 +24,20 @@ where
 {
     //We have overlapping functionality because we are storing
     data: T,
+    //TODO: this could be preallocated, tiny gains but this can only be as large as
+    //the number of stocks in the universe. If we have a lot of changes then the HashMap
+    //will be constantly resized.
     holdings: PortfolioHoldings,
     cash: CashValue,
     log: BrokerLog,
     trade_costs: Vec<BrokerCost>,
-    price_receiver: PriceReceiver<Q>,
-    notify_receiver: NotifyReceiver,
-    order_sender: OrderSender,
-    exchange_subscriber_id: DefaultSubscriberId,
+    last_seen_trade: usize,
     latest_quotes: HashMap<String, Arc<Q>>,
+    exchange: SingleExchange<T, Q, D>,
     _dividend: PhantomData<D>,
 }
 
-impl<T, Q, D> ConcurrentBroker<T, Q, D>
+impl<T, Q, D> SingleBroker<T, Q, D>
 where
     Q: Quotable,
     D: Dividendable,
@@ -74,51 +49,44 @@ where
 
     //Contains tasks that should be run on every iteration of the simulation irregardless of the
     //state on the client.
-    pub async fn check(&mut self) {
+    pub fn check(&mut self) {
         self.pay_dividends();
+        self.exchange.check();
+
+        //Update prices, these prices are not tradable
+        for quote in &self.exchange.fetch_quotes() {
+            self.latest_quotes
+                .insert(quote.get_symbol().to_string(), Arc::clone(quote));
+        }
+
         //Reconcile broker against executed trades
-        while let Ok(notification) = self.notify_receiver.try_recv() {
-            //TODO: if cash is below zero, we end the simulation. In practice, this shouldn't cause
-            //problems because the broker will be unable to fund any future trades but exiting
-            //early will give less confusing output.
-            match notification {
-                crate::exchange::ExchangeNotificationMessage::OrderBooked(_id, _order) => {
-                    //TODO: when the exchange books an order we should store the change
-                }
-                crate::exchange::ExchangeNotificationMessage::TradeCompleted(trade) => {
-                    match trade.typ {
-                        //Force debit so we can end up with negative cash here
-                        crate::exchange::TradeType::Buy => self.debit_force(&trade.value),
-                        crate::exchange::TradeType::Sell => self.credit(&trade.value),
-                    };
-                    self.log.record::<Trade>(trade.clone().into());
+        let completed_trades = self.exchange.fetch_trades(self.last_seen_trade).to_owned();
+        for trade in completed_trades {
+            match trade.typ {
+                //Force debit so we can end up with negative cash here
+                crate::exchange::TradeType::Buy => self.debit_force(&trade.value),
+                crate::exchange::TradeType::Sell => self.credit(&trade.value),
+            };
+            self.log.record::<Trade>(trade.clone().into());
 
-                    let default = PortfolioQty::from(0.0);
-                    let curr_position = self.get_position_qty(&trade.symbol).unwrap_or(&default);
+            let default = PortfolioQty::from(0.0);
+            let curr_position = self.get_position_qty(&trade.symbol).unwrap_or(&default);
 
-                    let updated = match trade.typ {
-                        crate::exchange::TradeType::Buy => **curr_position + trade.quantity,
-                        crate::exchange::TradeType::Sell => **curr_position - trade.quantity,
-                    };
+            let updated = match trade.typ {
+                crate::exchange::TradeType::Buy => **curr_position + trade.quantity,
+                crate::exchange::TradeType::Sell => **curr_position - trade.quantity,
+            };
 
-                    self.update_holdings(&trade.symbol, PortfolioQty::from(updated));
-                }
-                crate::exchange::ExchangeNotificationMessage::OrderDeleted(_order_id) => (),
-            }
+            self.update_holdings(&trade.symbol, PortfolioQty::from(updated));
+            self.last_seen_trade +=1;
         }
         //Previous step can cause negative cash balance so we have to rebalance here, this
         //is not instant so will never balance properly if the series is very volatile
-        self.rebalance_cash().await;
+        self.rebalance_cash();
 
-        //Update prices, these prices are not tradable
-        while let Ok(quotes) = self.price_receiver.try_recv() {
-            for quote in &quotes {
-                self.latest_quotes
-                    .insert(quote.get_symbol().to_string(), Arc::clone(quote));
-            }
-        }
     }
-    async fn rebalance_cash(&mut self) {
+
+    fn rebalance_cash(&mut self) {
         //Has to be less than, we can have zero value without needing to liquidate if we initialize
         //the portfolio but exchange doesn't execute any trades. This can happen if we are missing
         //prices at the start of the series
@@ -128,13 +96,13 @@ where
             //rebalancing, this amount is arbitrary atm
             let plus_buffer = shortfall + 1000.0;
 
-            let _res = BrokerCalculations::withdraw_cash_with_liquidation_async(&plus_buffer, self).await;
+            let _res = BrokerCalculations::withdraw_cash_with_liquidation(&plus_buffer, self);
             //TODO: handle insufficient cash state
         }
     }
 }
 
-impl<T, Q, D> GetsQuote<Q, D> for ConcurrentBroker<T, Q, D>
+impl<T, Q, D> GetsQuote<Q, D> for SingleBroker<T, Q, D>
 where
     Q: Quotable,
     D: Dividendable,
@@ -157,85 +125,7 @@ where
     }
 }
 
-#[async_trait]
-impl<T, Q, D> ReceievesOrdersAsync for ConcurrentBroker<T, Q, D>
-where
-    Q: Quotable,
-    D: Dividendable,
-    T: DataSource<Q, D>,
-{
-    async fn send_order(&mut self, order: Order) -> BrokerEvent {
-        //This is an estimate of the cost based on the current price, can still end with negative
-        //balance when we reconcile with actuals, may also reject valid orders at the margin
-        info!(
-            "BROKER: Attempting to send {:?} order for {:?} shares of {:?} to the exchange",
-            order.get_order_type(),
-            order.get_shares(),
-            order.get_symbol()
-        );
-
-        let quote = self.get_quote(order.get_symbol()).unwrap();
-        let price = match order.get_order_type() {
-            OrderType::MarketBuy | OrderType::LimitBuy | OrderType::StopBuy => quote.get_ask(),
-            OrderType::MarketSell | OrderType::LimitSell | OrderType::StopSell => quote.get_bid(),
-        };
-
-        if let Err(_err) = BrokerCalculations::client_has_sufficient_cash(&order, price, self) {
-            info!(
-                "BROKER: Unable to send {:?} order for {:?} shares of {:?} to exchange",
-                order.get_order_type(),
-                order.get_shares(),
-                order.get_symbol()
-            );
-            return BrokerEvent::OrderInvalid(order.clone());
-        }
-        if let Err(_err) = BrokerCalculations::client_has_sufficient_holdings_for_sale(&order, self)
-        {
-            info!(
-                "BROKER: Unable to send {:?} order for {:?} shares of {:?} to exchange",
-                order.get_order_type(),
-                order.get_shares(),
-                order.get_symbol()
-            );
-            return BrokerEvent::OrderInvalid(order.clone());
-        }
-        if let Err(_err) = BrokerCalculations::client_is_issuing_nonsense_order(&order) {
-            info!(
-                "BROKER: Unable to send {:?} order for {:?} shares of {:?} to exchange",
-                order.get_order_type(),
-                order.get_shares(),
-                order.get_symbol()
-            );
-            return BrokerEvent::OrderInvalid(order.clone());
-        }
-
-        let _ = self
-            .order_sender
-            .send(order.into_exchange_message(self.exchange_subscriber_id))
-            .await
-            .unwrap();
-
-        info!(
-            "BROKER: Successfully sent {:?} order for {:?} shares of {:?} to exchange",
-            order.get_order_type(),
-            order.get_shares(),
-            order.get_symbol()
-        );
-        BrokerEvent::OrderSentToExchange(order)
-    }
-
-    async fn send_orders(&mut self, orders: &[Order]) -> Vec<BrokerEvent> {
-        let mut res = Vec::new();
-        for o in orders {
-            let trade = self.send_order(o.clone()).await;
-            res.push(trade);
-        }
-        res
-    }
-}
-
-#[async_trait]
-impl<T, Q, D> BacktestBroker for ConcurrentBroker<T, Q, D>
+impl<T, Q, D> BacktestBroker for SingleBroker<T, Q, D>
 where
     Q: Quotable,
     D: Dividendable,
@@ -376,7 +266,79 @@ where
 
 }
 
-impl<T, Q, D> TransferCash for ConcurrentBroker<T, Q, D>
+impl<T, Q, D> ReceievesOrders for SingleBroker<T, Q, D>
+where
+    Q: Quotable,
+    D: Dividendable,
+    T: DataSource<Q, D>,
+{
+    fn send_order(&mut self, order: Order) -> BrokerEvent {
+        //This is an estimate of the cost based on the current price, can still end with negative
+        //balance when we reconcile with actuals, may also reject valid orders at the margin
+        info!(
+            "BROKER: Attempting to send {:?} order for {:?} shares of {:?} to the exchange",
+            order.get_order_type(),
+            order.get_shares(),
+            order.get_symbol()
+        );
+
+        let quote = self.get_quote(order.get_symbol()).unwrap();
+        let price = match order.get_order_type() {
+            OrderType::MarketBuy | OrderType::LimitBuy | OrderType::StopBuy => quote.get_ask(),
+            OrderType::MarketSell | OrderType::LimitSell | OrderType::StopSell => quote.get_bid(),
+        };
+
+        if let Err(_err) = BrokerCalculations::client_has_sufficient_cash(&order, price, self) {
+            info!(
+                "BROKER: Unable to send {:?} order for {:?} shares of {:?} to exchange",
+                order.get_order_type(),
+                order.get_shares(),
+                order.get_symbol()
+            );
+            return BrokerEvent::OrderInvalid(order.clone());
+        }
+        if let Err(_err) = BrokerCalculations::client_has_sufficient_holdings_for_sale(&order, self)
+        {
+            info!(
+                "BROKER: Unable to send {:?} order for {:?} shares of {:?} to exchange",
+                order.get_order_type(),
+                order.get_shares(),
+                order.get_symbol()
+            );
+            return BrokerEvent::OrderInvalid(order.clone());
+        }
+        if let Err(_err) = BrokerCalculations::client_is_issuing_nonsense_order(&order) {
+            info!(
+                "BROKER: Unable to send {:?} order for {:?} shares of {:?} to exchange",
+                order.get_order_type(),
+                order.get_shares(),
+                order.get_symbol()
+            );
+            return BrokerEvent::OrderInvalid(order.clone());
+        }
+
+        self.exchange.insert_order(order.into_exchange(0));
+
+        info!(
+            "BROKER: Successfully sent {:?} order for {:?} shares of {:?} to exchange",
+            order.get_order_type(),
+            order.get_shares(),
+            order.get_symbol()
+        );
+        BrokerEvent::OrderSentToExchange(order)
+    }
+
+    fn send_orders(&mut self, orders: &[Order]) -> Vec<BrokerEvent> {
+        let mut res = Vec::new();
+        for o in orders {
+            let trade = self.send_order(o.clone());
+            res.push(trade);
+        }
+        res
+    }
+}
+
+impl<T, Q, D> TransferCash for SingleBroker<T, Q, D>
 where
     Q: Quotable,
     D: Dividendable,
@@ -384,7 +346,7 @@ where
 {
 }
 
-impl<T, Q, D> EventLog for ConcurrentBroker<T, Q, D>
+impl<T, Q, D> EventLog for SingleBroker<T, Q, D>
 where
     Q: Quotable,
     D: Dividendable,
@@ -399,41 +361,19 @@ where
     }
 }
 
-unsafe impl<T, Q, D> Send for ConcurrentBroker<T, Q, D>
-where
-    Q: Quotable,
-    D: Dividendable,
-    T: DataSource<Q, D>,
-{
-}
-
-unsafe impl<T, Q, D> Sync for ConcurrentBroker<T, Q, D>
-where
-    Q: Quotable,
-    D: Dividendable,
-    T: DataSource<Q, D>,
-{
-}
-
 #[cfg(test)]
 mod tests {
-
-    use crate::broker::{
-        BacktestBroker, BrokerCashEvent, BrokerCost, BrokerEvent, ConcurrentBroker,
-        ConcurrentBrokerBuilder, Dividend, Order, OrderType, Quote, TransferCash, ReceievesOrdersAsync,
-    };
-    use crate::clock::ClockBuilder;
-    use crate::exchange::{ConcurrentExchange, ConcurrentExchangeBuilder};
-    use crate::input::{HashMapInput, HashMapInputBuilder};
-    use crate::types::{DateTime, Frequency};
-
     use std::collections::HashMap;
     use std::sync::Arc;
 
-    async fn setup() -> (
-        ConcurrentBroker<HashMapInput, Quote, Dividend>,
-        ConcurrentExchange<HashMapInput, Quote, Dividend>,
-    ) {
+    use crate::broker::{Quote, Dividend, BrokerCost, BrokerCashEvent, TransferCash, BacktestBroker, ReceievesOrders, Order, OrderType, BrokerEvent};
+    use crate::exchange::SingleExchangeBuilder;
+    use crate::input::{HashMapInput, HashMapInputBuilder};
+    use crate::types::DateTime;
+
+    use super::{SingleBroker, SingleBrokerBuilder};
+
+    fn setup() -> SingleBroker<HashMapInput, Quote, Dividend> {
         let mut prices: HashMap<DateTime, Vec<Arc<Quote>>> = HashMap::new();
         let mut dividends: HashMap<DateTime, Vec<Arc<Dividend>>> = HashMap::new();
         let quote = Arc::new(Quote::new(100.00, 101.00, 100, "ABC"));
@@ -463,27 +403,26 @@ mod tests {
             .with_dividends(dividends)
             .build();
 
-        let mut exchange = ConcurrentExchangeBuilder::new()
+        let exchange = SingleExchangeBuilder::new()
             .with_clock(clock.clone())
             .with_data_source(source.clone())
             .build();
 
-        let brkr = ConcurrentBrokerBuilder::new()
+        let brkr = SingleBrokerBuilder::new()
             .with_data(source)
+            .with_exchange(exchange)
             .with_trade_costs(vec![BrokerCost::PctOfValue(0.01)])
-            .build(&mut exchange)
-            .await;
+            .build();
 
-        (brkr, exchange)
+        brkr
     }
 
-    #[tokio::test]
-    async fn test_cash_deposit_withdraw() {
-        let (mut brkr, mut exchange) = setup().await;
+    #[test]
+    fn test_cash_deposit_withdraw() {
+        let mut brkr = setup();
         brkr.deposit_cash(&100.0);
 
-        exchange.check().await;
-        brkr.check().await;
+        brkr.check();
 
         //Test cash
         assert!(matches!(
@@ -514,18 +453,16 @@ mod tests {
         ));
     }
 
-    #[tokio::test]
-    async fn test_that_buy_order_reduces_cash_and_increases_holdings() {
-        let (mut brkr, mut exchange) = setup().await;
+    #[test]
+    fn test_that_buy_order_reduces_cash_and_increases_holdings() {
+        let mut brkr = setup();
         brkr.deposit_cash(&100_000.0);
-        let res = brkr
-            .send_order(Order::market(OrderType::MarketBuy, "ABC", 495.0))
-            .await;
+
+        let res = brkr.send_order(Order::market(OrderType::MarketBuy, "ABC", 495.0));
         println!("{:?}", res);
         assert!(matches!(res, BrokerEvent::OrderSentToExchange(..)));
 
-        exchange.check().await;
-        brkr.check().await;
+        brkr.check();
 
         let cash = brkr.get_cash_balance();
         assert!(*cash < 100_000.0);
@@ -534,39 +471,31 @@ mod tests {
         assert_eq!(*qty.clone(), 495.00);
     }
 
-    #[tokio::test]
-    async fn test_that_buy_order_larger_than_cash_fails_with_error_returned_without_panic() {
-        let (mut brkr, mut exchange) = setup().await;
+    #[test]
+    fn test_that_buy_order_larger_than_cash_fails_with_error_returned_without_panic() {
+        let mut brkr = setup();
         brkr.deposit_cash(&100.0);
         //Order value is greater than cash balance
-        let res = brkr
-            .send_order(Order::market(OrderType::MarketBuy, "ABC", 495.0))
-            .await;
+        let res = brkr.send_order(Order::market(OrderType::MarketBuy, "ABC", 495.0));
+
         assert!(matches!(res, BrokerEvent::OrderInvalid(..)));
-        exchange.check().await;
-        brkr.check().await;
+        brkr.check();
 
         let cash = brkr.get_cash_balance();
         assert!(*cash == 100.0);
     }
 
-    #[tokio::test]
-    async fn test_that_sell_order_larger_than_holding_fails_with_error_returned_without_panic() {
-        let (mut brkr, mut exchange) = setup().await;
+    #[test]
+    fn test_that_sell_order_larger_than_holding_fails_with_error_returned_without_panic() {
+        let mut brkr = setup();
         brkr.deposit_cash(&100_000.0);
-        let res = brkr
-            .send_order(Order::market(OrderType::MarketBuy, "ABC", 100.0))
-            .await;
+        let res = brkr.send_order(Order::market(OrderType::MarketBuy, "ABC", 100.0));
         assert!(matches!(res, BrokerEvent::OrderSentToExchange(..)));
-        exchange.check().await;
-        brkr.check().await;
+        brkr.check();
 
         //Order greater than current holding
-        exchange.check().await;
-        brkr.check().await;
-        let res = brkr
-            .send_order(Order::market(OrderType::MarketSell, "ABC", 105.0))
-            .await;
+        brkr.check();
+        let res = brkr.send_order(Order::market(OrderType::MarketSell, "ABC", 105.0));
         assert!(matches!(res, BrokerEvent::OrderInvalid(..)));
 
         //Checking that
@@ -575,27 +504,20 @@ mod tests {
         assert!((*qty.clone()).eq(&100.0));
     }
 
-    #[tokio::test]
-    async fn test_that_market_sell_increases_cash_and_decreases_holdings() {
-        let (mut brkr, mut exchange) = setup().await;
+    #[test]
+    fn test_that_market_sell_increases_cash_and_decreases_holdings() {
+        let mut brkr = setup();
         brkr.deposit_cash(&100_000.0);
-        let res = brkr
-            .send_order(Order::market(OrderType::MarketBuy, "ABC", 495.0))
-            .await;
+        let res = brkr.send_order(Order::market(OrderType::MarketBuy, "ABC", 495.0));
         assert!(matches!(res, BrokerEvent::OrderSentToExchange(..)));
-        exchange.check().await;
-        brkr.check().await;
+        brkr.check();
         let cash = brkr.get_cash_balance();
 
-        exchange.check().await;
-        brkr.check().await;
-        let res = brkr
-            .send_order(Order::market(OrderType::MarketSell, "ABC", 295.0))
-            .await;
+        brkr.check();
+        let res = brkr.send_order(Order::market(OrderType::MarketSell, "ABC", 295.0));
         assert!(matches!(res, BrokerEvent::OrderSentToExchange(..)));
 
-        exchange.check().await;
-        brkr.check().await;
+        brkr.check();
         let cash0 = brkr.get_cash_balance();
 
         let qty = brkr.get_position_qty("ABC").unwrap();
@@ -603,58 +525,50 @@ mod tests {
         assert!(*cash0 > *cash);
     }
 
-    #[tokio::test]
-    async fn test_that_valuation_updates_in_next_period() {
-        let (mut brkr, mut exchange) = setup().await;
+    #[test]
+    fn test_that_valuation_updates_in_next_period() {
+        let mut brkr = setup();
         brkr.deposit_cash(&100_000.0);
-        brkr.send_order(Order::market(OrderType::MarketBuy, "ABC", 495.0))
-            .await;
-        exchange.check().await;
-        brkr.check().await;
+        brkr.send_order(Order::market(OrderType::MarketBuy, "ABC", 495.0));
+        brkr.check();
 
         let val = brkr.get_position_value("ABC").unwrap();
 
-        exchange.check().await;
-        brkr.check().await;
+        brkr.check();
         let val1 = brkr.get_position_value("ABC").unwrap();
         assert_ne!(val, val1);
     }
 
-    #[tokio::test]
-    async fn test_that_profit_calculation_is_accurate() {
-        let (mut brkr, mut exchange) = setup().await;
+    #[test]
+    fn test_that_profit_calculation_is_accurate() {
+        let mut brkr = setup();
         brkr.deposit_cash(&100_000.0);
-        brkr.send_order(Order::market(OrderType::MarketBuy, "ABC", 495.0))
-            .await;
-        exchange.check().await;
-        brkr.check().await;
+        brkr.send_order(Order::market(OrderType::MarketBuy, "ABC", 495.0));
+        brkr.check();
 
-        exchange.check().await;
-        brkr.check().await;
+        brkr.check();
 
         let profit = brkr.get_position_profit("ABC").unwrap();
         assert_eq!(*profit, -4950.00);
     }
 
-    #[tokio::test]
-    async fn test_that_dividends_are_paid() {
-        let (mut brkr, mut exchange) = setup().await;
+    #[test]
+    fn test_that_dividends_are_paid() {
+        let mut brkr = setup();
         brkr.deposit_cash(&101_000.0);
-        brkr.send_order(Order::market(OrderType::MarketBuy, "ABC", 495.0))
-            .await;
+        brkr.send_order(Order::market(OrderType::MarketBuy, "ABC", 495.0));
 
-        exchange.check().await;
-        brkr.check().await;
+        brkr.check();
         let cash_before_dividend = brkr.get_cash_balance();
 
-        exchange.check().await;
-        brkr.check().await;
+        brkr.check();
+        brkr.check();
         let cash_after_dividend = brkr.get_cash_balance();
         assert_ne!(cash_before_dividend, cash_after_dividend);
     }
 
-    #[tokio::test]
-    async fn test_that_broker_build_passes_without_trade_costs() {
+    #[test]
+    fn test_that_broker_build_passes_without_trade_costs() {
         let mut prices: HashMap<DateTime, Vec<Arc<Quote>>> = HashMap::new();
 
         let quote = Arc::new(Quote::new(100.00, 101.00, 100, "ABC"));
@@ -664,8 +578,8 @@ mod tests {
         prices.insert(101.into(), vec![quote2]);
         prices.insert(102.into(), vec![quote4]);
 
-        let clock = ClockBuilder::with_length_in_dates(100, 102)
-            .with_frequency(&Frequency::Second)
+        let clock = crate::clock::ClockBuilder::with_length_in_dates(100, 102)
+            .with_frequency(&crate::types::Frequency::Second)
             .build();
 
         let source = HashMapInputBuilder::new()
@@ -673,20 +587,20 @@ mod tests {
             .with_clock(clock.clone())
             .build();
 
-        let mut exchange = ConcurrentExchangeBuilder::new()
+        let exchange = SingleExchangeBuilder::new()
             .with_clock(clock.clone())
             .with_data_source(source.clone())
             .build();
 
-        let _brkr = ConcurrentBrokerBuilder::new()
+        let _brkr = SingleBrokerBuilder::new()
             .with_data(source)
+            .with_exchange(exchange)
             .with_trade_costs(vec![BrokerCost::PctOfValue(0.01)])
-            .build(&mut exchange)
-            .await;
+            .build();
     }
 
-    #[tokio::test]
-    async fn test_that_broker_uses_last_value_if_it_fails_to_find_quote() {
+    #[test]
+    fn test_that_broker_uses_last_value_if_it_fails_to_find_quote() {
         //If the broker cannot find a quote in the current period for a stock, it automatically
         //uses a value of zero. This is a problem because the current time could a weekend or
         //bank holiday, and if the broker is attempting to value the portfolio on that day
@@ -714,8 +628,8 @@ mod tests {
         //And when we check the next date, it updates correctly
         prices.insert(103.into(), vec![quote5, quote6]);
 
-        let clock = ClockBuilder::with_length_in_seconds(100, 5)
-            .with_frequency(&Frequency::Second)
+        let clock = crate::clock::ClockBuilder::with_length_in_seconds(100, 5)
+            .with_frequency(&crate::types::Frequency::Second)
             .build();
 
         let source = HashMapInputBuilder::new()
@@ -724,45 +638,40 @@ mod tests {
             .with_clock(clock.clone())
             .build();
 
-        let mut exchange = ConcurrentExchangeBuilder::new()
+        let exchange = SingleExchangeBuilder::new()
             .with_clock(clock.clone())
             .with_data_source(source.clone())
             .build();
 
-        let mut brkr = ConcurrentBrokerBuilder::new()
+        let mut brkr = SingleBrokerBuilder::new()
             .with_data(source)
+            .with_exchange(exchange)
             .with_trade_costs(vec![BrokerCost::PctOfValue(0.01)])
-            .build(&mut exchange)
-            .await;
+            .build();
 
         brkr.deposit_cash(&100_000.0);
-        brkr.send_order(Order::market(OrderType::MarketBuy, "ABC", 100.0))
-            .await;
-        brkr.send_order(Order::market(OrderType::MarketBuy, "BCD", 100.0))
-            .await;
+        brkr.send_order(Order::market(OrderType::MarketBuy, "ABC", 100.0));
+        brkr.send_order(Order::market(OrderType::MarketBuy, "BCD", 100.0));
 
-        exchange.check().await;
-        brkr.check().await;
+        brkr.check();
 
         //Missing live quote for BCD
-        exchange.check().await;
-        brkr.check().await;
+        brkr.check();
         let value = brkr.get_position_value("BCD").unwrap();
         println!("{:?}", value);
         //We test against the bid price, which gives us the value exclusive of the price paid at ask
         assert!(*value == 10.0 * 100.0);
 
         //BCD has quote again
-        exchange.check().await;
-        brkr.check().await;
+        brkr.check();
 
         let value1 = brkr.get_position_value("BCD").unwrap();
         println!("{:?}", value1);
         assert!(*value1 == 12.0 * 100.0);
     }
 
-    #[tokio::test]
-    async fn test_that_broker_handles_negative_cash_balance_due_to_volatility() {
+    #[test]
+    fn test_that_broker_handles_negative_cash_balance_due_to_volatility() {
         //Because orders sent to the exchange are not executed instantaneously it is possible for a
         //broker to issue an order for a stock, the price to fall/rise before the trade gets
         //executed, and the broker end up with more/less cash than expected.
@@ -779,8 +688,8 @@ mod tests {
         prices.insert(101.into(), vec![quote1]);
         prices.insert(102.into(), vec![quote2]);
 
-        let clock = ClockBuilder::with_length_in_seconds(100, 5)
-            .with_frequency(&Frequency::Second)
+        let clock = crate::clock::ClockBuilder::with_length_in_seconds(100, 5)
+            .with_frequency(&crate::types::Frequency::Second)
             .build();
 
         let source = HashMapInputBuilder::new()
@@ -788,33 +697,30 @@ mod tests {
             .with_clock(clock.clone())
             .build();
 
-        let mut exchange = ConcurrentExchangeBuilder::new()
+        let exchange = SingleExchangeBuilder::new()
             .with_clock(clock.clone())
             .with_data_source(source.clone())
             .build();
 
-        let mut brkr = ConcurrentBrokerBuilder::new()
+        let mut brkr = SingleBrokerBuilder::new()
             .with_data(source)
+            .with_exchange(exchange)
             .with_trade_costs(vec![BrokerCost::PctOfValue(0.01)])
-            .build(&mut exchange)
-            .await;
+            .build();
 
         brkr.deposit_cash(&100_000.0);
         //Because the price of ABC rises after this order is sent, we will end up with a negative
         //cash balance after the order is executed
-        brkr.send_order(Order::market(OrderType::MarketBuy, "ABC", 700.0))
-            .await;
+        brkr.send_order(Order::market(OrderType::MarketBuy, "ABC", 700.0));
 
         //Trades execute
-        exchange.check().await;
-        brkr.check().await;
+        brkr.check();
 
         let cash = brkr.get_cash_balance();
         assert!(*cash < 0.0);
 
         //Broker rebalances to raise cash
-        exchange.check().await;
-        brkr.check().await;
+        brkr.check();
         let cash1 = brkr.get_cash_balance();
         assert!(*cash1 > 0.0);
     }

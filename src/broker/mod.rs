@@ -1,5 +1,6 @@
 mod calculations;
 mod concurrent_impl;
+mod single_impl;
 mod record;
 mod types;
 
@@ -119,8 +120,6 @@ pub trait BacktestBroker {
     fn calc_trade_impact(&self, budget: &f64, price: &f64, is_buy: bool) -> (CashValue, Price);
     fn update_holdings(&mut self, symbol: &str, change: PortfolioQty);
     fn pay_dividends(&mut self);
-    async fn send_order(&mut self, order: types::Order) -> types::BrokerEvent;
-    async fn send_orders(&mut self, order: &[types::Order]) -> Vec<types::BrokerEvent>;
     fn debit(&mut self, value: &f64) -> types::BrokerCashEvent;
     fn credit(&mut self, value: &f64) -> types::BrokerCashEvent;
     //Can leave the client with a negative cash balance
@@ -157,6 +156,19 @@ pub trait TransferCash: BacktestBroker {
         self.credit(cash);
         types::BrokerCashEvent::DepositSuccess(CashValue::from(*cash))
     }
+}
+
+pub trait ReceievesOrders {
+    //TODO: this needs to use another kind of order
+    fn send_order(&mut self, order: types::Order) -> types::BrokerEvent;
+    fn send_orders(&mut self, order: &[types::Order]) -> Vec<types::BrokerEvent>;
+}
+
+#[async_trait]
+pub trait ReceievesOrdersAsync {
+    //TODO: this needs to use another kind of order
+    async fn send_order(&mut self, order: types::Order) -> types::BrokerEvent;
+    async fn send_orders(&mut self, order: &[types::Order]) -> Vec<types::BrokerEvent>;
 }
 
 //Implementation allows clients to retrieve prices. This trait may be used to retrieve prices
@@ -212,6 +224,7 @@ mod tests {
     use crate::input::{fake_data_generator, HashMapInputBuilder};
     use crate::types::{DateTime, PortfolioAllocation};
     use crate::{clock::ClockBuilder, types::Frequency};
+    use crate::broker::ReceievesOrdersAsync;
     use std::collections::HashMap;
     use std::sync::Arc;
 
