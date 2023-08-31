@@ -34,10 +34,7 @@ where
 
         let data = std::mem::take(&mut self.data_source).unwrap();
 
-        SingleExchange::new(
-            self.clock.as_ref().unwrap().clone(),
-            data.clone(),
-        )
+        SingleExchange::new(self.clock.as_ref().unwrap().clone(), data.clone())
     }
 
     pub fn with_clock(&mut self, clock: Clock) -> &mut Self {

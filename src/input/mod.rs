@@ -60,14 +60,13 @@ struct HashMapInputInner {
     clock: Clock,
 }
 
-
 pub type QuotesHashMap = HashMap<DateTime, Vec<Arc<Quote>>>;
 pub type DividendsHashMap = HashMap<DateTime, Vec<Arc<Dividend>>>;
 
 impl Clone for HashMapInput {
     fn clone(&self) -> Self {
         Self {
-            inner: self.inner.clone()
+            inner: self.inner.clone(),
         }
     }
 }
@@ -115,20 +114,19 @@ impl HashMapInputBuilder {
             panic!("HashMapInput type must have quotes and must have date initialised");
         }
 
-        let quotes = std::mem::replace(&mut self.quotes, None).unwrap();
-        let dividends;
-        if self.dividends.is_none() {
-            dividends = HashMap::new();
+        let quotes = self.quotes.take().unwrap();
+        let dividends = if self.dividends.is_none() {
+            HashMap::new()
         } else {
-            dividends = std::mem::replace(&mut self.dividends, None).unwrap();
-        }
+            self.dividends.take().unwrap()
+        };
 
         HashMapInput {
             inner: Arc::new(HashMapInputInner {
                 quotes,
                 dividends,
                 clock: self.clock.as_ref().unwrap().clone(),
-            })
+            }),
         }
     }
 
