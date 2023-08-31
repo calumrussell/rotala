@@ -1,5 +1,6 @@
 mod concurrent;
 mod orderbook;
+mod single;
 mod types;
 
 pub use concurrent::ConcurrentExchange;

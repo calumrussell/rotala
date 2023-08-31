@@ -410,15 +410,15 @@ mod tests {
         let (mut exchange, id, _price_rx, order_tx, _notify_rx) = setup().await;
 
         order_tx
-            .send(ExchangeOrderMessage::market_buy(id, "ABC", 100.0))
+            .send(ExchangeOrderMessage::market_sell(id, "ABC", 100.0))
             .await
             .unwrap();
 
         exchange.check().await;
         assert_eq!(exchange.trade_log.len(), 1);
         let trade = exchange.trade_log.remove(0);
-        //Trade executes at 101 so trade price should be 103
-        assert_eq!(trade.value / trade.quantity, 103.00);
+        //Trade executes at 101 so trade price should be 102
+        assert_eq!(trade.value / trade.quantity, 102.00);
         assert_eq!(*trade.date, 101);
     }
 
