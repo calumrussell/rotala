@@ -1,29 +1,26 @@
 use std::marker::PhantomData;
 
 use crate::clock::Clock;
-use crate::input::{DataSource, Dividendable, Quotable};
+use crate::input::{Quotable, PriceSource};
 
 use super::SingleExchange;
 
-pub struct SingleExchangeBuilder<T, Q, D>
+pub struct SingleExchangeBuilder<T, Q>
 where
     Q: Quotable,
-    D: Dividendable,
-    T: DataSource<Q, D>,
+    T: PriceSource<Q>,
 {
     data_source: Option<T>,
     clock: Option<Clock>,
     _quote: PhantomData<Q>,
-    _dividend: PhantomData<D>,
 }
 
-impl<T, Q, D> SingleExchangeBuilder<T, Q, D>
+impl<T, Q> SingleExchangeBuilder<T, Q>
 where
     Q: Quotable,
-    D: Dividendable,
-    T: DataSource<Q, D>,
+    T: PriceSource<Q>,
 {
-    pub fn build(&mut self) -> SingleExchange<T, Q, D> {
+    pub fn build(&mut self) -> SingleExchange<T, Q> {
         if self.data_source.is_none() {
             panic!("Exchange must have data source");
         }
@@ -52,16 +49,14 @@ where
             clock: None,
             data_source: None,
             _quote: PhantomData,
-            _dividend: PhantomData,
         }
     }
 }
 
-impl<T, Q, D> Default for SingleExchangeBuilder<T, Q, D>
+impl<T, Q> Default for SingleExchangeBuilder<T, Q>
 where
     Q: Quotable,
-    D: Dividendable,
-    T: DataSource<Q, D>,
+    T: PriceSource<Q>,
 {
     fn default() -> Self {
         Self::new()

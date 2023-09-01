@@ -6,14 +6,13 @@ use std::marker::PhantomData;
 use std::sync::Arc;
 
 use crate::clock::Clock;
-use crate::input::{DataSource, Dividendable, Quotable};
+use crate::input::{DataSource, Quotable, PriceSource};
 
 #[derive(Debug)]
-pub struct SingleExchange<T, Q, D>
+pub struct SingleExchange<T, Q>
 where
     Q: Quotable,
-    D: Dividendable,
-    T: DataSource<Q, D>,
+    T: PriceSource<Q>,
 {
     clock: Clock,
     orderbook: super::orderbook::OrderBook,
@@ -22,14 +21,12 @@ where
     //This is cleared on every tick
     order_buffer: Vec<super::types::ExchangeOrder>,
     _quote: PhantomData<Q>,
-    _dividend: PhantomData<D>,
 }
 
-impl<T, Q, D> SingleExchange<T, Q, D>
+impl<T, Q> SingleExchange<T, Q>
 where
     Q: Quotable,
-    D: Dividendable,
-    T: DataSource<Q, D>,
+    T: PriceSource<Q>,
 {
     pub fn new(clock: Clock, data_source: T) -> Self {
         Self {
@@ -38,17 +35,15 @@ where
             data_source,
             trade_log: Vec::new(),
             order_buffer: Vec::new(),
-            _dividend: PhantomData,
             _quote: PhantomData,
         }
     }
 }
 
-impl<T, Q, D> SingleExchange<T, Q, D>
+impl<T, Q> SingleExchange<T, Q>
 where
     Q: Quotable,
-    D: Dividendable,
-    T: DataSource<Q, D>,
+    T: PriceSource<Q>,
 {
     pub fn fetch_quotes(&self) -> Vec<Arc<Q>> {
         if let Some(quotes) = self.data_source.get_quotes() {
@@ -95,14 +90,14 @@ mod tests {
     use std::collections::HashMap;
     use std::sync::Arc;
 
-    use crate::broker::{Dividend, Quote};
+    use crate::broker::Quote;
     use crate::exchange::ExchangeOrder;
     use crate::input::{HashMapInput, QuotesHashMap};
     use crate::types::DateTime;
 
     use super::{SingleExchange, SingleExchangeBuilder};
 
-    fn setup() -> SingleExchange<HashMapInput, Quote, Dividend> {
+    fn setup() -> SingleExchange<HashMapInput, Quote> {
         let mut quotes: QuotesHashMap = HashMap::new();
         quotes.insert(
             DateTime::from(100),

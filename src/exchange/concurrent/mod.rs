@@ -2,11 +2,10 @@ mod builder;
 
 pub use builder::ConcurrentExchangeBuilder;
 
-use std::marker::PhantomData;
 use std::sync::Arc;
 
 use crate::clock::Clock;
-use crate::input::{DataSource, Dividendable, Quotable};
+use crate::input::{DataSource, Quotable, PriceSource};
 
 ///Exchanges accept orders for securities, store them on an internal order book, and then execute
 ///them over time.
@@ -39,11 +38,10 @@ use crate::input::{DataSource, Dividendable, Quotable};
 ///In both cases, we are potentially creating silent errors but this more closely represents the
 ///execution model that would exist in reality.
 #[derive(Debug)]
-pub struct ConcurrentExchange<T, Q, D>
+pub struct ConcurrentExchange<T, Q>
 where
     Q: Quotable,
-    D: Dividendable,
-    T: DataSource<Q, D>,
+    T: PriceSource<Q>,
 {
     clock: Clock,
     orderbook: super::orderbook::OrderBook,
@@ -53,30 +51,26 @@ where
     notify_sender: Vec<super::types::NotifySender>,
     order_reciever: Vec<super::types::OrderReciever>,
     last_subscriber_id: super::types::DefaultSubscriberId,
-    _dividend: PhantomData<D>,
 }
 
-unsafe impl<T, Q, D> Send for ConcurrentExchange<T, Q, D>
+unsafe impl<T, Q> Send for ConcurrentExchange<T, Q>
 where
     Q: Quotable,
-    D: Dividendable,
-    T: DataSource<Q, D>,
+    T: PriceSource<Q>,
 {
 }
 
-unsafe impl<T, Q, D> Sync for ConcurrentExchange<T, Q, D>
+unsafe impl<T, Q> Sync for ConcurrentExchange<T, Q>
 where
     Q: Quotable,
-    D: Dividendable,
-    T: DataSource<Q, D>,
+    T: PriceSource<Q>,
 {
 }
 
-impl<T, Q, D> ConcurrentExchange<T, Q, D>
+impl<T, Q> ConcurrentExchange<T, Q>
 where
     Q: Quotable,
-    D: Dividendable,
-    T: DataSource<Q, D>,
+    T: PriceSource<Q>,
 {
     pub fn new(clock: Clock, data_source: T) -> Self {
         Self {
@@ -88,16 +82,14 @@ where
             price_sender: Vec::new(),
             notify_sender: Vec::new(),
             order_reciever: Vec::new(),
-            _dividend: PhantomData,
         }
     }
 }
 
-impl<T, Q, D> ConcurrentExchange<T, Q, D>
+impl<T, Q> ConcurrentExchange<T, Q>
 where
     Q: Quotable,
-    D: Dividendable,
-    T: DataSource<Q, D>,
+    T: PriceSource<Q>,
 {
     pub async fn subscribe(
         &mut self,
@@ -225,7 +217,7 @@ mod tests {
     use std::sync::Arc;
 
     use super::{ConcurrentExchange, ConcurrentExchangeBuilder};
-    use crate::broker::{Dividend, Quote};
+    use crate::broker::Quote;
     use crate::exchange::types::{
         DefaultSubscriberId, ExchangeNotificationMessage, ExchangeOrderMessage, NotifyReceiver,
         OrderSender, PriceReceiver,
@@ -234,7 +226,7 @@ mod tests {
     use crate::types::DateTime;
 
     async fn setup() -> (
-        ConcurrentExchange<HashMapInput, Quote, Dividend>,
+        ConcurrentExchange<HashMapInput, Quote>,
         DefaultSubscriberId,
         PriceReceiver<Quote>,
         OrderSender,

@@ -1,29 +1,26 @@
 use std::marker::PhantomData;
 
 use crate::clock::Clock;
-use crate::input::{DataSource, Dividendable, Quotable};
+use crate::input::{Quotable, PriceSource};
 
 use super::ConcurrentExchange;
 
-pub struct ConcurrentExchangeBuilder<T, Q, D>
+pub struct ConcurrentExchangeBuilder<T, Q>
 where
     Q: Quotable,
-    D: Dividendable,
-    T: DataSource<Q, D>,
+    T: PriceSource<Q>,
 {
     data_source: Option<T>,
     clock: Option<Clock>,
     _quote: PhantomData<Q>,
-    _dividend: PhantomData<D>,
 }
 
-impl<T, Q, D> ConcurrentExchangeBuilder<T, Q, D>
+impl<T, Q> ConcurrentExchangeBuilder<T, Q>
 where
     Q: Quotable,
-    D: Dividendable,
-    T: DataSource<Q, D>,
+    T: PriceSource<Q>,
 {
-    pub fn build(&mut self) -> ConcurrentExchange<T, Q, D> {
+    pub fn build(&mut self) -> ConcurrentExchange<T, Q> {
         if self.data_source.is_none() {
             panic!("Exchange must have data source");
         }
@@ -52,16 +49,14 @@ where
             clock: None,
             data_source: None,
             _quote: PhantomData,
-            _dividend: PhantomData,
         }
     }
 }
 
-impl<T, Q, D> Default for ConcurrentExchangeBuilder<T, Q, D>
+impl<T, Q> Default for ConcurrentExchangeBuilder<T, Q>
 where
     Q: Quotable,
-    D: Dividendable,
-    T: DataSource<Q, D>,
+    T: PriceSource<Q>,
 {
     fn default() -> Self {
         Self::new()
