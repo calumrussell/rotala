@@ -77,12 +77,13 @@ In the tests folder, we have provided an implementation of a simple moving avera
 
 * Improving performance
 * Making the code simpler, particularly around the code that ensures tests cannot run with lookahead bias
-* Adding tests
+* Improving test coverage
 * Adding integrations with other languages, currently missing JS and a Python implementation of a trading strategy that runs in Rust.
-* Documentation
-* Concurrency
+* Documentation, publishing to crates.io
 
 # Change Log
+
+v0.3.0 - Added concurrent strategies. Library still supports running synchronously but multiple strategies can now be updated at the same time significantly improving performance. Perf in inner trade loop was also improved 25% and 5% in a full backtest. Docs haven't been updated as a further architectural change needs to be pushed but tests cover how to run sync/async backtests. 
 
 v0.2.11 - Added (hopefully) zero-copy Python integration. No other way to do this but making everything generic on `Quotable`/`Dividendable` traits which has led to substantial changes in the signature of Broker/Strategy/Exchange implementations. This also comes with perf improvements for the `DataSource` trait and general improvements throughout the library.
 
