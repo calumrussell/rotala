@@ -1,5 +1,6 @@
 # What is Alator?
 
+
 Rust library with components for investment portfolio backtesting.
 
 This library is used as a back-end for a Python financial simulation [app](https://pytho.uk). A feature of this application is Monte-Carlo simulations of investor lifetimes, and to run hundreds of these complex, event-driven simulations within a few seconds requires a fast backtesting engine.
@@ -26,7 +27,7 @@ An example backtest (with data creation excluded):
     let start_date: i64 = 1609750800; //Date - 4/1/21 9:00:0000
     let clock = ClockBuilder::from_length(start_date, length_in_days).daily();
 
-    let data = build_data(Rc::clone(&clock));
+    let data = build_data(clock.clone());
 
     let mut weights: PortfolioAllocation<PortfolioWeight> = PortfolioAllocation::new();
     weights.insert(ABC, 0.5);
@@ -34,10 +35,10 @@ An example backtest (with data creation excluded):
 
     let exchange = DefaultExchangeBuilder::new()
         .with_data_source(data.clone())
-        .with_clock(Rc::clone(&clock))
+        .with_clock(clock.clone())
         .build();
 
-    let simbrkr = SimulatedBrokerBuilder::new()
+    let simbrkr = ConcurrentBrokerBuilder::new()
         .with_data(data)
         .with_exchange(exchange)
         .with_trade_costs(vec![BrokerCost::Flat(1.0)])
@@ -46,11 +47,11 @@ An example backtest (with data creation excluded):
     let strat = StaticWeightStrategyBuilder::new()
         .with_brkr(simbrkr)
         .with_weights(weights)
-        .with_clock(Rc::clone(&clock))
+        .with_clock(clock.clone())
         .daily();
 
     let mut sim = SimContextBuilder::new()
-        .with_clock(Rc::clone(&clock))
+        .with_clock(clock.clone())
         .with_strategy(strat)
         .init(&initial_cash);
 

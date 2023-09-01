@@ -1,15 +1,14 @@
 use alator::clock::{Clock, ClockBuilder};
-use alator::exchange::DefaultExchangeBuilder;
+use alator::exchange::SingleExchangeBuilder;
 use alator::input::HashMapInputBuilder;
 use alator::strategy::StaticWeightStrategyBuilder;
 use rand::distributions::{Distribution, Uniform};
 use rand::thread_rng;
 use std::collections::HashMap;
-use std::rc::Rc;
+use std::sync::Arc;
 
-use alator::broker::{BrokerCost, Quote};
+use alator::broker::{BrokerCost, Quote, SingleBrokerBuilder};
 use alator::input::HashMapInput;
-use alator::sim::SimulatedBrokerBuilder;
 use alator::simcontext::SimContextBuilder;
 use alator::types::{CashValue, DateTime, Frequency, PortfolioAllocation};
 
@@ -17,8 +16,8 @@ fn build_data(clock: Clock) -> HashMapInput {
     let price_dist = Uniform::new(90.0, 100.0);
     let mut rng = thread_rng();
 
-    let mut raw_data: HashMap<DateTime, Vec<Quote>> = HashMap::with_capacity(clock.borrow().len());
-    for date in clock.borrow().peek() {
+    let mut raw_data: HashMap<DateTime, Vec<Arc<Quote>>> = HashMap::with_capacity(clock.len());
+    for date in clock.peek() {
         let q1 = Quote::new(
             price_dist.sample(&mut rng),
             price_dist.sample(&mut rng),
@@ -31,12 +30,12 @@ fn build_data(clock: Clock) -> HashMapInput {
             date,
             "BCD",
         );
-        raw_data.insert(date, vec![q1, q2]);
+        raw_data.insert(date, vec![Arc::new(q1), Arc::new(q2)]);
     }
 
     let source = HashMapInputBuilder::new()
         .with_quotes(raw_data)
-        .with_clock(Rc::clone(&clock))
+        .with_clock(clock.clone())
         .build();
     source
 }
@@ -51,31 +50,31 @@ fn staticweight_integration_test() {
         .with_frequency(&Frequency::Daily)
         .build();
 
-    let data = build_data(Rc::clone(&clock));
+    let data = build_data(clock.clone());
 
     let mut weights: PortfolioAllocation = PortfolioAllocation::new();
     weights.insert("ABC", 0.5);
     weights.insert("BCD", 0.5);
 
-    let exchange = DefaultExchangeBuilder::new()
+    let exchange = SingleExchangeBuilder::new()
         .with_data_source(data.clone())
-        .with_clock(Rc::clone(&clock))
+        .with_clock(clock.clone())
         .build();
 
-    let simbrkr = SimulatedBrokerBuilder::new()
+    let simbrkr = SingleBrokerBuilder::new()
         .with_data(data)
-        .with_exchange(exchange)
         .with_trade_costs(vec![BrokerCost::Flat(1.0.into())])
+        .with_exchange(exchange)
         .build();
 
     let strat = StaticWeightStrategyBuilder::new()
         .with_brkr(simbrkr)
         .with_weights(weights)
-        .with_clock(Rc::clone(&clock))
+        .with_clock(clock.clone())
         .default();
 
     let mut sim = SimContextBuilder::new()
-        .with_clock(Rc::clone(&clock))
+        .with_clock(clock.clone())
         .with_strategy(strat)
         .init(&initial_cash);
 

@@ -1,6 +1,14 @@
+mod builder;
+
+pub use builder::{SimContextBuilder, SimContextMultiBuilder};
+
+use futures::future::join_all;
+
 use crate::clock::Clock;
+use crate::exchange::ConcurrentExchange;
+use crate::input::{DataSource, Dividendable, Quotable};
 use crate::perf::{BacktestOutput, PerformanceCalculator};
-use crate::strategy::{History, Strategy};
+use crate::strategy::{AsyncStrategy, History, Strategy};
 use crate::types::{CashValue, Frequency};
 
 ///Provides context for a single run of a simulation. Once a run has started, all communication
@@ -10,15 +18,20 @@ use crate::types::{CashValue, Frequency};
 ///reference to a `Strategy` to run it. Passing references around with smart pointers would
 ///introduce a level of complexity beyond the requirements of current use-cases. The cost of this
 ///is that `SimContext` is tightly-bound to `Strategy`.
-pub struct SimContext<T: Strategy + History> {
+pub struct SimContext<S>
+where
+    S: Strategy + History,
+{
     clock: Clock,
-    strategy: T,
+    strategy: S,
 }
 
-impl<T: Strategy + History> SimContext<T> {
+impl<S> SimContext<S>
+where
+    S: Strategy + History,
+{
     pub fn run(&mut self) {
-        while self.clock.borrow().has_next() {
-            self.clock.borrow_mut().tick();
+        while self.clock.has_next() {
             self.strategy.update();
         }
     }
@@ -34,48 +47,53 @@ impl<T: Strategy + History> SimContext<T> {
     }
 }
 
-pub struct SimContextBuilder<T: Strategy + History> {
-    clock: Option<Clock>,
-    strategy: Option<T>,
+pub struct SimContextMulti<Q, D, T, S>
+where
+    Q: Quotable,
+    D: Dividendable,
+    T: DataSource<Q, D>,
+    S: AsyncStrategy + History,
+{
+    clock: Clock,
+    strategies: Vec<S>,
+    exchange: ConcurrentExchange<T, Q, D>,
 }
 
-impl<T: Strategy + History> SimContextBuilder<T> {
-    pub fn with_strategy(&mut self, strategy: T) -> &mut Self {
-        self.strategy = Some(strategy);
-        self
-    }
+impl<Q, D, T, S> SimContextMulti<Q, D, T, S>
+where
+    Q: Quotable,
+    D: Dividendable,
+    T: DataSource<Q, D>,
+    S: AsyncStrategy + History,
+{
+    pub async fn run(&mut self) {
+        while self.clock.has_next() {
+            self.exchange.check().await;
 
-    pub fn with_clock(&mut self, clock: Clock) -> &mut Self {
-        self.clock = Some(clock);
-        self
-    }
-
-    //Init stage is not idempotent as it builds a SimContext and then mutates it before handing it
-    //back to the caller. This mutation ensures that the SimContext is not handed back in an
-    //unintialized state that could lead to subtle errors if the client attempts to trade with, for
-    //example, no cash balance.
-    pub fn init(&self, initial_cash: &CashValue) -> SimContext<T> {
-        if self.clock.is_none() || self.strategy.is_none() {
-            panic!("SimContext must be called with clock and strategy");
-        }
-        let mut cxt = SimContext::<T> {
-            clock: self.clock.as_ref().unwrap().clone(),
-            strategy: self.strategy.as_ref().unwrap().clone(),
-        };
-        cxt.init(initial_cash);
-        cxt
-    }
-
-    pub fn new() -> Self {
-        Self {
-            clock: None,
-            strategy: None,
+            let mut handles = Vec::new();
+            for strategy in &mut self.strategies {
+                handles.push(strategy.update());
+            }
+            join_all(handles).await;
         }
     }
-}
 
-impl<T: Strategy + History> Default for SimContextBuilder<T> {
-    fn default() -> Self {
-        Self::new()
+    pub fn perf(&self, freq: Frequency) -> Vec<BacktestOutput> {
+        let mut res = Vec::new();
+        //Intended to be called at end of simulation
+        for strategy in &self.strategies {
+            let hist = strategy.get_history();
+            let perf = PerformanceCalculator::calculate(freq.clone(), hist);
+            res.push(perf);
+        }
+        res
+    }
+
+    pub async fn init(&mut self, initial_cash: &CashValue) {
+        let mut handles = Vec::new();
+        for strategy in &mut self.strategies {
+            handles.push(strategy.init(initial_cash));
+        }
+        join_all(handles).await;
     }
 }

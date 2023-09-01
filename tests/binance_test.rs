@@ -1,12 +1,14 @@
 use std::collections::HashMap;
 use std::io::{Cursor, Write};
-use std::rc::Rc;
+use std::sync::Arc;
 
-use alator::broker::{BacktestBroker, Dividend, GetsQuote, Order, OrderType, Quote, TransferCash};
+use alator::broker::{
+    BacktestBroker, Dividend, GetsQuote, Order, OrderType, Quote, ReceievesOrders, SingleBroker,
+    SingleBrokerBuilder, TransferCash,
+};
 use alator::clock::{Clock, ClockBuilder};
-use alator::exchange::DefaultExchangeBuilder;
+use alator::exchange::SingleExchangeBuilder;
 use alator::input::{HashMapInput, HashMapInputBuilder, QuotesHashMap};
-use alator::sim::{SimulatedBroker, SimulatedBrokerBuilder};
 use alator::simcontext::SimContextBuilder;
 use alator::strategy::{History, Strategy, StrategyEvent, TransferTo};
 use alator::types::{CashValue, Frequency, StrategySnapshot};
@@ -56,7 +58,7 @@ fn build_data() -> (QuotesHashMap, (i64, i64)) {
                                 date: open_date.into(),
                                 symbol: "BTC".into(),
                             };
-                            quotes.insert(open_date.into(), vec![quote]);
+                            quotes.insert(open_date.into(), vec![Arc::new(quote)]);
                             let close_date = (row[6].parse::<i64>().unwrap()) / 1000;
                             if close_date > max_date {
                                 max_date = close_date;
@@ -67,7 +69,7 @@ fn build_data() -> (QuotesHashMap, (i64, i64)) {
                                 date: close_date.into(),
                                 symbol: "BTC".into(),
                             };
-                            quotes.insert(close_date.into(), vec![quote1]);
+                            quotes.insert(close_date.into(), vec![Arc::new(quote1)]);
                         }
                     }
                 }
@@ -116,7 +118,6 @@ impl MovingAverage {
     }
 }
 
-#[derive(Clone)]
 //Our strategy needs a reference to a Broker, and the broker needs a data source that implements
 //the DataSource trait. We are using the default HashMapInput, but it is possible to create your
 //own source.
@@ -130,7 +131,7 @@ impl MovingAverage {
 //tracking into the simulation lifecycle.
 struct MovingAverageStrategy {
     clock: Clock,
-    brkr: SimulatedBroker<HashMapInput, Quote, Dividend>,
+    brkr: SingleBroker<HashMapInput, Quote, Dividend>,
     ten: MovingAverage,
     fifty: MovingAverage,
     history: Vec<StrategySnapshot>,
@@ -154,9 +155,9 @@ impl Strategy for MovingAverageStrategy {
         self.deposit_cash(initial_cash);
     }
 
-    fn update(&mut self) -> CashValue {
+    fn update(&mut self) {
         //If you need to use dividends or place non-market orders then we need to call:
-        //self.brkr.check(); somewhere here. We don't use these features so this call is
+        //self.brkr.check().await; somewhere here. We don't use these features so this call is
         //excluded.
 
         //The simulation does not run at the same frequency as the strategy, we are only trading
@@ -175,15 +176,16 @@ impl Strategy for MovingAverageStrategy {
         //which there is no quote at that time then the system will panic and exit. This behaviour
         //may change in the future but as this implies that the strategy is in some kind of
         //incorrect state, a runtime failure seems most appropriate.
+        self.brkr.check();
         if let Some(quote) = self.brkr.get_quote("BTC") {
             //Update our moving averages with the latest quote
-            self.ten.update(quote);
-            self.fifty.update(quote);
+            self.ten.update(&quote);
+            self.fifty.update(&quote);
 
             //If we are at the start of the simulation and don't have full data for each moving
             //average then don't trade
             if !self.ten.full() || !self.fifty.full() {
-                return self.brkr.get_total_value();
+                return;
             }
 
             //If the 10 period MA is above the 50 period then we go long with 10% of our portfolio.
@@ -201,30 +203,29 @@ impl Strategy for MovingAverageStrategy {
                     //I am not sure if the result is correct.
                     let qty = (f64::from(pct_value) / (*quote.ask)).floor();
                     let order = Order::market(OrderType::MarketBuy, "BTC", qty);
-                    self.brkr.send_order(order);
+                    let _ = self.brkr.send_order(order);
                 }
             } else if let Some(qty) = self.brkr.get_position_qty("BTC") {
                 let order = Order::market(OrderType::MarketSell, "BTC", qty.clone());
-                self.brkr.send_order(order);
+                let _ = self.brkr.send_order(order);
             }
         }
 
         let val = self.brkr.get_total_value();
 
         let snap = StrategySnapshot {
-            date: self.clock.borrow().now(),
+            date: self.clock.now(),
             portfolio_value: val.clone(),
             net_cash_flow: CashValue::from(0.0),
             inflation: 0.0,
         };
 
         self.history.push(snap);
-        val
     }
 }
 
 impl MovingAverageStrategy {
-    fn new(brkr: SimulatedBroker<HashMapInput, Quote, Dividend>, clock: Clock) -> Self {
+    fn new(brkr: SingleBroker<HashMapInput, Quote, Dividend>, clock: Clock) -> Self {
         let ten = MovingAverage::new(10);
         let fifty = MovingAverage::new(50);
         let history = Vec::new();
@@ -261,26 +262,27 @@ fn binance_test() {
         .build();
 
     let data = HashMapInputBuilder::new()
-        .with_clock(Rc::clone(&clock))
+        .with_clock(clock.clone())
         .with_quotes(quotes)
         .build();
 
-    let exchange = DefaultExchangeBuilder::new()
-        .with_clock(Rc::clone(&clock))
+    let exchange = SingleExchangeBuilder::new()
+        .with_clock(clock.clone())
         .with_data_source(data.clone())
         .build();
 
-    let simbrkr = SimulatedBrokerBuilder::new()
-        .with_data(data)
+    let simbrkr = SingleBrokerBuilder::new()
         .with_exchange(exchange)
+        .with_data(data)
         .build();
 
-    let strat = MovingAverageStrategy::new(simbrkr, Rc::clone(&clock));
+    let strat = MovingAverageStrategy::new(simbrkr, clock.clone());
 
     let mut sim = SimContextBuilder::new()
-        .with_clock(Rc::clone(&clock))
+        .with_clock(clock.clone())
         .with_strategy(strat)
         .init(&1_000_000.0.into());
 
     sim.run();
+    let _perf = sim.perf(Frequency::Daily);
 }

@@ -1,15 +1,13 @@
-use log::info;
-use std::rc::Rc;
-
-use crate::broker::{
-    BacktestBroker, BrokerCalculations, BrokerCashEvent, DividendPayment, EventLog, Trade,
-    TransferCash,
+mod staticweight;
+pub use staticweight::{
+    AsyncStaticWeightStrategy, AsyncStaticWeightStrategyBuilder, StaticWeightStrategy,
+    StaticWeightStrategyBuilder,
 };
-use crate::clock::Clock;
-use crate::input::{DataSource, Dividendable, Quotable};
-use crate::schedule::{DefaultTradingSchedule, TradingSchedule};
-use crate::sim::SimulatedBroker;
-use crate::types::{CashValue, PortfolioAllocation, StrategySnapshot};
+
+use async_trait::async_trait;
+
+use crate::broker::{DividendPayment, Trade};
+use crate::types::{CashValue, StrategySnapshot};
 
 ///Strategies define an a set of operations that should be performed on some schedule to bring the
 ///broker passed to the strategy into the desired state.
@@ -32,8 +30,14 @@ use crate::types::{CashValue, PortfolioAllocation, StrategySnapshot};
 ///components of a backtest, runs it, and offers the interface into the components (like
 ///`Strategy`) to clients. The reasoning for this is explained in the documentation for
 ///`SimContext`.
-pub trait Strategy: TransferTo + Clone {
-    fn update(&mut self) -> CashValue;
+#[async_trait]
+pub trait AsyncStrategy: TransferTo {
+    async fn update(&mut self);
+    async fn init(&mut self, initial_cash: &f64);
+}
+
+pub trait Strategy: TransferTo {
+    fn update(&mut self);
     fn init(&mut self, initial_cash: &f64);
 }
 
@@ -66,6 +70,12 @@ pub trait TransferTo {
 ///Trait to withdraw cash from a strategy, typically whilst it is running. This is a separate trait
 ///as some clients may wish to create strategies from which no cash can be withdrawn whilst the
 ///simulation is running.
+#[async_trait]
+pub trait AsyncTransferFrom {
+    fn withdraw_cash(&mut self, cash: &f64) -> StrategyEvent;
+    async fn withdraw_cash_with_liquidation(&mut self, cash: &f64) -> StrategyEvent;
+}
+
 pub trait TransferFrom {
     fn withdraw_cash(&mut self, cash: &f64) -> StrategyEvent;
     fn withdraw_cash_with_liquidation(&mut self, cash: &f64) -> StrategyEvent;
@@ -77,234 +87,25 @@ pub trait History {
     fn get_history(&self) -> Vec<StrategySnapshot>;
 }
 
-pub struct StaticWeightStrategyBuilder<T, Q, D>
-where
-    Q: Quotable,
-    D: Dividendable,
-    T: DataSource<Q, D>,
-{
-    //If missing either field, we cannot run this strategy
-    brkr: Option<SimulatedBroker<T, Q, D>>,
-    weights: Option<PortfolioAllocation>,
-    clock: Option<Clock>,
-}
-
-impl<T, Q, D> StaticWeightStrategyBuilder<T, Q, D>
-where
-    Q: Quotable,
-    D: Dividendable,
-    T: DataSource<Q, D>,
-{
-    pub fn default(&self) -> StaticWeightStrategy<T, Q, D> {
-        if self.brkr.is_none() || self.weights.is_none() || self.clock.is_none() {
-            panic!("Strategy must have broker, weights, and clock");
-        }
-
-        StaticWeightStrategy {
-            brkr: self.brkr.clone().unwrap(),
-            target_weights: self.weights.clone().unwrap(),
-            net_cash_flow: 0.0.into(),
-            clock: Rc::clone(self.clock.as_ref().unwrap()),
-            history: Vec::new(),
-        }
-    }
-
-    pub fn with_clock(&mut self, clock: Clock) -> &mut Self {
-        self.clock = Some(clock);
-        self
-    }
-
-    pub fn with_brkr(&mut self, brkr: SimulatedBroker<T, Q, D>) -> &mut Self {
-        self.brkr = Some(brkr);
-        self
-    }
-
-    pub fn with_weights(&mut self, weights: PortfolioAllocation) -> &mut Self {
-        self.weights = Some(weights);
-        self
-    }
-
-    pub fn new() -> Self {
-        Self {
-            brkr: None,
-            weights: None,
-            clock: None,
-        }
-    }
-}
-
-impl<T, Q, D> Default for StaticWeightStrategyBuilder<T, Q, D>
-where
-    Q: Quotable,
-    D: Dividendable,
-    T: DataSource<Q, D>,
-{
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
-///Basic implementation of an investment strategy which takes a set of fixed-weight allocations and
-///rebalances over time towards those weights.
-#[derive(Clone)]
-pub struct StaticWeightStrategy<T, Q, D>
-where
-    Q: Quotable,
-    D: Dividendable,
-    T: DataSource<Q, D>,
-{
-    brkr: SimulatedBroker<T, Q, D>,
-    target_weights: PortfolioAllocation,
-    net_cash_flow: CashValue,
-    clock: Clock,
-    history: Vec<StrategySnapshot>,
-}
-
-impl<T, Q, D> StaticWeightStrategy<T, Q, D>
-where
-    Q: Quotable,
-    D: Dividendable,
-    T: DataSource<Q, D>,
-{
-    pub fn get_snapshot(&mut self) -> StrategySnapshot {
-        // Defaults to zero inflation because most users probably aren't looking
-        // for real returns calcs
-        StrategySnapshot {
-            date: self.clock.borrow().now(),
-            portfolio_value: self.brkr.get_total_value(),
-            net_cash_flow: self.net_cash_flow.clone(),
-            inflation: 0.0,
-        }
-    }
-}
-
-impl<T, Q, D> Strategy for StaticWeightStrategy<T, Q, D>
-where
-    Q: Quotable,
-    D: Dividendable,
-    T: DataSource<Q, D>,
-{
-    fn init(&mut self, initital_cash: &f64) {
-        self.deposit_cash(initital_cash);
-        if DefaultTradingSchedule::should_trade(&self.clock.borrow().now()) {
-            let orders = BrokerCalculations::diff_brkr_against_target_weights(
-                &self.target_weights,
-                &mut self.brkr,
-            );
-            if !orders.is_empty() {
-                self.brkr.send_orders(&orders);
-            }
-        }
-        self.brkr.finish();
-    }
-
-    fn update(&mut self) -> CashValue {
-        self.brkr.check();
-        if DefaultTradingSchedule::should_trade(&self.clock.borrow().now()) {
-            let orders = BrokerCalculations::diff_brkr_against_target_weights(
-                &self.target_weights,
-                &mut self.brkr,
-            );
-            if !orders.is_empty() {
-                self.brkr.send_orders(&orders);
-            }
-        }
-        self.brkr.finish();
-        let snap = self.get_snapshot();
-        self.history.push(snap);
-
-        self.brkr.get_total_value()
-    }
-}
-
-impl<T, Q, D> TransferTo for StaticWeightStrategy<T, Q, D>
-where
-    Q: Quotable,
-    D: Dividendable,
-    T: DataSource<Q, D>,
-{
-    fn deposit_cash(&mut self, cash: &f64) -> StrategyEvent {
-        info!("STRATEGY: Depositing {:?} into strategy", cash);
-        self.brkr.deposit_cash(cash);
-        self.net_cash_flow = CashValue::from(cash + *self.net_cash_flow);
-        StrategyEvent::DepositSuccess(CashValue::from(*cash))
-    }
-}
-
-impl<T, Q, D> TransferFrom for StaticWeightStrategy<T, Q, D>
-where
-    Q: Quotable,
-    D: Dividendable,
-    T: DataSource<Q, D>,
-{
-    fn withdraw_cash(&mut self, cash: &f64) -> StrategyEvent {
-        if let BrokerCashEvent::WithdrawSuccess(withdrawn) = self.brkr.withdraw_cash(cash) {
-            info!("STRATEGY: Succesfully withdrew {:?} from strategy", cash);
-            self.net_cash_flow = CashValue::from(*self.net_cash_flow - *withdrawn);
-            return StrategyEvent::WithdrawSuccess(CashValue::from(*cash));
-        }
-        info!("STRATEGY: Failed to withdraw {:?} from strategy", cash);
-        StrategyEvent::WithdrawFailure(CashValue::from(*cash))
-    }
-
-    fn withdraw_cash_with_liquidation(&mut self, cash: &f64) -> StrategyEvent {
-        if let BrokerCashEvent::WithdrawSuccess(withdrawn) =
-            //No logging here because the implementation is fully logged due to the greater
-            //complexity of this task vs standard withdraw
-            BrokerCalculations::withdraw_cash_with_liquidation(cash, &mut self.brkr)
-        {
-            self.net_cash_flow = CashValue::from(*self.net_cash_flow - *withdrawn);
-            return StrategyEvent::WithdrawSuccess(CashValue::from(*cash));
-        }
-        StrategyEvent::WithdrawFailure(CashValue::from(*cash))
-    }
-}
-
-impl<T, Q, D> Audit for StaticWeightStrategy<T, Q, D>
-where
-    Q: Quotable,
-    D: Dividendable,
-    T: DataSource<Q, D>,
-{
-    fn trades_between(&self, start: &i64, end: &i64) -> Vec<Trade> {
-        self.brkr.trades_between(start, end)
-    }
-
-    fn dividends_between(&self, start: &i64, end: &i64) -> Vec<DividendPayment> {
-        self.brkr.dividends_between(start, end)
-    }
-}
-
-impl<T, Q, D> History for StaticWeightStrategy<T, Q, D>
-where
-    Q: Quotable,
-    D: Dividendable,
-    T: DataSource<Q, D>,
-{
-    fn get_history(&self) -> Vec<StrategySnapshot> {
-        self.history.clone()
-    }
-}
-
 #[cfg(test)]
 mod tests {
 
     use std::collections::HashMap;
-    use std::rc::Rc;
+    use std::sync::Arc;
 
-    use super::StaticWeightStrategyBuilder;
-    use crate::broker::{BrokerCost, Dividend, Quote};
+    use super::AsyncStaticWeightStrategyBuilder;
+    use crate::broker::{BrokerCost, ConcurrentBroker, ConcurrentBrokerBuilder, Dividend, Quote};
     use crate::clock::{Clock, ClockBuilder};
+    use crate::exchange::ConcurrentExchangeBuilder;
     use crate::input::{HashMapInput, HashMapInputBuilder};
-    use crate::sim::{SimulatedBroker, SimulatedBrokerBuilder};
     use crate::types::{DateTime, Frequency, PortfolioAllocation};
 
-    fn setup() -> (SimulatedBroker<HashMapInput, Quote, Dividend>, Clock) {
-        let mut prices: HashMap<DateTime, Vec<Quote>> = HashMap::new();
+    async fn setup() -> (ConcurrentBroker<HashMapInput, Quote, Dividend>, Clock) {
+        let mut prices: HashMap<DateTime, Vec<Arc<Quote>>> = HashMap::new();
 
-        let quote = Quote::new(100.00, 101.00, 100, "ABC");
-        let quote2 = Quote::new(104.00, 105.00, 101, "ABC");
-        let quote4 = Quote::new(95.00, 96.00, 102, "ABC");
+        let quote = Arc::new(Quote::new(100.00, 101.00, 100, "ABC"));
+        let quote2 = Arc::new(Quote::new(104.00, 105.00, 101, "ABC"));
+        let quote4 = Arc::new(Quote::new(95.00, 96.00, 102, "ABC"));
         prices.insert(100.into(), vec![quote]);
         prices.insert(101.into(), vec![quote2]);
         prices.insert(102.into(), vec![quote4]);
@@ -315,43 +116,49 @@ mod tests {
 
         let source = HashMapInputBuilder::new()
             .with_quotes(prices)
-            .with_clock(Rc::clone(&clock))
+            .with_clock(clock.clone())
             .build();
 
-        let brkr = SimulatedBrokerBuilder::<HashMapInput, Quote, Dividend>::new()
+        let mut exchange = ConcurrentExchangeBuilder::new()
+            .with_clock(clock.clone())
+            .with_data_source(source.clone())
+            .build();
+
+        let brkr = ConcurrentBrokerBuilder::<HashMapInput, Quote, Dividend>::new()
             .with_data(source)
             .with_trade_costs(vec![BrokerCost::flat(0.1)])
-            .build();
+            .build(&mut exchange)
+            .await;
         (brkr, clock)
     }
 
-    #[test]
+    #[tokio::test]
     #[should_panic]
-    fn test_that_static_builder_fails_without_weights() {
-        let comp = setup();
-        let _strat = StaticWeightStrategyBuilder::<HashMapInput, Quote, Dividend>::new()
+    async fn test_that_static_builder_fails_without_weights() {
+        let comp = setup().await;
+        let _strat = AsyncStaticWeightStrategyBuilder::<HashMapInput, Quote, Dividend>::new()
             .with_brkr(comp.0)
-            .with_clock(Rc::clone(&comp.1))
+            .with_clock(comp.1)
             .default();
     }
 
-    #[test]
+    #[tokio::test]
     #[should_panic]
-    fn test_that_static_builder_fails_without_brkr() {
-        let comp = setup();
+    async fn test_that_static_builder_fails_without_brkr() {
+        let comp = setup().await;
         let weights = PortfolioAllocation::new();
-        let _strat = StaticWeightStrategyBuilder::<HashMapInput, Quote, Dividend>::new()
+        let _strat = AsyncStaticWeightStrategyBuilder::<HashMapInput, Quote, Dividend>::new()
             .with_weights(weights)
-            .with_clock(Rc::clone(&comp.1))
+            .with_clock(comp.1)
             .default();
     }
 
-    #[test]
+    #[tokio::test]
     #[should_panic]
-    fn test_that_static_builder_fails_without_clock() {
-        let comp = setup();
+    async fn test_that_static_builder_fails_without_clock() {
+        let comp = setup().await;
         let weights = PortfolioAllocation::new();
-        let _strat = StaticWeightStrategyBuilder::<HashMapInput, Quote, Dividend>::new()
+        let _strat = AsyncStaticWeightStrategyBuilder::<HashMapInput, Quote, Dividend>::new()
             .with_weights(weights)
             .with_brkr(comp.0)
             .default();
