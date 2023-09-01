@@ -227,3 +227,135 @@ pub fn fake_data_generator(clock: Clock) -> HashMapInput {
         .build();
     source
 }
+
+pub trait PriceSource<Q>: Clone
+where
+    Q: Quotable,
+{
+    fn get_quote(&self, symbol: &str) -> Option<Arc<Q>>;
+    fn get_quotes(&self) -> Option<Vec<Arc<Q>>>;
+}
+
+pub trait CorporateEventsSource<D>: Clone
+where
+    D: Dividendable,
+{
+    fn get_dividends(&self) -> Option<Vec<Arc<D>>>;
+}
+
+type HashMapPriceSourceInner<Q> = (HashMap<DateTime, Vec<Arc<Q>>>, Clock);
+
+#[derive(Debug)]
+pub struct HashMapPriceSource<Quote> {
+    inner: Arc<HashMapPriceSourceInner<Quote>>,
+}
+
+impl PriceSource<Quote> for HashMapPriceSource<Quote> {
+    fn get_quote(&self, symbol: &str) -> Option<Arc<Quote>> {
+        let curr_date = self.inner.1.now();
+        if let Some(quotes) = self.inner.0.get(&curr_date) {
+            for quote in quotes {
+                if quote.get_symbol().eq(symbol) {
+                    return Some(quote.clone());
+                }
+            }
+        }
+        None
+    }
+
+    fn get_quotes(&self) -> Option<Vec<Arc<Quote>>> {
+        let curr_date = self.inner.1.now();
+        if let Some(quotes) = self.inner.0.get(&curr_date) {
+            return Some(quotes.clone());
+        }
+        None
+    }
+}
+
+impl<Quote> Clone for HashMapPriceSource<Quote> {
+    fn clone(&self) -> Self {
+        Self {
+            inner: self.inner.clone(),
+        }
+    }
+}
+
+impl HashMapPriceSource<Quote> {
+    pub fn add_quotes(&mut self, date: DateTime, quote: Arc<Quote>) {
+        let inner = Arc::get_mut(&mut self.inner).unwrap();
+        
+        if let Some(quotes) = inner.0.get_mut(&date) {
+            quotes.push(quote);
+        } else {
+            inner.0.insert(date, vec![quote]);
+        }
+    }
+
+    pub fn new(clock: Clock) -> Self {
+        let quotes = HashMap::with_capacity(clock.len());
+        Self {
+            inner: Arc::new((quotes, clock)),
+        }
+    }
+}
+
+#[cfg(feature = "python")]
+#[derive(Clone, Debug)]
+pub struct PyPriceSource<'a> {
+    pub quotes: &'a PyDict,
+    pub tickers: &'a PyDict,
+    pub clock: Clock,
+}
+
+#[cfg(feature = "python")]
+impl<'a> PriceSource<PyQuote> for PyPriceSource<'a> {
+    fn get_quote(&self, symbol: &str) -> Option<Arc<PyQuote>> {
+        if let Some(ticker_pos_any) = self.tickers.get_item(symbol) {
+            let curr_date = self.clock.now();
+            if let Some(quotes) = self.quotes.get_item(i64::from(curr_date)) {
+                if let Ok(quotes_list) = quotes.downcast::<PyList>() {
+                    if let Ok(ticker_pos) = ticker_pos_any.extract::<usize>() {
+                        let quote_any = &quotes_list[ticker_pos];
+                        if let Ok(quote) = quote_any.downcast::<PyCell<PyQuote>>() {
+                            let to_inner = quote.get();
+                            return Some(Arc::new(to_inner.clone()));
+                        }
+                    }
+                }
+            }
+        }
+        None
+    }
+
+    //TODO: need to implement, can't do this without Python-native types
+    fn get_quotes(&self) -> Option<Vec<Arc<PyQuote>>> {
+        None
+    }
+}
+
+type HashMapCorporateEventsSourceInner<D> = (HashMap<DateTime, Vec<Arc<D>>>, Clock);
+
+#[derive(Debug)]
+pub struct HashMapCorporateEventsSource<D> where 
+    D: Dividendable 
+{
+    inner: std::sync::Arc<HashMapCorporateEventsSourceInner<D>>,
+}
+
+impl<D: Dividendable> CorporateEventsSource<D> for HashMapCorporateEventsSource<D> {
+    fn get_dividends(&self) -> Option<Vec<Arc<D>>> {
+        let curr_date = self.inner.1.now();
+        if let Some(dividends) = self.inner.0.get(&curr_date) {
+            return Some(dividends.clone());
+        }
+        None
+    }
+}
+
+impl<D: Dividendable> Clone for HashMapCorporateEventsSource<D> {
+    fn clone(&self) -> Self {
+        Self {
+            inner: self.inner.clone(),
+        }
+    }
+}
