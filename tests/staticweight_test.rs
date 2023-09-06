@@ -1,6 +1,6 @@
 use alator::clock::{Clock, ClockBuilder};
 use alator::exchange::SingleExchangeBuilder;
-use alator::input::{HashMapCorporateEventsSource, HashMapPriceSource};
+use alator::input::{DefaultPriceSource, HashMapCorporateEventsSource};
 use alator::strategy::StaticWeightStrategyBuilder;
 use rand::distributions::{Distribution, Uniform};
 use rand::thread_rng;
@@ -9,26 +9,24 @@ use alator::broker::{BrokerCost, Dividend, Quote, SingleBroker, SingleBrokerBuil
 use alator::simcontext::SimContextBuilder;
 use alator::types::{CashValue, Frequency, PortfolioAllocation};
 
-fn build_data(clock: Clock) -> HashMapPriceSource {
+fn build_data(clock: Clock) -> DefaultPriceSource {
     let price_dist = Uniform::new(90.0, 100.0);
     let mut rng = thread_rng();
 
-    let mut price_source = HashMapPriceSource::new(clock.clone());
+    let mut price_source = DefaultPriceSource::new(clock.clone());
     for date in clock.peek() {
-        let q1 = Quote::new(
+        price_source.add_quotes(
             price_dist.sample(&mut rng),
             price_dist.sample(&mut rng),
             date,
             "ABC",
         );
-        let q2 = Quote::new(
+        price_source.add_quotes(
             price_dist.sample(&mut rng),
             price_dist.sample(&mut rng),
             date,
             "BCD",
         );
-        price_source.add_quotes(date, q1);
-        price_source.add_quotes(date, q2);
     }
     price_source
 }
@@ -54,7 +52,7 @@ fn staticweight_integration_test() {
         .with_clock(clock.clone())
         .build();
 
-    let simbrkr: SingleBroker<Dividend, HashMapCorporateEventsSource, Quote, HashMapPriceSource> =
+    let simbrkr: SingleBroker<Dividend, HashMapCorporateEventsSource, Quote, DefaultPriceSource> =
         SingleBrokerBuilder::new()
             .with_trade_costs(vec![BrokerCost::Flat(1.0.into())])
             .with_exchange(exchange)

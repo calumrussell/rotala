@@ -224,7 +224,7 @@ mod tests {
     use crate::broker::{ConcurrentBroker, Dividend, ReceievesOrdersAsync};
     use crate::exchange::ConcurrentExchangeBuilder;
     use crate::input::{
-        fake_price_source_generator, HashMapCorporateEventsSource, HashMapPriceSource,
+        fake_price_source_generator, DefaultPriceSource, HashMapCorporateEventsSource,
     };
     use crate::types::PortfolioAllocation;
     use crate::{clock::ClockBuilder, types::Frequency};
@@ -411,10 +411,10 @@ mod tests {
         let clock = ClockBuilder::with_length_in_seconds(100, 5)
             .with_frequency(&Frequency::Second)
             .build();
-        let mut price_source = HashMapPriceSource::new(clock.clone());
-        price_source.add_quotes(100, Quote::new(100.00, 100.00, 100, "ABC"));
-        price_source.add_quotes(101, Quote::new(100.00, 100.00, 101, "ABC"));
-        price_source.add_quotes(103, Quote::new(100.00, 100.00, 103, "ABC"));
+        let mut price_source = DefaultPriceSource::new(clock.clone());
+        price_source.add_quotes(100.00, 100.00, 100, "ABC");
+        price_source.add_quotes(100.00, 100.00, 101, "ABC");
+        price_source.add_quotes(100.00, 100.00, 103, "ABC");
 
         let mut exchange = ConcurrentExchangeBuilder::new()
             .with_clock(clock.clone())
@@ -465,10 +465,10 @@ mod tests {
             .with_frequency(&Frequency::Second)
             .build();
 
-        let mut price_source = HashMapPriceSource::new(clock.clone());
-        price_source.add_quotes(100, Quote::new(100.00, 100.00, 100, "ABC"));
-        price_source.add_quotes(103, Quote::new(75.00, 75.00, 103, "ABC"));
-        price_source.add_quotes(104, Quote::new(75.00, 75.00, 104, "ABC"));
+        let mut price_source = DefaultPriceSource::new(clock.clone());
+        price_source.add_quotes(100.00, 100.00, 100, "ABC");
+        price_source.add_quotes(75.00, 75.00, 103, "ABC");
+        price_source.add_quotes(75.00, 75.00, 104, "ABC");
 
         let mut exchange = ConcurrentExchangeBuilder::new()
             .with_clock(clock.clone())

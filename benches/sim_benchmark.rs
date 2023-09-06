@@ -5,7 +5,7 @@ use alator::broker::{
 use alator::clock::ClockBuilder;
 use alator::exchange::SingleExchangeBuilder;
 use alator::input::{
-    fake_price_source_generator, HashMapCorporateEventsSource, HashMapPriceSource,
+    fake_price_source_generator, DefaultPriceSource, HashMapCorporateEventsSource,
 };
 use alator::simcontext::SimContextBuilder;
 use alator::strategy::StaticWeightStrategyBuilder;
@@ -32,7 +32,7 @@ fn full_backtest_random_data() {
         .with_clock(clock.clone())
         .build();
 
-    let simbrkr: SingleBroker<Dividend, HashMapCorporateEventsSource, Quote, HashMapPriceSource> =
+    let simbrkr: SingleBroker<Dividend, HashMapCorporateEventsSource, Quote, DefaultPriceSource> =
         SingleBrokerBuilder::new()
             .with_exchange(exchange)
             .with_trade_costs(vec![BrokerCost::Flat(1.0.into())])
@@ -57,22 +57,22 @@ fn trade_execution_logic() {
         .with_frequency(&Frequency::Second)
         .build();
 
-    let mut price_source = HashMapPriceSource::new(clock.clone());
-    price_source.add_quotes(100, Quote::new(100.00, 101.00, 100, "ABC"));
-    price_source.add_quotes(100, Quote::new(10.00, 11.00, 100, "BCD"));
-    price_source.add_quotes(101, Quote::new(100.00, 101.00, 101, "ABC"));
-    price_source.add_quotes(101, Quote::new(10.00, 11.00, 101, "BCD"));
-    price_source.add_quotes(102, Quote::new(104.00, 105.00, 102, "ABC"));
-    price_source.add_quotes(102, Quote::new(10.00, 11.00, 102, "BCD"));
-    price_source.add_quotes(103, Quote::new(104.00, 105.00, 103, "ABC"));
-    price_source.add_quotes(103, Quote::new(12.00, 13.00, 103, "BCD"));
+    let mut price_source = DefaultPriceSource::new(clock.clone());
+    price_source.add_quotes(100.00, 101.00, 100, "ABC");
+    price_source.add_quotes(10.00, 11.00, 100, "BCD");
+    price_source.add_quotes(100.00, 101.00, 101, "ABC");
+    price_source.add_quotes(10.00, 11.00, 101, "BCD");
+    price_source.add_quotes(104.00, 105.00, 102, "ABC");
+    price_source.add_quotes(10.00, 11.00, 102, "BCD");
+    price_source.add_quotes(104.00, 105.00, 103, "ABC");
+    price_source.add_quotes(12.00, 13.00, 103, "BCD");
 
     let exchange = SingleExchangeBuilder::new()
         .with_clock(clock.clone())
         .with_price_source(price_source)
         .build();
 
-    let mut brkr: SingleBroker<Dividend, HashMapCorporateEventsSource, Quote, HashMapPriceSource> =
+    let mut brkr: SingleBroker<Dividend, HashMapCorporateEventsSource, Quote, DefaultPriceSource> =
         SingleBrokerBuilder::new().with_exchange(exchange).build();
 
     brkr.deposit_cash(&100_000.0);

@@ -258,7 +258,7 @@ mod tests {
     use crate::broker::{BrokerCost, Dividend, Quote, SingleBroker, SingleBrokerBuilder};
     use crate::clock::{Clock, ClockBuilder};
     use crate::exchange::SingleExchangeBuilder;
-    use crate::input::{HashMapCorporateEventsSource, HashMapPriceSource};
+    use crate::input::{DefaultPriceSource, HashMapCorporateEventsSource};
     use crate::perf::StrategySnapshot;
     use crate::strategy::{History, StaticWeightStrategyBuilder, Strategy};
     use crate::types::PortfolioAllocation;
@@ -268,23 +268,23 @@ mod tests {
     use super::PortfolioCalculations;
 
     fn setup() -> (
-        SingleBroker<Dividend, HashMapCorporateEventsSource, Quote, HashMapPriceSource>,
+        SingleBroker<Dividend, HashMapCorporateEventsSource, Quote, DefaultPriceSource>,
         Clock,
     ) {
         let clock = ClockBuilder::with_length_in_dates(100, 103)
             .with_frequency(&Frequency::Second)
             .build();
 
-        let mut price_source = HashMapPriceSource::new(clock.clone());
-        price_source.add_quotes(100, Quote::new(101.0, 102.0, 100, "ABC"));
-        price_source.add_quotes(101, Quote::new(102.0, 103.0, 100, "ABC"));
-        price_source.add_quotes(102, Quote::new(97.0, 98.0, 100, "ABC"));
-        price_source.add_quotes(103, Quote::new(105.0, 106.0, 100, "ABC"));
+        let mut price_source = DefaultPriceSource::new(clock.clone());
+        price_source.add_quotes(101.0, 102.0, 100, "ABC");
+        price_source.add_quotes(102.0, 103.0, 101, "ABC");
+        price_source.add_quotes(97.0, 98.0, 102, "ABC");
+        price_source.add_quotes(105.0, 106.0, 103, "ABC");
 
-        price_source.add_quotes(100, Quote::new(501.0, 502.0, 100, "BCD"));
-        price_source.add_quotes(101, Quote::new(503.0, 504.0, 100, "BCD"));
-        price_source.add_quotes(102, Quote::new(498.0, 499.0, 100, "BCD"));
-        price_source.add_quotes(103, Quote::new(495.0, 496.0, 100, "BCD"));
+        price_source.add_quotes(501.0, 502.0, 100, "BCD");
+        price_source.add_quotes(503.0, 504.0, 101, "BCD");
+        price_source.add_quotes(498.0, 499.0, 102, "BCD");
+        price_source.add_quotes(495.0, 496.0, 103, "BCD");
 
         let exchange = SingleExchangeBuilder::new()
             .with_clock(clock.clone())

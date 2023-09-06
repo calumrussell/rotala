@@ -42,14 +42,14 @@ where
     fn get_dividends(&self) -> Option<Vec<Arc<D>>>;
 }
 
-type HashMapPriceSourceInner<Q> = (HashMap<DateTime, Vec<Arc<Q>>>, Clock);
+type HashMapInner<Q> = (HashMap<DateTime, Vec<Arc<Q>>>, Clock);
 
 #[derive(Debug)]
-pub struct HashMapPriceSource {
-    inner: Arc<HashMapPriceSourceInner<Quote>>,
+pub struct DefaultPriceSource {
+    inner: Arc<HashMapInner<Quote>>,
 }
 
-impl PriceSource<Quote> for HashMapPriceSource {
+impl PriceSource<Quote> for DefaultPriceSource {
     fn get_quote(&self, symbol: &str) -> Option<Arc<Quote>> {
         let curr_date = self.inner.1.now();
         if let Some(quotes) = self.inner.0.get(&curr_date) {
@@ -71,7 +71,7 @@ impl PriceSource<Quote> for HashMapPriceSource {
     }
 }
 
-impl Clone for HashMapPriceSource {
+impl Clone for DefaultPriceSource {
     fn clone(&self) -> Self {
         Self {
             inner: self.inner.clone(),
@@ -79,11 +79,18 @@ impl Clone for HashMapPriceSource {
     }
 }
 
-impl HashMapPriceSource {
-    pub fn add_quotes(&mut self, date: impl Into<DateTime>, quote: Quote) {
+impl DefaultPriceSource {
+    pub fn add_quotes(
+        &mut self,
+        bid: impl Into<Price>,
+        ask: impl Into<Price>,
+        date: impl Into<DateTime>,
+        symbol: impl Into<String>,
+    ) {
         let inner = Arc::get_mut(&mut self.inner).unwrap();
         let datetime: DateTime = date.into();
 
+        let quote = Quote::new(bid, ask, datetime, symbol);
         if let Some(quotes) = inner.0.get_mut(&datetime) {
             quotes.push(Arc::new(quote))
         } else {
@@ -198,27 +205,24 @@ impl HashMapCorporateEventsSource {
     }
 }
 
-pub fn fake_price_source_generator(clock: Clock) -> HashMapPriceSource {
+pub fn fake_price_source_generator(clock: Clock) -> DefaultPriceSource {
     let price_dist = Uniform::new(90.0, 100.0);
     let mut rng = thread_rng();
 
-    let mut price_source = HashMapPriceSource::new(clock.clone());
+    let mut price_source = DefaultPriceSource::new(clock.clone());
     for date in clock.peek() {
-        let q1 = Quote::new(
+        price_source.add_quotes(
             price_dist.sample(&mut rng),
             price_dist.sample(&mut rng),
             date,
             "ABC",
         );
-        let q2 = Quote::new(
+        price_source.add_quotes(
             price_dist.sample(&mut rng),
             price_dist.sample(&mut rng),
             date,
             "BCD",
         );
-        price_source.add_quotes(date, q1);
-        price_source.add_quotes(date, q2);
     }
-
     price_source
 }

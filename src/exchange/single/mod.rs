@@ -89,18 +89,18 @@ where
 mod tests {
     use crate::broker::Quote;
     use crate::exchange::ExchangeOrder;
-    use crate::input::HashMapPriceSource;
+    use crate::input::DefaultPriceSource;
 
     use super::{SingleExchange, SingleExchangeBuilder};
 
-    fn setup() -> SingleExchange<Quote, HashMapPriceSource> {
+    fn setup() -> SingleExchange<Quote, DefaultPriceSource> {
         let clock = crate::clock::ClockBuilder::with_length_in_seconds(100, 3)
             .with_frequency(&crate::types::Frequency::Second)
             .build();
-        let mut price_source = HashMapPriceSource::new(clock.clone());
-        price_source.add_quotes(100, Quote::new(101.00, 102.00, 100, "ABC"));
-        price_source.add_quotes(101, Quote::new(102.00, 103.00, 101, "ABC"));
-        price_source.add_quotes(102, Quote::new(105.00, 106.00, 102, "ABC"));
+        let mut price_source = DefaultPriceSource::new(clock.clone());
+        price_source.add_quotes(101.00, 102.00, 100, "ABC");
+        price_source.add_quotes(102.00, 103.00, 101, "ABC");
+        price_source.add_quotes(105.00, 106.00, 102, "ABC");
 
         let exchange = SingleExchangeBuilder::new()
             .with_clock(clock.clone())
@@ -204,9 +204,9 @@ mod tests {
         let clock = crate::clock::ClockBuilder::with_length_in_seconds(100, 3)
             .with_frequency(&crate::types::Frequency::Second)
             .build();
-        let mut price_source = HashMapPriceSource::new(clock.clone());
-        price_source.add_quotes(100, Quote::new(101.00, 102.00, 100, "ABC"));
-        price_source.add_quotes(102, Quote::new(105.00, 106.00, 102, "ABC"));
+        let mut price_source = DefaultPriceSource::new(clock.clone());
+        price_source.add_quotes(101.00, 102.00, 100, "ABC");
+        price_source.add_quotes(105.00, 106.00, 102, "ABC");
 
         let mut exchange = SingleExchangeBuilder::new()
             .with_clock(clock.clone())

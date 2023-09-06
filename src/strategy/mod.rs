@@ -93,7 +93,7 @@ mod tests {
     use crate::broker::{BrokerCost, ConcurrentBroker, ConcurrentBrokerBuilder, Dividend, Quote};
     use crate::clock::{Clock, ClockBuilder};
     use crate::exchange::ConcurrentExchangeBuilder;
-    use crate::input::{HashMapCorporateEventsSource, HashMapPriceSource};
+    use crate::input::{DefaultPriceSource, HashMapCorporateEventsSource};
     use crate::types::{Frequency, PortfolioAllocation};
 
     async fn setup() -> (
@@ -104,10 +104,10 @@ mod tests {
             .with_frequency(&Frequency::Second)
             .build();
 
-        let mut price_source = HashMapPriceSource::new(clock.clone());
-        price_source.add_quotes(100, Quote::new(100.00, 101.00, 100, "ABC"));
-        price_source.add_quotes(101, Quote::new(104.00, 105.00, 101, "ABC"));
-        price_source.add_quotes(102, Quote::new(95.00, 96.00, 102, "ABC"));
+        let mut price_source = DefaultPriceSource::new(clock.clone());
+        price_source.add_quotes(100.00, 101.00, 100, "ABC");
+        price_source.add_quotes(104.00, 105.00, 101, "ABC");
+        price_source.add_quotes(95.00, 96.00, 102, "ABC");
 
         let mut exchange = ConcurrentExchangeBuilder::new()
             .with_clock(clock.clone())
