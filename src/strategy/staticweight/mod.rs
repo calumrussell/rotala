@@ -10,7 +10,7 @@ use crate::broker::{
     EventLog, ReceievesOrders, ReceievesOrdersAsync, SingleBroker, Trade, TransferCash,
 };
 use crate::clock::Clock;
-use crate::input::{DataSource, Dividendable, Quotable};
+use crate::input::{Dividendable, Quotable, CorporateEventsSource, PriceSource};
 use crate::schedule::{DefaultTradingSchedule, TradingSchedule};
 use crate::strategy::StrategyEvent;
 use crate::types::{CashValue, PortfolioAllocation, StrategySnapshot};
@@ -19,32 +19,32 @@ use super::{AsyncStrategy, AsyncTransferFrom, Audit, History, Strategy, Transfer
 
 ///Basic implementation of an investment strategy which takes a set of fixed-weight allocations and
 ///rebalances over time towards those weights.
-pub struct AsyncStaticWeightStrategy<T, Q, D>
+pub struct AsyncStaticWeightStrategy<D, T, Q>
 where
-    Q: Quotable,
     D: Dividendable,
-    T: DataSource<Q, D>,
+    T: CorporateEventsSource<D>,
+    Q: Quotable,
 {
-    brkr: ConcurrentBroker<T, Q, D>,
+    brkr: ConcurrentBroker<D, T, Q>,
     target_weights: PortfolioAllocation,
     net_cash_flow: CashValue,
     clock: Clock,
     history: Vec<StrategySnapshot>,
 }
 
-unsafe impl<T, Q, D> Send for AsyncStaticWeightStrategy<T, Q, D>
+unsafe impl<D, T, Q> Send for AsyncStaticWeightStrategy<D, T, Q>
 where
-    Q: Quotable,
     D: Dividendable,
-    T: DataSource<Q, D>,
+    T: CorporateEventsSource<D>,
+    Q: Quotable,
 {
 }
 
-impl<T, Q, D> AsyncStaticWeightStrategy<T, Q, D>
+impl<D, T, Q> AsyncStaticWeightStrategy<D, T, Q>
 where
-    Q: Quotable,
     D: Dividendable,
-    T: DataSource<Q, D>,
+    T: CorporateEventsSource<D>,
+    Q: Quotable,
 {
     pub fn get_snapshot(&mut self) -> StrategySnapshot {
         // Defaults to zero inflation because most users probably aren't looking
@@ -60,11 +60,11 @@ where
 }
 
 #[async_trait]
-impl<T, Q, D> AsyncStrategy for AsyncStaticWeightStrategy<T, Q, D>
+impl<D, T, Q> AsyncStrategy for AsyncStaticWeightStrategy<D, T, Q>
 where
-    Q: Quotable,
     D: Dividendable,
-    T: DataSource<Q, D>,
+    T: CorporateEventsSource<D>,
+    Q: Quotable,
 {
     async fn init(&mut self, initital_cash: &f64) {
         self.deposit_cash(initital_cash);
@@ -96,11 +96,11 @@ where
     }
 }
 
-impl<T, Q, D> TransferTo for AsyncStaticWeightStrategy<T, Q, D>
+impl<D, T, Q> TransferTo for AsyncStaticWeightStrategy<D, T, Q>
 where
-    Q: Quotable,
     D: Dividendable,
-    T: DataSource<Q, D>,
+    T: CorporateEventsSource<D>,
+    Q: Quotable,
 {
     fn deposit_cash(&mut self, cash: &f64) -> StrategyEvent {
         info!("STRATEGY: Depositing {:?} into strategy", cash);
@@ -111,11 +111,11 @@ where
 }
 
 #[async_trait]
-impl<T, Q, D> AsyncTransferFrom for AsyncStaticWeightStrategy<T, Q, D>
+impl<D, T, Q> AsyncTransferFrom for AsyncStaticWeightStrategy<D, T, Q>
 where
-    Q: Quotable,
     D: Dividendable,
-    T: DataSource<Q, D>,
+    T: CorporateEventsSource<D>,
+    Q: Quotable,
 {
     fn withdraw_cash(&mut self, cash: &f64) -> StrategyEvent {
         if let BrokerCashEvent::WithdrawSuccess(withdrawn) = self.brkr.withdraw_cash(cash) {
@@ -141,11 +141,11 @@ where
     }
 }
 
-impl<T, Q, D> Audit for AsyncStaticWeightStrategy<T, Q, D>
+impl<D, T, Q> Audit for AsyncStaticWeightStrategy<D, T, Q>
 where
-    Q: Quotable,
     D: Dividendable,
-    T: DataSource<Q, D>,
+    T: CorporateEventsSource<D>,
+    Q: Quotable,
 {
     fn trades_between(&self, start: &i64, end: &i64) -> Vec<Trade> {
         self.brkr.trades_between(start, end)
@@ -156,11 +156,11 @@ where
     }
 }
 
-impl<T, Q, D> History for AsyncStaticWeightStrategy<T, Q, D>
+impl<D, T, Q > History for AsyncStaticWeightStrategy<D, T, Q>
 where
-    Q: Quotable,
     D: Dividendable,
-    T: DataSource<Q, D>,
+    T: CorporateEventsSource<D>,
+    Q: Quotable,
 {
     fn get_history(&self) -> Vec<StrategySnapshot> {
         self.history.clone()
@@ -169,24 +169,26 @@ where
 
 ///Basic implementation of an investment strategy which takes a set of fixed-weight allocations and
 ///rebalances over time towards those weights.
-pub struct StaticWeightStrategy<T, Q, D>
+pub struct StaticWeightStrategy<D, T, Q, P>
 where
-    Q: Quotable,
     D: Dividendable,
-    T: DataSource<Q, D>,
+    T: CorporateEventsSource<D>,
+    Q: Quotable,
+    P: PriceSource<Q>,
 {
-    brkr: SingleBroker<T, Q, D>,
+    brkr: SingleBroker<D, T, Q, P>,
     target_weights: PortfolioAllocation,
     net_cash_flow: CashValue,
     clock: Clock,
     history: Vec<StrategySnapshot>,
 }
 
-impl<T, Q, D> StaticWeightStrategy<T, Q, D>
+impl<D, T, Q, P> StaticWeightStrategy<D, T, Q, P>
 where
-    Q: Quotable,
     D: Dividendable,
-    T: DataSource<Q, D>,
+    T: CorporateEventsSource<D>,
+    Q: Quotable,
+    P: PriceSource<Q>,
 {
     pub fn get_snapshot(&mut self) -> StrategySnapshot {
         // Defaults to zero inflation because most users probably aren't looking
@@ -201,11 +203,12 @@ where
     }
 }
 
-impl<T, Q, D> Strategy for StaticWeightStrategy<T, Q, D>
+impl<D, T, Q, P> Strategy for StaticWeightStrategy<D, T, Q, P>
 where
-    Q: Quotable,
     D: Dividendable,
-    T: DataSource<Q, D>,
+    T: CorporateEventsSource<D>,
+    Q: Quotable,
+    P: PriceSource<Q>,
 {
     fn init(&mut self, initital_cash: &f64) {
         self.deposit_cash(initital_cash);
@@ -237,11 +240,12 @@ where
     }
 }
 
-impl<T, Q, D> TransferTo for StaticWeightStrategy<T, Q, D>
+impl<D, T, Q, P> TransferTo for StaticWeightStrategy<D, T, Q, P>
 where
-    Q: Quotable,
     D: Dividendable,
-    T: DataSource<Q, D>,
+    T: CorporateEventsSource<D>,
+    Q: Quotable,
+    P: PriceSource<Q>,
 {
     fn deposit_cash(&mut self, cash: &f64) -> StrategyEvent {
         info!("STRATEGY: Depositing {:?} into strategy", cash);
@@ -251,11 +255,12 @@ where
     }
 }
 
-impl<T, Q, D> TransferFrom for StaticWeightStrategy<T, Q, D>
+impl<D, T, Q, P> TransferFrom for StaticWeightStrategy<D, T, Q, P>
 where
-    Q: Quotable,
     D: Dividendable,
-    T: DataSource<Q, D>,
+    T: CorporateEventsSource<D>,
+    Q: Quotable,
+    P: PriceSource<Q>,
 {
     fn withdraw_cash(&mut self, cash: &f64) -> StrategyEvent {
         if let BrokerCashEvent::WithdrawSuccess(withdrawn) = self.brkr.withdraw_cash(cash) {
@@ -280,11 +285,12 @@ where
     }
 }
 
-impl<T, Q, D> Audit for StaticWeightStrategy<T, Q, D>
+impl<D, T, Q, P> Audit for StaticWeightStrategy<D, T, Q, P>
 where
-    Q: Quotable,
     D: Dividendable,
-    T: DataSource<Q, D>,
+    T: CorporateEventsSource<D>,
+    Q: Quotable,
+    P: PriceSource<Q>,
 {
     fn trades_between(&self, start: &i64, end: &i64) -> Vec<Trade> {
         self.brkr.trades_between(start, end)
@@ -295,11 +301,12 @@ where
     }
 }
 
-impl<T, Q, D> History for StaticWeightStrategy<T, Q, D>
+impl<D, T, Q, P> History for StaticWeightStrategy<D, T, Q, P>
 where
-    Q: Quotable,
     D: Dividendable,
-    T: DataSource<Q, D>,
+    T: CorporateEventsSource<D>,
+    Q: Quotable,
+    P: PriceSource<Q>,
 {
     fn get_history(&self) -> Vec<StrategySnapshot> {
         self.history.clone()

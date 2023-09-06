@@ -5,23 +5,23 @@ use crate::input::{Quotable, PriceSource};
 
 use super::ConcurrentExchange;
 
-pub struct ConcurrentExchangeBuilder<T, Q>
+pub struct ConcurrentExchangeBuilder<Q, P>
 where
     Q: Quotable,
-    T: PriceSource<Q>,
+    P: PriceSource<Q>,
 {
-    data_source: Option<T>,
+    price_source: Option<P>,
     clock: Option<Clock>,
     _quote: PhantomData<Q>,
 }
 
-impl<T, Q> ConcurrentExchangeBuilder<T, Q>
+impl<Q, P> ConcurrentExchangeBuilder<Q, P>
 where
     Q: Quotable,
-    T: PriceSource<Q>,
+    P: PriceSource<Q>,
 {
-    pub fn build(&mut self) -> ConcurrentExchange<T, Q> {
-        if self.data_source.is_none() {
+    pub fn build(&mut self) -> ConcurrentExchange<Q, P> {
+        if self.price_source.is_none() {
             panic!("Exchange must have data source");
         }
 
@@ -29,7 +29,7 @@ where
             panic!("Exchange must have clock");
         }
 
-        let data = std::mem::take(&mut self.data_source).unwrap();
+        let data = std::mem::take(&mut self.price_source).unwrap();
 
         ConcurrentExchange::new(self.clock.as_ref().unwrap().clone(), data.clone())
     }
@@ -39,24 +39,24 @@ where
         self
     }
 
-    pub fn with_data_source(&mut self, data_source: T) -> &mut Self {
-        self.data_source = Some(data_source);
+    pub fn with_price_source(&mut self, price_source: P) -> &mut Self {
+        self.price_source = Some(price_source);
         self
     }
 
     pub fn new() -> Self {
         Self {
             clock: None,
-            data_source: None,
+            price_source: None,
             _quote: PhantomData,
         }
     }
 }
 
-impl<T, Q> Default for ConcurrentExchangeBuilder<T, Q>
+impl<Q, P> Default for ConcurrentExchangeBuilder<Q, P>
 where
     Q: Quotable,
-    T: PriceSource<Q>,
+    P: PriceSource<Q>,
 {
     fn default() -> Self {
         Self::new()

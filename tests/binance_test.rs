@@ -8,19 +8,19 @@ use alator::broker::{
 };
 use alator::clock::{Clock, ClockBuilder};
 use alator::exchange::SingleExchangeBuilder;
-use alator::input::{HashMapInput, HashMapInputBuilder, QuotesHashMap};
+use alator::input::{HashMapCorporateEventsSource, HashMapPriceSource};
 use alator::simcontext::SimContextBuilder;
 use alator::strategy::{History, Strategy, StrategyEvent, TransferTo};
-use alator::types::{CashValue, Frequency, StrategySnapshot};
+use alator::types::{CashValue, Frequency, StrategySnapshot, DateTime};
 
 /* Get the data from Binance, build quote from open and close of candle, insert the quotes into
  * QuotesHashMap using those dates.
  * We also need to work out the start and end of the simulation to initialise the clock with
  */
-fn build_data() -> (QuotesHashMap, (i64, i64)) {
+fn build_data() -> (HashMap<DateTime, Vec<Arc<Quote>>>, (i64, i64)) {
     let url =
         "https://data.binance.vision/data/spot/daily/klines/BTCUSDT/1m/BTCUSDT-1m-2022-08-03.zip";
-    let mut quotes: QuotesHashMap = HashMap::new();
+    let mut quotes: HashMap<DateTime, Vec<Arc<Quote>>> = HashMap::new();
     let mut min_date = i64::MAX;
     let mut max_date = i64::MIN;
     if let Ok(resp) = reqwest::blocking::get(url) {
@@ -131,7 +131,7 @@ impl MovingAverage {
 //tracking into the simulation lifecycle.
 struct MovingAverageStrategy {
     clock: Clock,
-    brkr: SingleBroker<HashMapInput, Quote, Dividend>,
+    brkr: SingleBroker<Dividend, HashMapCorporateEventsSource<Dividend>, Quote, HashMapPriceSource<Quote>>,
     ten: MovingAverage,
     fifty: MovingAverage,
     history: Vec<StrategySnapshot>,
@@ -225,7 +225,7 @@ impl Strategy for MovingAverageStrategy {
 }
 
 impl MovingAverageStrategy {
-    fn new(brkr: SingleBroker<HashMapInput, Quote, Dividend>, clock: Clock) -> Self {
+    fn new(brkr: SingleBroker<Dividend, HashMapCorporateEventsSource<Dividend>, Quote, HashMapPriceSource<Quote>>, clock: Clock) -> Self {
         let ten = MovingAverage::new(10);
         let fifty = MovingAverage::new(50);
         let history = Vec::new();
@@ -261,19 +261,15 @@ fn binance_test() {
         .with_frequency(&Frequency::Second)
         .build();
 
-    let data = HashMapInputBuilder::new()
-        .with_clock(clock.clone())
-        .with_quotes(quotes)
-        .build();
+    let price_source = HashMapPriceSource::from_hashmap(quotes, clock.clone());
 
     let exchange = SingleExchangeBuilder::new()
         .with_clock(clock.clone())
-        .with_data_source(data.clone())
+        .with_price_source(price_source)
         .build();
 
-    let simbrkr = SingleBrokerBuilder::new()
+    let simbrkr: SingleBroker<Dividend, HashMapCorporateEventsSource<Dividend>, Quote, HashMapPriceSource<Quote>> = SingleBrokerBuilder::new()
         .with_exchange(exchange)
-        .with_data(data)
         .build();
 
     let strat = MovingAverageStrategy::new(simbrkr, clock.clone());

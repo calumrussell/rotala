@@ -1,7 +1,7 @@
 use log::info;
 
 use crate::{
-    input::{Dividendable, Quotable},
+    input::Quotable,
     types::{CashValue, PortfolioAllocation, PortfolioQty, Price},
 };
 
@@ -28,8 +28,7 @@ impl BrokerCalculations {
     //valid state.
     pub fn withdraw_cash_with_liquidation<
         Q: Quotable,
-        D: Dividendable,
-        T: BacktestBroker + GetsQuote<Q, D> + ReceievesOrders,
+        T: BacktestBroker + GetsQuote<Q> + ReceievesOrders,
     >(
         cash: &f64,
         brkr: &mut T,
@@ -120,8 +119,7 @@ impl BrokerCalculations {
     //valid state.
     pub async fn withdraw_cash_with_liquidation_async<
         Q: Quotable,
-        D: Dividendable,
-        T: BacktestBroker + GetsQuote<Q, D> + ReceievesOrdersAsync,
+        T: BacktestBroker + GetsQuote<Q> + ReceievesOrdersAsync,
     >(
         cash: &f64,
         brkr: &mut T,
@@ -204,8 +202,7 @@ impl BrokerCalculations {
     //Requires mutable reference to brkr because it calls get_position_value
     pub fn diff_brkr_against_target_weights<
         Q: Quotable,
-        D: Dividendable,
-        T: BacktestBroker + GetsQuote<Q, D>,
+        T: BacktestBroker + GetsQuote<Q>,
     >(
         target_weights: &PortfolioAllocation,
         brkr: &mut T,

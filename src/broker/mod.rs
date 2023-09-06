@@ -23,7 +23,7 @@ use std::fmt::Display;
 use std::fmt::Formatter;
 use std::sync::Arc;
 
-use crate::input::{Dividendable, Quotable};
+use crate::input::Quotable;
 use crate::types::{CashValue, PortfolioHoldings, PortfolioQty, PortfolioValues, Price};
 //Key traits for broker implementations.
 //
@@ -175,7 +175,7 @@ pub trait ReceievesOrdersAsync {
 //Implementation allows clients to retrieve prices. This trait may be used to retrieve prices
 //internally too, and this confusion comes from broker implementations being both a consumer and
 //source of data. So this trait is seperated out now but may disappear in future versions.
-pub trait GetsQuote<Q: Quotable, D: Dividendable> {
+pub trait GetsQuote<Q: Quotable> {
     fn get_quote(&self, symbol: &str) -> Option<Arc<Q>>;
     fn get_quotes(&self) -> Option<Vec<Arc<Q>>>;
 }
@@ -221,28 +221,25 @@ mod tests {
         BacktestBroker, BrokerCalculations, BrokerCost, ConcurrentBrokerBuilder, OrderType, Quote,
         TransferCash,
     };
-    use crate::broker::ReceievesOrdersAsync;
+    use crate::broker::{ ConcurrentBroker, Dividend, ReceievesOrdersAsync};
     use crate::exchange::ConcurrentExchangeBuilder;
-    use crate::input::{fake_data_generator, HashMapInputBuilder};
-    use crate::types::{DateTime, PortfolioAllocation};
+    use crate::input::{fake_price_source_generator, HashMapCorporateEventsSource, HashMapPriceSource};
+    use crate::types::PortfolioAllocation;
     use crate::{clock::ClockBuilder, types::Frequency};
-    use std::collections::HashMap;
-    use std::sync::Arc;
 
     #[tokio::test]
     async fn diff_direction_correct_if_need_to_buy() {
         let clock = ClockBuilder::with_length_in_days(0, 10)
             .with_frequency(&Frequency::Daily)
             .build();
-        let input = fake_data_generator(clock.clone());
+        let price_source = fake_price_source_generator(clock.clone());
 
         let mut exchange = ConcurrentExchangeBuilder::new()
             .with_clock(clock.clone())
-            .with_data_source(input.clone())
+            .with_price_source(price_source)
             .build();
 
-        let mut brkr = ConcurrentBrokerBuilder::new()
-            .with_data(input)
+        let mut brkr: ConcurrentBroker<Dividend, HashMapCorporateEventsSource<Dividend>, Quote> = ConcurrentBrokerBuilder::new()
             .with_trade_costs(vec![BrokerCost::flat(1.0)])
             .build(&mut exchange)
             .await;
@@ -271,15 +268,14 @@ mod tests {
             .with_frequency(&Frequency::Daily)
             .build();
 
-        let input = fake_data_generator(clock.clone());
+        let price_source = fake_price_source_generator(clock.clone());
 
         let mut exchange = ConcurrentExchangeBuilder::new()
             .with_clock(clock.clone())
-            .with_data_source(input.clone())
+            .with_price_source(price_source)
             .build();
 
-        let mut brkr = ConcurrentBrokerBuilder::new()
-            .with_data(input)
+        let mut brkr: ConcurrentBroker<Dividend, HashMapCorporateEventsSource<Dividend>, Quote> = ConcurrentBrokerBuilder::new()
             .with_trade_costs(vec![BrokerCost::flat(1.0)])
             .build(&mut exchange)
             .await;
@@ -321,15 +317,12 @@ mod tests {
             .with_frequency(&Frequency::Daily)
             .build();
 
-        let input = fake_data_generator(clock.clone());
-
+        let price_source = fake_price_source_generator(clock.clone());
         let mut exchange = ConcurrentExchangeBuilder::new()
             .with_clock(clock.clone())
-            .with_data_source(input.clone())
+            .with_price_source(price_source)
             .build();
-
-        let mut brkr = ConcurrentBrokerBuilder::new()
-            .with_data(input)
+        let mut brkr: ConcurrentBroker<Dividend, HashMapCorporateEventsSource<Dividend>, Quote> = ConcurrentBrokerBuilder::new()
             .with_trade_costs(vec![BrokerCost::flat(1.0)])
             .build(&mut exchange)
             .await;
@@ -356,19 +349,17 @@ mod tests {
         let clock = ClockBuilder::with_length_in_days(0, 10)
             .with_frequency(&Frequency::Daily)
             .build();
-        let input = fake_data_generator(clock.clone());
 
+        let price_source = fake_price_source_generator(clock.clone());
         let mut exchange = ConcurrentExchangeBuilder::new()
             .with_clock(clock.clone())
-            .with_data_source(input.clone())
+            .with_price_source(price_source)
             .build();
-
-        let mut brkr = ConcurrentBrokerBuilder::new()
-            .with_data(input)
+        let mut brkr: ConcurrentBroker<Dividend, HashMapCorporateEventsSource<Dividend>, Quote> = ConcurrentBrokerBuilder::new()
             .with_trade_costs(vec![BrokerCost::flat(1.0)])
             .build(&mut exchange)
             .await;
-
+ 
         let mut weights = PortfolioAllocation::new();
         weights.insert("ABC", 1.0);
 
@@ -411,32 +402,20 @@ mod tests {
         //This is not possible without earlier price data either. If there is no price data then
         //the diff will be unable to work out how many shares are required. So the test case is
         //some price but no price for the execution period.
-        let mut prices: HashMap<DateTime, Vec<Arc<Quote>>> = HashMap::new();
-        let quote = Arc::new(Quote::new(100.00, 100.00, 100, "ABC"));
-        let quote1 = Arc::new(Quote::new(100.00, 100.00, 101, "ABC"));
-        let quote2 = Arc::new(Quote::new(100.00, 100.00, 103, "ABC"));
-
-        prices.insert(100.into(), vec![quote]);
-        prices.insert(101.into(), vec![quote1]);
-        prices.insert(102.into(), vec![]);
-        prices.insert(103.into(), vec![quote2]);
-
         let clock = ClockBuilder::with_length_in_seconds(100, 5)
             .with_frequency(&Frequency::Second)
             .build();
-
-        let source = HashMapInputBuilder::new()
-            .with_quotes(prices)
-            .with_clock(clock.clone())
-            .build();
+        let mut price_source = HashMapPriceSource::new(clock.clone());
+        price_source.add_quotes(100, Quote::new(100.00, 100.00, 100, "ABC"));
+        price_source.add_quotes(101, Quote::new(100.00, 100.00, 101, "ABC"));
+        price_source.add_quotes(103, Quote::new(100.00, 100.00, 103, "ABC"));
 
         let mut exchange = ConcurrentExchangeBuilder::new()
             .with_clock(clock.clone())
-            .with_data_source(source.clone())
+            .with_price_source(price_source)
             .build();
 
-        let mut brkr = ConcurrentBrokerBuilder::new()
-            .with_data(source)
+        let mut brkr: ConcurrentBroker<Dividend, HashMapCorporateEventsSource<Dividend>, Quote> = ConcurrentBrokerBuilder::new()
             .build(&mut exchange)
             .await;
 
@@ -477,37 +456,26 @@ mod tests {
         //missing, and we try to rebalance by buying but the pending order is for a significantly
         //greater amount of shares than we now need (e.g. we have a price of X, we miss a price,
         //and then it drops 20%).
-        let mut prices: HashMap<DateTime, Vec<Arc<Quote>>> = HashMap::new();
-        let quote = Arc::new(Quote::new(100.00, 100.00, 100, "ABC"));
-        let quote2 = Arc::new(Quote::new(75.00, 75.00, 103, "ABC"));
-        let quote3 = Arc::new(Quote::new(75.00, 75.00, 104, "ABC"));
-
-        prices.insert(100.into(), vec![quote]);
-        prices.insert(101.into(), vec![]);
-        prices.insert(102.into(), vec![]);
-        prices.insert(103.into(), vec![quote2]);
-        prices.insert(104.into(), vec![quote3]);
-
         let clock = ClockBuilder::with_length_in_seconds(100, 5)
             .with_frequency(&Frequency::Second)
             .build();
 
-        let source = HashMapInputBuilder::new()
-            .with_quotes(prices)
-            .with_clock(clock.clone())
-            .build();
+        let mut price_source = HashMapPriceSource::new(clock.clone());
+        price_source.add_quotes(100, Quote::new(100.00, 100.00, 100, "ABC"));
+        price_source.add_quotes(103, Quote::new(75.00, 75.00, 103, "ABC"));
+        price_source.add_quotes(104, Quote::new(75.00, 75.00, 104, "ABC"));
 
         let mut exchange = ConcurrentExchangeBuilder::new()
             .with_clock(clock.clone())
-            .with_data_source(source.clone())
+            .with_price_source(price_source)
             .build();
 
-        let mut brkr = ConcurrentBrokerBuilder::new()
-            .with_data(source)
+        let mut brkr: ConcurrentBroker<Dividend, HashMapCorporateEventsSource<Dividend>, Quote> = ConcurrentBrokerBuilder::new()
             .build(&mut exchange)
             .await;
-
+        
         brkr.deposit_cash(&100_000.0);
+
         let mut target_weights = PortfolioAllocation::new();
         target_weights.insert("ABC", 0.9);
         let orders =

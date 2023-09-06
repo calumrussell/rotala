@@ -1,22 +1,19 @@
 use alator::clock::{Clock, ClockBuilder};
 use alator::exchange::ConcurrentExchangeBuilder;
-use alator::input::HashMapInputBuilder;
-use alator::strategy::AsyncStaticWeightStrategyBuilder;
+use alator::input::{HashMapPriceSource, HashMapCorporateEventsSource};
+use alator::strategy::{AsyncStaticWeightStrategyBuilder, AsyncStaticWeightStrategy};
 use rand::distributions::{Distribution, Uniform};
 use rand::thread_rng;
-use std::collections::HashMap;
-use std::sync::Arc;
 
-use alator::broker::{BrokerCost, ConcurrentBrokerBuilder, Quote};
-use alator::input::HashMapInput;
-use alator::simcontext::SimContextMultiBuilder;
-use alator::types::{CashValue, DateTime, Frequency, PortfolioAllocation};
+use alator::broker::{BrokerCost, ConcurrentBrokerBuilder, Quote, ConcurrentBroker, Dividend};
+use alator::simcontext::{SimContextMultiBuilder, SimContextMulti};
+use alator::types::{CashValue, Frequency, PortfolioAllocation};
 
-fn build_data(clock: Clock) -> HashMapInput {
+fn build_data(clock: Clock) -> HashMapPriceSource<Quote> {
     let price_dist = Uniform::new(90.0, 100.0);
     let mut rng = thread_rng();
 
-    let mut raw_data: HashMap<DateTime, Vec<Arc<Quote>>> = HashMap::with_capacity(clock.len());
+    let mut price_source = HashMapPriceSource::new(clock.clone());
     for date in clock.peek() {
         let q1 = Quote::new(
             price_dist.sample(&mut rng),
@@ -30,14 +27,11 @@ fn build_data(clock: Clock) -> HashMapInput {
             date,
             "BCD",
         );
-        raw_data.insert(date, vec![Arc::new(q1), Arc::new(q2)]);
+        price_source.add_quotes(date, q1);
+        price_source.add_quotes(date, q2);
     }
 
-    let source = HashMapInputBuilder::new()
-        .with_quotes(raw_data)
-        .with_clock(clock.clone())
-        .build();
-    source
+    price_source
 }
 
 #[tokio::test]
@@ -65,12 +59,11 @@ async fn staticweight_integration_test() {
     third_weights.insert("BCD", 0.3);
 
     let mut exchange = ConcurrentExchangeBuilder::new()
-        .with_data_source(data.clone())
+        .with_price_source(data)
         .with_clock(clock.clone())
         .build();
 
-    let simbrkr_first = ConcurrentBrokerBuilder::new()
-        .with_data(data.clone())
+    let simbrkr_first: ConcurrentBroker<Dividend, HashMapCorporateEventsSource<Dividend>, Quote> = ConcurrentBrokerBuilder::new()
         .with_trade_costs(vec![BrokerCost::Flat(1.0.into())])
         .build(&mut exchange)
         .await;
@@ -81,8 +74,7 @@ async fn staticweight_integration_test() {
         .with_clock(clock.clone())
         .default();
 
-    let simbrkr_second = ConcurrentBrokerBuilder::new()
-        .with_data(data.clone())
+    let simbrkr_second: ConcurrentBroker<Dividend, HashMapCorporateEventsSource<Dividend>, Quote> = ConcurrentBrokerBuilder::new()
         .with_trade_costs(vec![BrokerCost::Flat(1.0.into())])
         .build(&mut exchange)
         .await;
@@ -93,8 +85,7 @@ async fn staticweight_integration_test() {
         .with_clock(clock.clone())
         .default();
 
-    let simbrkr_third = ConcurrentBrokerBuilder::new()
-        .with_data(data.clone())
+    let simbrkr_third: ConcurrentBroker<Dividend, HashMapCorporateEventsSource<Dividend>, Quote> = ConcurrentBrokerBuilder::new()
         .with_trade_costs(vec![BrokerCost::Flat(1.0.into())])
         .build(&mut exchange)
         .await;
@@ -105,7 +96,7 @@ async fn staticweight_integration_test() {
         .with_clock(clock.clone())
         .default();
 
-    let mut sim = SimContextMultiBuilder::new()
+    let mut sim: SimContextMulti<Dividend, Quote, HashMapPriceSource<Quote>, AsyncStaticWeightStrategy<Dividend, HashMapCorporateEventsSource<Dividend>, Quote>> = SimContextMultiBuilder::new()
         .with_clock(clock.clone())
         .with_exchange(exchange)
         .add_strategy(strat_first)

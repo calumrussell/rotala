@@ -281,13 +281,20 @@ impl<Quote> Clone for HashMapPriceSource<Quote> {
 }
 
 impl HashMapPriceSource<Quote> {
-    pub fn add_quotes(&mut self, date: DateTime, quote: Arc<Quote>) {
+    pub fn add_quotes(&mut self, date: impl Into<DateTime>, quote: Quote) {
         let inner = Arc::get_mut(&mut self.inner).unwrap();
+        let datetime: DateTime = date.into();
         
-        if let Some(quotes) = inner.0.get_mut(&date) {
-            quotes.push(quote);
+        if let Some(quotes) = inner.0.get_mut(&datetime) {
+            quotes.push(Arc::new(quote))
         } else {
-            inner.0.insert(date, vec![quote]);
+            inner.0.insert(datetime, vec![Arc::new(quote)]);
+        }
+    }
+
+    pub fn from_hashmap(quotes: HashMap<DateTime, Vec<Arc<Quote>>>, clock: Clock) -> Self {
+        Self {
+            inner: Arc::new((quotes, clock)),
         }
     }
 
@@ -336,14 +343,12 @@ impl<'a> PriceSource<PyQuote> for PyPriceSource<'a> {
 type HashMapCorporateEventsSourceInner<D> = (HashMap<DateTime, Vec<Arc<D>>>, Clock);
 
 #[derive(Debug)]
-pub struct HashMapCorporateEventsSource<D> where 
-    D: Dividendable 
-{
-    inner: std::sync::Arc<HashMapCorporateEventsSourceInner<D>>,
+pub struct HashMapCorporateEventsSource<Dividend> {
+    inner: std::sync::Arc<HashMapCorporateEventsSourceInner<Dividend>>,
 }
 
-impl<D: Dividendable> CorporateEventsSource<D> for HashMapCorporateEventsSource<D> {
-    fn get_dividends(&self) -> Option<Vec<Arc<D>>> {
+impl CorporateEventsSource<Dividend> for HashMapCorporateEventsSource<Dividend> {
+    fn get_dividends(&self) -> Option<Vec<Arc<Dividend>>> {
         let curr_date = self.inner.1.now();
         if let Some(dividends) = self.inner.0.get(&curr_date) {
             return Some(dividends.clone());
@@ -352,10 +357,55 @@ impl<D: Dividendable> CorporateEventsSource<D> for HashMapCorporateEventsSource<
     }
 }
 
-impl<D: Dividendable> Clone for HashMapCorporateEventsSource<D> {
+impl<Dividend> Clone for HashMapCorporateEventsSource<Dividend> {
     fn clone(&self) -> Self {
         Self {
             inner: self.inner.clone(),
         }
     }
+}
+
+impl<Dividend> HashMapCorporateEventsSource<Dividend> {
+    pub fn add_dividends(&mut self, date: impl Into<DateTime>, dividend: Dividend) {
+        let inner = Arc::get_mut(&mut self.inner).unwrap();
+        let datetime: DateTime = date.into();
+        
+        if let Some(dividends) = inner.0.get_mut(&datetime) {
+            dividends.push(Arc::new(dividend));
+        } else {
+            inner.0.insert(datetime.into(), vec![Arc::new(dividend)]);
+        }
+    }
+
+    pub fn new(clock: Clock) -> Self {
+        let quotes = HashMap::with_capacity(clock.len());
+        Self {
+            inner: Arc::new((quotes, clock)),
+        }
+    }
+}
+
+pub fn fake_price_source_generator(clock: Clock) -> HashMapPriceSource<Quote> {
+    let price_dist = Uniform::new(90.0, 100.0);
+    let mut rng = thread_rng();
+
+    let mut price_source = HashMapPriceSource::new(clock.clone());
+    for date in clock.peek() {
+        let q1 = Quote::new(
+            price_dist.sample(&mut rng),
+            price_dist.sample(&mut rng),
+            date,
+            "ABC",
+        );
+        let q2 = Quote::new(
+            price_dist.sample(&mut rng),
+            price_dist.sample(&mut rng),
+            date,
+            "BCD",
+        );
+        price_source.add_quotes(date, q1);
+        price_source.add_quotes(date, q2);
+    }
+
+    price_source
 }

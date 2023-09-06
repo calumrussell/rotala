@@ -1,4 +1,4 @@
-use crate::input::{DataSource, Dividendable, Quotable};
+use crate::input::{Quotable, PriceSource};
 use crate::types::CashValue;
 
 #[derive(Debug)]
@@ -46,15 +46,14 @@ impl OrderBook {
         to_remove
     }
 
-    pub fn execute_orders<Q, D, S>(
+    pub fn execute_orders<Q, P>(
         &mut self,
         date: crate::types::DateTime,
-        source: &S,
+        source: &P,
     ) -> Vec<super::ExchangeTrade>
     where
         Q: Quotable,
-        D: Dividendable,
-        S: DataSource<Q, D>,
+        P: PriceSource<Q>,
     {
         let execute_buy = |quote: &Q, order: &super::ExchangeOrder| -> super::ExchangeTrade {
             let trade_price = quote.get_ask();
@@ -147,40 +146,20 @@ impl OrderBook {
 
 #[cfg(test)]
 mod tests {
-    use std::collections::HashMap;
-    use std::sync::Arc;
-
     use crate::broker::Quote;
     use crate::exchange::orderbook::OrderBook;
     use crate::exchange::ExchangeOrder;
-    use crate::input::{HashMapInput, QuotesHashMap};
-    use crate::types::DateTime;
+    use crate::input::HashMapPriceSource;
 
-    fn setup() -> HashMapInput {
-        let mut quotes: QuotesHashMap = HashMap::new();
-        quotes.insert(
-            DateTime::from(100),
-            vec![Arc::new(Quote::new(101.00, 102.00, 100, "ABC"))],
-        );
-        quotes.insert(
-            DateTime::from(101),
-            vec![Arc::new(Quote::new(102.00, 103.00, 101, "ABC"))],
-        );
-        quotes.insert(
-            DateTime::from(102),
-            vec![Arc::new(Quote::new(105.00, 106.00, 102, "ABC"))],
-        );
-
+    fn setup() -> HashMapPriceSource<Quote> {
         let clock = crate::clock::ClockBuilder::with_length_in_seconds(100, 3)
             .with_frequency(&crate::types::Frequency::Second)
             .build();
-
-        let source = crate::input::HashMapInputBuilder::new()
-            .with_clock(clock.clone())
-            .with_quotes(quotes)
-            .build();
-
-        source
+        let mut price_source = HashMapPriceSource::new(clock.clone());
+        price_source.add_quotes(100, Quote::new(101.0, 102.00, 100, "ABC"));
+        price_source.add_quotes(101, Quote::new(102.0, 103.00, 101, "ABC"));
+        price_source.add_quotes(102, Quote::new(105.0, 106.00, 102, "ABC"));
+        price_source
     }
 
     #[test]
@@ -327,38 +306,26 @@ mod tests {
 
     #[test]
     fn test_that_order_with_missing_price_executes_later() {
-        let mut quotes: QuotesHashMap = HashMap::new();
-        quotes.insert(
-            DateTime::from(100),
-            vec![Arc::new(Quote::new(101.00, 102.00, 100, "ABC"))],
-        );
-        quotes.insert(DateTime::from(101), vec![]);
-        quotes.insert(
-            DateTime::from(102),
-            vec![Arc::new(Quote::new(105.00, 106.00, 102, "ABC"))],
-        );
-
         let mut clock = crate::clock::ClockBuilder::with_length_in_seconds(100, 3)
             .with_frequency(&crate::types::Frequency::Second)
             .build();
 
-        let source = crate::input::HashMapInputBuilder::new()
-            .with_clock(clock.clone())
-            .with_quotes(quotes)
-            .build();
+        let mut price_source = HashMapPriceSource::new(clock.clone());
+        price_source.add_quotes(100, Quote::new(101.00, 102.00, 100, "ABC"));
+        price_source.add_quotes(102, Quote::new(105.00, 106.00, 102, "ABC"));
 
         clock.tick();
 
         let mut orderbook = OrderBook::new();
         orderbook.insert_order(ExchangeOrder::market_buy(0, "ABC", 100.0));
-        let orders = orderbook.execute_orders(101.into(), &source);
+        let orders = orderbook.execute_orders(101.into(), &price_source);
         //Trades cannot execute without prices
         assert_eq!(orders.len(), 0);
         assert!(!orderbook.is_empty());
 
         clock.tick();
         //Order executes now with prices
-        let mut orders = orderbook.execute_orders(102.into(), &source);
+        let mut orders = orderbook.execute_orders(102.into(), &price_source);
         assert_eq!(orders.len(), 1);
 
         let trade = orders.pop().unwrap();

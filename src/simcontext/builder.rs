@@ -1,6 +1,8 @@
+use std::marker::PhantomData;
+
 use crate::clock::Clock;
 use crate::exchange::ConcurrentExchange;
-use crate::input::{DataSource, Dividendable, Quotable};
+use crate::input::{Dividendable, Quotable, PriceSource};
 use crate::strategy::{AsyncStrategy, History, Strategy};
 use crate::types::CashValue;
 
@@ -64,23 +66,24 @@ where
     }
 }
 
-pub struct SimContextMultiBuilder<Q, D, T, S>
+pub struct SimContextMultiBuilder<D, Q, P, S>
 where
-    Q: Quotable,
     D: Dividendable,
-    T: DataSource<Q, D>,
+    Q: Quotable,
+    P: PriceSource<Q>,
     S: AsyncStrategy + History,
 {
     clock: Option<Clock>,
     strategies: Vec<S>,
-    exchange: Option<ConcurrentExchange<T, Q, D>>,
+    exchange: Option<ConcurrentExchange<Q, P>>,
+    dividend: PhantomData<D>,
 }
 
-impl<Q, D, T, S> Default for SimContextMultiBuilder<Q, D, T, S>
+impl<D, Q, P, S> Default for SimContextMultiBuilder<D, Q, P, S>
 where
-    Q: Quotable,
     D: Dividendable,
-    T: DataSource<Q, D>,
+    Q: Quotable,
+    P: PriceSource<Q>,
     S: AsyncStrategy + History,
 {
     fn default() -> Self {
@@ -88,11 +91,11 @@ where
     }
 }
 
-impl<Q, D, T, S> SimContextMultiBuilder<Q, D, T, S>
+impl<D, Q, P, S> SimContextMultiBuilder<D, Q, P, S>
 where
-    Q: Quotable,
     D: Dividendable,
-    T: DataSource<Q, D>,
+    Q: Quotable,
+    P: PriceSource<Q>,
     S: AsyncStrategy + History,
 {
     pub fn add_strategy(&mut self, strategy: S) -> &mut Self {
@@ -105,7 +108,7 @@ where
         self
     }
 
-    pub fn with_exchange(&mut self, exchange: ConcurrentExchange<T, Q, D>) -> &mut Self {
+    pub fn with_exchange(&mut self, exchange: ConcurrentExchange<Q, P>) -> &mut Self {
         self.exchange = Some(exchange);
         self
     }
@@ -114,7 +117,7 @@ where
     //back to the caller. This mutation ensures that the SimContext is not handed back in an
     //unintialized state that could lead to subtle errors if the client attempts to trade with, for
     //example, no cash balance.
-    pub async fn init(&mut self, initial_cash: &CashValue) -> SimContextMulti<Q, D, T, S> {
+    pub async fn init(&mut self, initial_cash: &CashValue) -> SimContextMulti<D, Q, P, S> {
         if self.clock.is_none() || self.strategies.is_empty() || self.exchange.is_none() {
             panic!("SimContext must be called with clock, exchange, and strategy");
         }
@@ -126,10 +129,11 @@ where
         }
 
         let exchange = self.exchange.take();
-        let mut cxt = SimContextMulti::<Q, D, T, S> {
+        let mut cxt = SimContextMulti::<D, Q, P, S> {
             clock: self.clock.as_ref().unwrap().clone(),
             strategies,
             exchange: exchange.unwrap(),
+            dividend: std::marker::PhantomData,
         };
         cxt.init(initial_cash).await;
         cxt
@@ -140,6 +144,7 @@ where
             clock: None,
             strategies: Vec::new(),
             exchange: None,
+            dividend: PhantomData,
         }
     }
 }

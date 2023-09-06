@@ -89,43 +89,29 @@ pub trait History {
 
 #[cfg(test)]
 mod tests {
-
-    use std::collections::HashMap;
-    use std::sync::Arc;
-
     use super::AsyncStaticWeightStrategyBuilder;
     use crate::broker::{BrokerCost, ConcurrentBroker, ConcurrentBrokerBuilder, Dividend, Quote};
     use crate::clock::{Clock, ClockBuilder};
     use crate::exchange::ConcurrentExchangeBuilder;
-    use crate::input::{HashMapInput, HashMapInputBuilder};
-    use crate::types::{DateTime, Frequency, PortfolioAllocation};
+    use crate::input::{HashMapPriceSource, HashMapCorporateEventsSource};
+    use crate::types::{Frequency, PortfolioAllocation};
 
-    async fn setup() -> (ConcurrentBroker<HashMapInput, Quote, Dividend>, Clock) {
-        let mut prices: HashMap<DateTime, Vec<Arc<Quote>>> = HashMap::new();
-
-        let quote = Arc::new(Quote::new(100.00, 101.00, 100, "ABC"));
-        let quote2 = Arc::new(Quote::new(104.00, 105.00, 101, "ABC"));
-        let quote4 = Arc::new(Quote::new(95.00, 96.00, 102, "ABC"));
-        prices.insert(100.into(), vec![quote]);
-        prices.insert(101.into(), vec![quote2]);
-        prices.insert(102.into(), vec![quote4]);
-
+    async fn setup() -> (ConcurrentBroker<Dividend, HashMapCorporateEventsSource<Dividend>, Quote>, Clock) {
         let clock = ClockBuilder::with_length_in_dates(100, 102)
             .with_frequency(&Frequency::Second)
             .build();
 
-        let source = HashMapInputBuilder::new()
-            .with_quotes(prices)
-            .with_clock(clock.clone())
-            .build();
+        let mut price_source = HashMapPriceSource::new(clock.clone());
+        price_source.add_quotes(100, Quote::new(100.00, 101.00, 100, "ABC"));
+        price_source.add_quotes(101, Quote::new(104.00, 105.00, 101, "ABC"));
+        price_source.add_quotes(102, Quote::new(95.00, 96.00, 102, "ABC"));
 
         let mut exchange = ConcurrentExchangeBuilder::new()
             .with_clock(clock.clone())
-            .with_data_source(source.clone())
+            .with_price_source(price_source)
             .build();
 
-        let brkr = ConcurrentBrokerBuilder::<HashMapInput, Quote, Dividend>::new()
-            .with_data(source)
+        let brkr: ConcurrentBroker<Dividend, HashMapCorporateEventsSource<Dividend>, Quote> = ConcurrentBrokerBuilder::new()
             .with_trade_costs(vec![BrokerCost::flat(0.1)])
             .build(&mut exchange)
             .await;
@@ -136,7 +122,7 @@ mod tests {
     #[should_panic]
     async fn test_that_static_builder_fails_without_weights() {
         let comp = setup().await;
-        let _strat = AsyncStaticWeightStrategyBuilder::<HashMapInput, Quote, Dividend>::new()
+        let _strat = AsyncStaticWeightStrategyBuilder::<Dividend, HashMapCorporateEventsSource<Dividend>, Quote>::new()
             .with_brkr(comp.0)
             .with_clock(comp.1)
             .default();
@@ -147,7 +133,7 @@ mod tests {
     async fn test_that_static_builder_fails_without_brkr() {
         let comp = setup().await;
         let weights = PortfolioAllocation::new();
-        let _strat = AsyncStaticWeightStrategyBuilder::<HashMapInput, Quote, Dividend>::new()
+        let _strat = AsyncStaticWeightStrategyBuilder::<Dividend, HashMapCorporateEventsSource<Dividend>, Quote>::new()
             .with_weights(weights)
             .with_clock(comp.1)
             .default();
@@ -158,7 +144,7 @@ mod tests {
     async fn test_that_static_builder_fails_without_clock() {
         let comp = setup().await;
         let weights = PortfolioAllocation::new();
-        let _strat = AsyncStaticWeightStrategyBuilder::<HashMapInput, Quote, Dividend>::new()
+        let _strat = AsyncStaticWeightStrategyBuilder::<Dividend, HashMapCorporateEventsSource<Dividend>, Quote>::new()
             .with_weights(weights)
             .with_brkr(comp.0)
             .default();

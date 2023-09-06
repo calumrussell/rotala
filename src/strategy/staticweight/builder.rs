@@ -1,29 +1,31 @@
 use crate::broker::{ConcurrentBroker, SingleBroker};
 use crate::clock::Clock;
-use crate::input::{DataSource, Dividendable, Quotable};
+use crate::input::{Dividendable, Quotable, CorporateEventsSource, PriceSource};
 use crate::types::PortfolioAllocation;
 
 use super::{AsyncStaticWeightStrategy, StaticWeightStrategy};
 
-pub struct StaticWeightStrategyBuilder<T, Q, D>
+pub struct StaticWeightStrategyBuilder<D, T, Q, P>
 where
-    Q: Quotable,
     D: Dividendable,
-    T: DataSource<Q, D>,
+    T: CorporateEventsSource<D>,
+    Q: Quotable,
+    P: PriceSource<Q>,
 {
     //If missing either field, we cannot run this strategy
-    brkr: Option<SingleBroker<T, Q, D>>,
+    brkr: Option<SingleBroker<D, T, Q, P>>,
     weights: Option<PortfolioAllocation>,
     clock: Option<Clock>,
 }
 
-impl<T, Q, D> StaticWeightStrategyBuilder<T, Q, D>
+impl<D, T, Q, P> StaticWeightStrategyBuilder<D, T, Q, P>
 where
-    Q: Quotable,
     D: Dividendable,
-    T: DataSource<Q, D>,
+    T: CorporateEventsSource<D>,
+    Q: Quotable,
+    P: PriceSource<Q>,
 {
-    pub fn default(&mut self) -> StaticWeightStrategy<T, Q, D> {
+    pub fn default(&mut self) -> StaticWeightStrategy<D, T, Q, P> {
         if self.brkr.is_none() || self.weights.is_none() || self.clock.is_none() {
             panic!("Strategy must have broker, weights, and clock");
         }
@@ -44,7 +46,7 @@ where
         self
     }
 
-    pub fn with_brkr(&mut self, brkr: SingleBroker<T, Q, D>) -> &mut Self {
+    pub fn with_brkr(&mut self, brkr: SingleBroker<D, T, Q, P>) -> &mut Self {
         self.brkr = Some(brkr);
         self
     }
@@ -63,36 +65,37 @@ where
     }
 }
 
-impl<T, Q, D> Default for StaticWeightStrategyBuilder<T, Q, D>
+impl<D, T, Q, P> Default for StaticWeightStrategyBuilder<D, T, Q, P>
 where
-    Q: Quotable,
     D: Dividendable,
-    T: DataSource<Q, D>,
+    T: CorporateEventsSource<D>,
+    Q: Quotable,
+    P: PriceSource<Q>,
 {
     fn default() -> Self {
         Self::new()
     }
 }
 
-pub struct AsyncStaticWeightStrategyBuilder<T, Q, D>
+pub struct AsyncStaticWeightStrategyBuilder<D, T, Q>
 where
-    Q: Quotable,
     D: Dividendable,
-    T: DataSource<Q, D>,
+    T: CorporateEventsSource<D>,
+    Q: Quotable,
 {
     //If missing either field, we cannot run this strategy
-    brkr: Option<ConcurrentBroker<T, Q, D>>,
+    brkr: Option<ConcurrentBroker<D, T, Q>>,
     weights: Option<PortfolioAllocation>,
     clock: Option<Clock>,
 }
 
-impl<T, Q, D> AsyncStaticWeightStrategyBuilder<T, Q, D>
+impl<D, T, Q> AsyncStaticWeightStrategyBuilder<D, T, Q>
 where
-    Q: Quotable,
     D: Dividendable,
-    T: DataSource<Q, D>,
+    T: CorporateEventsSource<D>,
+    Q: Quotable,
 {
-    pub fn default(&mut self) -> AsyncStaticWeightStrategy<T, Q, D> {
+    pub fn default(&mut self) -> AsyncStaticWeightStrategy<D, T, Q> {
         if self.brkr.is_none() || self.weights.is_none() || self.clock.is_none() {
             panic!("Strategy must have broker, weights, and clock");
         }
@@ -113,7 +116,7 @@ where
         self
     }
 
-    pub fn with_brkr(&mut self, brkr: ConcurrentBroker<T, Q, D>) -> &mut Self {
+    pub fn with_brkr(&mut self, brkr: ConcurrentBroker<D, T, Q>) -> &mut Self {
         self.brkr = Some(brkr);
         self
     }
@@ -132,11 +135,11 @@ where
     }
 }
 
-impl<T, Q, D> Default for AsyncStaticWeightStrategyBuilder<T, Q, D>
+impl<T, Q, D> Default for AsyncStaticWeightStrategyBuilder<D, T, Q>
 where
-    Q: Quotable,
     D: Dividendable,
-    T: DataSource<Q, D>,
+    T: CorporateEventsSource<D>,
+    Q: Quotable,
 {
     fn default() -> Self {
         Self::new()
