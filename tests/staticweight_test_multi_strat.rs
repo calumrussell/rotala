@@ -9,7 +9,7 @@ use alator::broker::{BrokerCost, ConcurrentBroker, ConcurrentBrokerBuilder, Divi
 use alator::simcontext::{SimContextMulti, SimContextMultiBuilder};
 use alator::types::{CashValue, Frequency, PortfolioAllocation};
 
-fn build_data(clock: Clock) -> HashMapPriceSource<Quote> {
+fn build_data(clock: Clock) -> HashMapPriceSource {
     let price_dist = Uniform::new(90.0, 100.0);
     let mut rng = thread_rng();
 
@@ -63,7 +63,7 @@ async fn staticweight_integration_test() {
         .with_clock(clock.clone())
         .build();
 
-    let simbrkr_first: ConcurrentBroker<Dividend, HashMapCorporateEventsSource<Dividend>, Quote> =
+    let simbrkr_first: ConcurrentBroker<Dividend, HashMapCorporateEventsSource, Quote> =
         ConcurrentBrokerBuilder::new()
             .with_trade_costs(vec![BrokerCost::Flat(1.0.into())])
             .build(&mut exchange)
@@ -75,7 +75,7 @@ async fn staticweight_integration_test() {
         .with_clock(clock.clone())
         .default();
 
-    let simbrkr_second: ConcurrentBroker<Dividend, HashMapCorporateEventsSource<Dividend>, Quote> =
+    let simbrkr_second: ConcurrentBroker<Dividend, HashMapCorporateEventsSource, Quote> =
         ConcurrentBrokerBuilder::new()
             .with_trade_costs(vec![BrokerCost::Flat(1.0.into())])
             .build(&mut exchange)
@@ -87,7 +87,7 @@ async fn staticweight_integration_test() {
         .with_clock(clock.clone())
         .default();
 
-    let simbrkr_third: ConcurrentBroker<Dividend, HashMapCorporateEventsSource<Dividend>, Quote> =
+    let simbrkr_third: ConcurrentBroker<Dividend, HashMapCorporateEventsSource, Quote> =
         ConcurrentBrokerBuilder::new()
             .with_trade_costs(vec![BrokerCost::Flat(1.0.into())])
             .build(&mut exchange)
@@ -102,8 +102,8 @@ async fn staticweight_integration_test() {
     let mut sim: SimContextMulti<
         Dividend,
         Quote,
-        HashMapPriceSource<Quote>,
-        AsyncStaticWeightStrategy<Dividend, HashMapCorporateEventsSource<Dividend>, Quote>,
+        HashMapPriceSource,
+        AsyncStaticWeightStrategy<Dividend, HashMapCorporateEventsSource, Quote>,
     > = SimContextMultiBuilder::new()
         .with_clock(clock.clone())
         .with_exchange(exchange)

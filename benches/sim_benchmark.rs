@@ -32,15 +32,11 @@ fn full_backtest_random_data() {
         .with_clock(clock.clone())
         .build();
 
-    let simbrkr: SingleBroker<
-        Dividend,
-        HashMapCorporateEventsSource<Dividend>,
-        Quote,
-        HashMapPriceSource<Quote>,
-    > = SingleBrokerBuilder::new()
-        .with_exchange(exchange)
-        .with_trade_costs(vec![BrokerCost::Flat(1.0.into())])
-        .build();
+    let simbrkr: SingleBroker<Dividend, HashMapCorporateEventsSource, Quote, HashMapPriceSource> =
+        SingleBrokerBuilder::new()
+            .with_exchange(exchange)
+            .with_trade_costs(vec![BrokerCost::Flat(1.0.into())])
+            .build();
 
     let strat = StaticWeightStrategyBuilder::new()
         .with_brkr(simbrkr)
@@ -76,12 +72,8 @@ fn trade_execution_logic() {
         .with_price_source(price_source)
         .build();
 
-    let mut brkr: SingleBroker<
-        Dividend,
-        HashMapCorporateEventsSource<Dividend>,
-        Quote,
-        HashMapPriceSource<Quote>,
-    > = SingleBrokerBuilder::new().with_exchange(exchange).build();
+    let mut brkr: SingleBroker<Dividend, HashMapCorporateEventsSource, Quote, HashMapPriceSource> =
+        SingleBrokerBuilder::new().with_exchange(exchange).build();
 
     brkr.deposit_cash(&100_000.0);
     brkr.send_order(Order::market(OrderType::MarketBuy, "ABC", 100.0));

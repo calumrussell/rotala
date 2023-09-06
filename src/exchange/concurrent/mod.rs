@@ -222,7 +222,7 @@ mod tests {
     use crate::input::HashMapPriceSource;
 
     async fn setup() -> (
-        ConcurrentExchange<Quote, HashMapPriceSource<Quote>>,
+        ConcurrentExchange<Quote, HashMapPriceSource>,
         DefaultSubscriberId,
         PriceReceiver<Quote>,
         OrderSender,

@@ -131,12 +131,7 @@ impl MovingAverage {
 //tracking into the simulation lifecycle.
 struct MovingAverageStrategy {
     clock: Clock,
-    brkr: SingleBroker<
-        Dividend,
-        HashMapCorporateEventsSource<Dividend>,
-        Quote,
-        HashMapPriceSource<Quote>,
-    >,
+    brkr: SingleBroker<Dividend, HashMapCorporateEventsSource, Quote, HashMapPriceSource>,
     ten: MovingAverage,
     fifty: MovingAverage,
     history: Vec<StrategySnapshot>,
@@ -231,12 +226,7 @@ impl Strategy for MovingAverageStrategy {
 
 impl MovingAverageStrategy {
     fn new(
-        brkr: SingleBroker<
-            Dividend,
-            HashMapCorporateEventsSource<Dividend>,
-            Quote,
-            HashMapPriceSource<Quote>,
-        >,
+        brkr: SingleBroker<Dividend, HashMapCorporateEventsSource, Quote, HashMapPriceSource>,
         clock: Clock,
     ) -> Self {
         let ten = MovingAverage::new(10);
@@ -281,12 +271,8 @@ fn binance_test() {
         .with_price_source(price_source)
         .build();
 
-    let simbrkr: SingleBroker<
-        Dividend,
-        HashMapCorporateEventsSource<Dividend>,
-        Quote,
-        HashMapPriceSource<Quote>,
-    > = SingleBrokerBuilder::new().with_exchange(exchange).build();
+    let simbrkr: SingleBroker<Dividend, HashMapCorporateEventsSource, Quote, HashMapPriceSource> =
+        SingleBrokerBuilder::new().with_exchange(exchange).build();
 
     let strat = MovingAverageStrategy::new(simbrkr, clock.clone());
 

@@ -151,7 +151,7 @@ mod tests {
     use crate::exchange::ExchangeOrder;
     use crate::input::HashMapPriceSource;
 
-    fn setup() -> HashMapPriceSource<Quote> {
+    fn setup() -> HashMapPriceSource {
         let clock = crate::clock::ClockBuilder::with_length_in_seconds(100, 3)
             .with_frequency(&crate::types::Frequency::Second)
             .build();

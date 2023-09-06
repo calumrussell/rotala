@@ -93,7 +93,7 @@ mod tests {
 
     use super::{SingleExchange, SingleExchangeBuilder};
 
-    fn setup() -> SingleExchange<Quote, HashMapPriceSource<Quote>> {
+    fn setup() -> SingleExchange<Quote, HashMapPriceSource> {
         let clock = crate::clock::ClockBuilder::with_length_in_seconds(100, 3)
             .with_frequency(&crate::types::Frequency::Second)
             .build();

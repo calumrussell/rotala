@@ -435,8 +435,8 @@ mod tests {
     use crate::types::Frequency;
 
     async fn setup() -> (
-        ConcurrentBroker<Dividend, HashMapCorporateEventsSource<Dividend>, Quote>,
-        ConcurrentExchange<Quote, HashMapPriceSource<Quote>>,
+        ConcurrentBroker<Dividend, HashMapCorporateEventsSource, Quote>,
+        ConcurrentExchange<Quote, HashMapPriceSource>,
     ) {
         let clock = crate::clock::ClockBuilder::with_length_in_seconds(100, 5)
             .with_frequency(&crate::types::Frequency::Second)
@@ -660,7 +660,7 @@ mod tests {
             .with_price_source(price_source)
             .build();
 
-        let _brkr: ConcurrentBroker<Dividend, HashMapCorporateEventsSource<Dividend>, Quote> =
+        let _brkr: ConcurrentBroker<Dividend, HashMapCorporateEventsSource, Quote> =
             ConcurrentBrokerBuilder::new()
                 .with_trade_costs(vec![BrokerCost::PctOfValue(0.01)])
                 .build(&mut exchange)
@@ -700,7 +700,7 @@ mod tests {
             .with_price_source(price_source)
             .build();
 
-        let mut brkr: ConcurrentBroker<Dividend, HashMapCorporateEventsSource<Dividend>, Quote> =
+        let mut brkr: ConcurrentBroker<Dividend, HashMapCorporateEventsSource, Quote> =
             ConcurrentBrokerBuilder::new()
                 .with_trade_costs(vec![BrokerCost::PctOfValue(0.01)])
                 .build(&mut exchange)
@@ -755,7 +755,7 @@ mod tests {
             .with_price_source(price_source)
             .build();
 
-        let mut brkr: ConcurrentBroker<Dividend, HashMapCorporateEventsSource<Dividend>, Quote> =
+        let mut brkr: ConcurrentBroker<Dividend, HashMapCorporateEventsSource, Quote> =
             ConcurrentBrokerBuilder::new()
                 .with_trade_costs(vec![BrokerCost::PctOfValue(0.01)])
                 .build(&mut exchange)

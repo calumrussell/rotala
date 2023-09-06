@@ -381,12 +381,7 @@ mod tests {
 
     use super::{SingleBroker, SingleBrokerBuilder};
 
-    fn setup() -> SingleBroker<
-        Dividend,
-        HashMapCorporateEventsSource<Dividend>,
-        Quote,
-        HashMapPriceSource<Quote>,
-    > {
+    fn setup() -> SingleBroker<Dividend, HashMapCorporateEventsSource, Quote, HashMapPriceSource> {
         let clock = crate::clock::ClockBuilder::with_length_in_seconds(100, 5)
             .with_frequency(&crate::types::Frequency::Second)
             .build();
@@ -588,15 +583,11 @@ mod tests {
             .with_price_source(price_source)
             .build();
 
-        let _brkr: SingleBroker<
-            Dividend,
-            HashMapCorporateEventsSource<Dividend>,
-            Quote,
-            HashMapPriceSource<Quote>,
-        > = SingleBrokerBuilder::new()
-            .with_exchange(exchange)
-            .with_trade_costs(vec![BrokerCost::PctOfValue(0.01)])
-            .build();
+        let _brkr: SingleBroker<Dividend, HashMapCorporateEventsSource, Quote, HashMapPriceSource> =
+            SingleBrokerBuilder::new()
+                .with_exchange(exchange)
+                .with_trade_costs(vec![BrokerCost::PctOfValue(0.01)])
+                .build();
     }
 
     #[test]
@@ -632,9 +623,9 @@ mod tests {
 
         let mut brkr: SingleBroker<
             Dividend,
-            HashMapCorporateEventsSource<Dividend>,
+            HashMapCorporateEventsSource,
             Quote,
-            HashMapPriceSource<Quote>,
+            HashMapPriceSource,
         > = SingleBrokerBuilder::new()
             .with_exchange(exchange)
             .with_trade_costs(vec![BrokerCost::PctOfValue(0.01)])
@@ -686,9 +677,9 @@ mod tests {
 
         let mut brkr: SingleBroker<
             Dividend,
-            HashMapCorporateEventsSource<Dividend>,
+            HashMapCorporateEventsSource,
             Quote,
-            HashMapPriceSource<Quote>,
+            HashMapPriceSource,
         > = SingleBrokerBuilder::new()
             .with_exchange(exchange)
             .with_trade_costs(vec![BrokerCost::PctOfValue(0.01)])

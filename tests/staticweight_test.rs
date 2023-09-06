@@ -9,7 +9,7 @@ use alator::broker::{BrokerCost, Dividend, Quote, SingleBroker, SingleBrokerBuil
 use alator::simcontext::SimContextBuilder;
 use alator::types::{CashValue, Frequency, PortfolioAllocation};
 
-fn build_data(clock: Clock) -> HashMapPriceSource<Quote> {
+fn build_data(clock: Clock) -> HashMapPriceSource {
     let price_dist = Uniform::new(90.0, 100.0);
     let mut rng = thread_rng();
 
@@ -54,15 +54,11 @@ fn staticweight_integration_test() {
         .with_clock(clock.clone())
         .build();
 
-    let simbrkr: SingleBroker<
-        Dividend,
-        HashMapCorporateEventsSource<Dividend>,
-        Quote,
-        HashMapPriceSource<Quote>,
-    > = SingleBrokerBuilder::new()
-        .with_trade_costs(vec![BrokerCost::Flat(1.0.into())])
-        .with_exchange(exchange)
-        .build();
+    let simbrkr: SingleBroker<Dividend, HashMapCorporateEventsSource, Quote, HashMapPriceSource> =
+        SingleBrokerBuilder::new()
+            .with_trade_costs(vec![BrokerCost::Flat(1.0.into())])
+            .with_exchange(exchange)
+            .build();
 
     let strat = StaticWeightStrategyBuilder::new()
         .with_brkr(simbrkr)

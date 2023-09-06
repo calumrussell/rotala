@@ -268,12 +268,7 @@ mod tests {
     use super::PortfolioCalculations;
 
     fn setup() -> (
-        SingleBroker<
-            Dividend,
-            HashMapCorporateEventsSource<Dividend>,
-            Quote,
-            HashMapPriceSource<Quote>,
-        >,
+        SingleBroker<Dividend, HashMapCorporateEventsSource, Quote, HashMapPriceSource>,
         Clock,
     ) {
         let clock = ClockBuilder::with_length_in_dates(100, 103)
