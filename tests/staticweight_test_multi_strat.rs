@@ -1,6 +1,6 @@
 use alator::clock::{Clock, ClockBuilder};
 use alator::exchange::ConcurrentExchangeBuilder;
-use alator::input::{DefaultPriceSource, HashMapCorporateEventsSource};
+use alator::input::{DefaultCorporateEventsSource, DefaultPriceSource};
 use alator::strategy::{AsyncStaticWeightStrategy, AsyncStaticWeightStrategyBuilder};
 use rand::distributions::{Distribution, Uniform};
 use rand::thread_rng;
@@ -61,7 +61,7 @@ async fn staticweight_integration_test() {
         .with_clock(clock.clone())
         .build();
 
-    let simbrkr_first: ConcurrentBroker<Dividend, HashMapCorporateEventsSource, Quote> =
+    let simbrkr_first: ConcurrentBroker<Dividend, DefaultCorporateEventsSource, Quote> =
         ConcurrentBrokerBuilder::new()
             .with_trade_costs(vec![BrokerCost::Flat(1.0.into())])
             .build(&mut exchange)
@@ -73,7 +73,7 @@ async fn staticweight_integration_test() {
         .with_clock(clock.clone())
         .default();
 
-    let simbrkr_second: ConcurrentBroker<Dividend, HashMapCorporateEventsSource, Quote> =
+    let simbrkr_second: ConcurrentBroker<Dividend, DefaultCorporateEventsSource, Quote> =
         ConcurrentBrokerBuilder::new()
             .with_trade_costs(vec![BrokerCost::Flat(1.0.into())])
             .build(&mut exchange)
@@ -85,7 +85,7 @@ async fn staticweight_integration_test() {
         .with_clock(clock.clone())
         .default();
 
-    let simbrkr_third: ConcurrentBroker<Dividend, HashMapCorporateEventsSource, Quote> =
+    let simbrkr_third: ConcurrentBroker<Dividend, DefaultCorporateEventsSource, Quote> =
         ConcurrentBrokerBuilder::new()
             .with_trade_costs(vec![BrokerCost::Flat(1.0.into())])
             .build(&mut exchange)
@@ -101,7 +101,7 @@ async fn staticweight_integration_test() {
         Dividend,
         Quote,
         DefaultPriceSource,
-        AsyncStaticWeightStrategy<Dividend, HashMapCorporateEventsSource, Quote>,
+        AsyncStaticWeightStrategy<Dividend, DefaultCorporateEventsSource, Quote>,
     > = SimContextMultiBuilder::new()
         .with_clock(clock.clone())
         .with_exchange(exchange)

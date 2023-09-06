@@ -5,7 +5,7 @@ use alator::broker::{
 use alator::clock::ClockBuilder;
 use alator::exchange::SingleExchangeBuilder;
 use alator::input::{
-    fake_price_source_generator, DefaultPriceSource, HashMapCorporateEventsSource,
+    fake_price_source_generator, DefaultCorporateEventsSource, DefaultPriceSource,
 };
 use alator::simcontext::SimContextBuilder;
 use alator::strategy::StaticWeightStrategyBuilder;
@@ -32,7 +32,7 @@ fn full_backtest_random_data() {
         .with_clock(clock.clone())
         .build();
 
-    let simbrkr: SingleBroker<Dividend, HashMapCorporateEventsSource, Quote, DefaultPriceSource> =
+    let simbrkr: SingleBroker<Dividend, DefaultCorporateEventsSource, Quote, DefaultPriceSource> =
         SingleBrokerBuilder::new()
             .with_exchange(exchange)
             .with_trade_costs(vec![BrokerCost::Flat(1.0.into())])
@@ -72,7 +72,7 @@ fn trade_execution_logic() {
         .with_price_source(price_source)
         .build();
 
-    let mut brkr: SingleBroker<Dividend, HashMapCorporateEventsSource, Quote, DefaultPriceSource> =
+    let mut brkr: SingleBroker<Dividend, DefaultCorporateEventsSource, Quote, DefaultPriceSource> =
         SingleBrokerBuilder::new().with_exchange(exchange).build();
 
     brkr.deposit_cash(&100_000.0);

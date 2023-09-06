@@ -42,11 +42,11 @@ where
     fn get_dividends(&self) -> Option<Vec<Arc<D>>>;
 }
 
-type HashMapInner<Q> = (HashMap<DateTime, Vec<Arc<Q>>>, Clock);
+type DefaultPriceSourceImpl<Q> = (HashMap<DateTime, Vec<Arc<Q>>>, Clock);
 
 #[derive(Debug)]
 pub struct DefaultPriceSource {
-    inner: Arc<HashMapInner<Quote>>,
+    inner: Arc<DefaultPriceSourceImpl<Quote>>,
 }
 
 impl PriceSource<Quote> for DefaultPriceSource {
@@ -160,14 +160,14 @@ impl<'a> CorporateEventsSource<PyDividend> for PyCorporateEventsSource<'a> {
     }
 }
 
-type HashMapCorporateEventsSourceInner<D> = (HashMap<DateTime, Vec<Arc<D>>>, Clock);
+type CorporateEventsSourceImpl<D> = (HashMap<DateTime, Vec<Arc<D>>>, Clock);
 
 #[derive(Debug)]
-pub struct HashMapCorporateEventsSource {
-    inner: std::sync::Arc<HashMapCorporateEventsSourceInner<Dividend>>,
+pub struct DefaultCorporateEventsSource {
+    inner: std::sync::Arc<CorporateEventsSourceImpl<Dividend>>,
 }
 
-impl CorporateEventsSource<Dividend> for HashMapCorporateEventsSource {
+impl CorporateEventsSource<Dividend> for DefaultCorporateEventsSource {
     fn get_dividends(&self) -> Option<Vec<Arc<Dividend>>> {
         let curr_date = self.inner.1.now();
         if let Some(dividends) = self.inner.0.get(&curr_date) {
@@ -177,7 +177,7 @@ impl CorporateEventsSource<Dividend> for HashMapCorporateEventsSource {
     }
 }
 
-impl Clone for HashMapCorporateEventsSource {
+impl Clone for DefaultCorporateEventsSource {
     fn clone(&self) -> Self {
         Self {
             inner: self.inner.clone(),
@@ -185,10 +185,16 @@ impl Clone for HashMapCorporateEventsSource {
     }
 }
 
-impl HashMapCorporateEventsSource {
-    pub fn add_dividends(&mut self, date: impl Into<DateTime>, dividend: Dividend) {
+impl DefaultCorporateEventsSource {
+    pub fn add_dividends(
+        &mut self,
+        value: impl Into<Price>,
+        symbol: impl Into<String>,
+        date: impl Into<DateTime>,
+    ) {
         let inner = Arc::get_mut(&mut self.inner).unwrap();
         let datetime: DateTime = date.into();
+        let dividend = Dividend::new(value, symbol, datetime);
 
         if let Some(dividends) = inner.0.get_mut(&datetime) {
             dividends.push(Arc::new(dividend));

@@ -1,6 +1,6 @@
 use alator::clock::{Clock, ClockBuilder};
 use alator::exchange::SingleExchangeBuilder;
-use alator::input::{DefaultPriceSource, HashMapCorporateEventsSource};
+use alator::input::{DefaultCorporateEventsSource, DefaultPriceSource};
 use alator::strategy::StaticWeightStrategyBuilder;
 use rand::distributions::{Distribution, Uniform};
 use rand::thread_rng;
@@ -52,7 +52,7 @@ fn staticweight_integration_test() {
         .with_clock(clock.clone())
         .build();
 
-    let simbrkr: SingleBroker<Dividend, HashMapCorporateEventsSource, Quote, DefaultPriceSource> =
+    let simbrkr: SingleBroker<Dividend, DefaultCorporateEventsSource, Quote, DefaultPriceSource> =
         SingleBrokerBuilder::new()
             .with_trade_costs(vec![BrokerCost::Flat(1.0.into())])
             .with_exchange(exchange)

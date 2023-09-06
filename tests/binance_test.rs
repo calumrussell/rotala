@@ -8,7 +8,7 @@ use alator::broker::{
 };
 use alator::clock::{Clock, ClockBuilder};
 use alator::exchange::SingleExchangeBuilder;
-use alator::input::{DefaultPriceSource, HashMapCorporateEventsSource};
+use alator::input::{DefaultCorporateEventsSource, DefaultPriceSource};
 use alator::simcontext::SimContextBuilder;
 use alator::strategy::{History, Strategy, StrategyEvent, TransferTo};
 use alator::types::{CashValue, DateTime, Frequency, StrategySnapshot};
@@ -131,7 +131,7 @@ impl MovingAverage {
 //tracking into the simulation lifecycle.
 struct MovingAverageStrategy {
     clock: Clock,
-    brkr: SingleBroker<Dividend, HashMapCorporateEventsSource, Quote, DefaultPriceSource>,
+    brkr: SingleBroker<Dividend, DefaultCorporateEventsSource, Quote, DefaultPriceSource>,
     ten: MovingAverage,
     fifty: MovingAverage,
     history: Vec<StrategySnapshot>,
@@ -226,7 +226,7 @@ impl Strategy for MovingAverageStrategy {
 
 impl MovingAverageStrategy {
     fn new(
-        brkr: SingleBroker<Dividend, HashMapCorporateEventsSource, Quote, DefaultPriceSource>,
+        brkr: SingleBroker<Dividend, DefaultCorporateEventsSource, Quote, DefaultPriceSource>,
         clock: Clock,
     ) -> Self {
         let ten = MovingAverage::new(10);
@@ -271,7 +271,7 @@ fn binance_test() {
         .with_price_source(price_source)
         .build();
 
-    let simbrkr: SingleBroker<Dividend, HashMapCorporateEventsSource, Quote, DefaultPriceSource> =
+    let simbrkr: SingleBroker<Dividend, DefaultCorporateEventsSource, Quote, DefaultPriceSource> =
         SingleBrokerBuilder::new().with_exchange(exchange).build();
 
     let strat = MovingAverageStrategy::new(simbrkr, clock.clone());

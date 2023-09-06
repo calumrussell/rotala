@@ -93,11 +93,11 @@ mod tests {
     use crate::broker::{BrokerCost, ConcurrentBroker, ConcurrentBrokerBuilder, Dividend, Quote};
     use crate::clock::{Clock, ClockBuilder};
     use crate::exchange::ConcurrentExchangeBuilder;
-    use crate::input::{DefaultPriceSource, HashMapCorporateEventsSource};
+    use crate::input::{DefaultCorporateEventsSource, DefaultPriceSource};
     use crate::types::{Frequency, PortfolioAllocation};
 
     async fn setup() -> (
-        ConcurrentBroker<Dividend, HashMapCorporateEventsSource, Quote>,
+        ConcurrentBroker<Dividend, DefaultCorporateEventsSource, Quote>,
         Clock,
     ) {
         let clock = ClockBuilder::with_length_in_dates(100, 102)
@@ -114,7 +114,7 @@ mod tests {
             .with_price_source(price_source)
             .build();
 
-        let brkr: ConcurrentBroker<Dividend, HashMapCorporateEventsSource, Quote> =
+        let brkr: ConcurrentBroker<Dividend, DefaultCorporateEventsSource, Quote> =
             ConcurrentBrokerBuilder::new()
                 .with_trade_costs(vec![BrokerCost::flat(0.1)])
                 .build(&mut exchange)
@@ -127,7 +127,7 @@ mod tests {
     async fn test_that_static_builder_fails_without_weights() {
         let comp = setup().await;
         let _strat =
-            AsyncStaticWeightStrategyBuilder::<Dividend, HashMapCorporateEventsSource, Quote>::new(
+            AsyncStaticWeightStrategyBuilder::<Dividend, DefaultCorporateEventsSource, Quote>::new(
             )
             .with_brkr(comp.0)
             .with_clock(comp.1)
@@ -140,7 +140,7 @@ mod tests {
         let comp = setup().await;
         let weights = PortfolioAllocation::new();
         let _strat =
-            AsyncStaticWeightStrategyBuilder::<Dividend, HashMapCorporateEventsSource, Quote>::new(
+            AsyncStaticWeightStrategyBuilder::<Dividend, DefaultCorporateEventsSource, Quote>::new(
             )
             .with_weights(weights)
             .with_clock(comp.1)
@@ -153,7 +153,7 @@ mod tests {
         let comp = setup().await;
         let weights = PortfolioAllocation::new();
         let _strat =
-            AsyncStaticWeightStrategyBuilder::<Dividend, HashMapCorporateEventsSource, Quote>::new(
+            AsyncStaticWeightStrategyBuilder::<Dividend, DefaultCorporateEventsSource, Quote>::new(
             )
             .with_weights(weights)
             .with_brkr(comp.0)

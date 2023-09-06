@@ -377,11 +377,11 @@ mod tests {
         Quote, ReceievesOrders, TransferCash,
     };
     use crate::exchange::SingleExchangeBuilder;
-    use crate::input::{DefaultPriceSource, HashMapCorporateEventsSource};
+    use crate::input::{DefaultCorporateEventsSource, DefaultPriceSource};
 
     use super::{SingleBroker, SingleBrokerBuilder};
 
-    fn setup() -> SingleBroker<Dividend, HashMapCorporateEventsSource, Quote, DefaultPriceSource> {
+    fn setup() -> SingleBroker<Dividend, DefaultCorporateEventsSource, Quote, DefaultPriceSource> {
         let clock = crate::clock::ClockBuilder::with_length_in_seconds(100, 5)
             .with_frequency(&crate::types::Frequency::Second)
             .build();
@@ -400,8 +400,8 @@ mod tests {
         price_source.add_quotes(95.00, 96.00, 103, "ABC");
         price_source.add_quotes(10.00, 11.00, 103, "BCD");
 
-        let mut corporate_source = HashMapCorporateEventsSource::new(clock.clone());
-        corporate_source.add_dividends(102, Dividend::new(5.0, "ABC", 102));
+        let mut corporate_source = DefaultCorporateEventsSource::new(clock.clone());
+        corporate_source.add_dividends(5.0, "ABC", 102);
 
         let exchange = SingleExchangeBuilder::new()
             .with_clock(clock.clone())
@@ -583,7 +583,7 @@ mod tests {
             .with_price_source(price_source)
             .build();
 
-        let _brkr: SingleBroker<Dividend, HashMapCorporateEventsSource, Quote, DefaultPriceSource> =
+        let _brkr: SingleBroker<Dividend, DefaultCorporateEventsSource, Quote, DefaultPriceSource> =
             SingleBrokerBuilder::new()
                 .with_exchange(exchange)
                 .with_trade_costs(vec![BrokerCost::PctOfValue(0.01)])
@@ -623,7 +623,7 @@ mod tests {
 
         let mut brkr: SingleBroker<
             Dividend,
-            HashMapCorporateEventsSource,
+            DefaultCorporateEventsSource,
             Quote,
             DefaultPriceSource,
         > = SingleBrokerBuilder::new()
@@ -677,7 +677,7 @@ mod tests {
 
         let mut brkr: SingleBroker<
             Dividend,
-            HashMapCorporateEventsSource,
+            DefaultCorporateEventsSource,
             Quote,
             DefaultPriceSource,
         > = SingleBrokerBuilder::new()
