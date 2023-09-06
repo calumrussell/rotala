@@ -5,7 +5,7 @@ pub use builder::ConcurrentExchangeBuilder;
 use std::sync::Arc;
 
 use crate::clock::Clock;
-use crate::input::{Quotable, PriceSource};
+use crate::input::{PriceSource, Quotable};
 
 ///Exchanges accept orders for securities, store them on an internal order book, and then execute
 ///them over time.

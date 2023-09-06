@@ -1,9 +1,12 @@
 use alator::broker::{
-    BrokerCost, Order, OrderType, Quote, SingleBrokerBuilder, SingleBroker, TransferCash, ReceievesOrders, Dividend,
+    BrokerCost, Dividend, Order, OrderType, Quote, ReceievesOrders, SingleBroker,
+    SingleBrokerBuilder, TransferCash,
 };
 use alator::clock::ClockBuilder;
 use alator::exchange::SingleExchangeBuilder;
-use alator::input::{fake_price_source_generator, HashMapCorporateEventsSource, HashMapPriceSource};
+use alator::input::{
+    fake_price_source_generator, HashMapCorporateEventsSource, HashMapPriceSource,
+};
 use alator::simcontext::SimContextBuilder;
 use alator::strategy::StaticWeightStrategyBuilder;
 use alator::types::{CashValue, Frequency, PortfolioAllocation};
@@ -29,7 +32,12 @@ fn full_backtest_random_data() {
         .with_clock(clock.clone())
         .build();
 
-    let simbrkr: SingleBroker<Dividend, HashMapCorporateEventsSource<Dividend>, Quote, HashMapPriceSource<Quote>> = SingleBrokerBuilder::new()
+    let simbrkr: SingleBroker<
+        Dividend,
+        HashMapCorporateEventsSource<Dividend>,
+        Quote,
+        HashMapPriceSource<Quote>,
+    > = SingleBrokerBuilder::new()
         .with_exchange(exchange)
         .with_trade_costs(vec![BrokerCost::Flat(1.0.into())])
         .build();
@@ -68,9 +76,12 @@ fn trade_execution_logic() {
         .with_price_source(price_source)
         .build();
 
-    let mut brkr: SingleBroker<Dividend, HashMapCorporateEventsSource<Dividend>, Quote, HashMapPriceSource<Quote>> = SingleBrokerBuilder::new()
-        .with_exchange(exchange)
-        .build();
+    let mut brkr: SingleBroker<
+        Dividend,
+        HashMapCorporateEventsSource<Dividend>,
+        Quote,
+        HashMapPriceSource<Quote>,
+    > = SingleBrokerBuilder::new().with_exchange(exchange).build();
 
     brkr.deposit_cash(&100_000.0);
     brkr.send_order(Order::market(OrderType::MarketBuy, "ABC", 100.0));

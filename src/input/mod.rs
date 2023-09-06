@@ -284,7 +284,7 @@ impl HashMapPriceSource<Quote> {
     pub fn add_quotes(&mut self, date: impl Into<DateTime>, quote: Quote) {
         let inner = Arc::get_mut(&mut self.inner).unwrap();
         let datetime: DateTime = date.into();
-        
+
         if let Some(quotes) = inner.0.get_mut(&datetime) {
             quotes.push(Arc::new(quote))
         } else {
@@ -340,6 +340,20 @@ impl<'a> PriceSource<PyQuote> for PyPriceSource<'a> {
     }
 }
 
+#[cfg(feature = "python")]
+#[derive(Clone, Debug)]
+pub struct PyCorporateEventsSource<'a> {
+    pub dividends: &'a PyDict,
+    pub clock: Clock,
+}
+
+#[cfg(feature = "python")]
+impl<'a> CorporateEventsSource<PyDividend> for PyCorporateEventsSource<'a> {
+    fn get_dividends(&self) -> Option<Vec<Arc<PyDividend>>> {
+        None
+    }
+}
+
 type HashMapCorporateEventsSourceInner<D> = (HashMap<DateTime, Vec<Arc<D>>>, Clock);
 
 #[derive(Debug)]
@@ -369,11 +383,11 @@ impl<Dividend> HashMapCorporateEventsSource<Dividend> {
     pub fn add_dividends(&mut self, date: impl Into<DateTime>, dividend: Dividend) {
         let inner = Arc::get_mut(&mut self.inner).unwrap();
         let datetime: DateTime = date.into();
-        
+
         if let Some(dividends) = inner.0.get_mut(&datetime) {
             dividends.push(Arc::new(dividend));
         } else {
-            inner.0.insert(datetime.into(), vec![Arc::new(dividend)]);
+            inner.0.insert(datetime, vec![Arc::new(dividend)]);
         }
     }
 

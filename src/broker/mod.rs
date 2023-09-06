@@ -221,9 +221,11 @@ mod tests {
         BacktestBroker, BrokerCalculations, BrokerCost, ConcurrentBrokerBuilder, OrderType, Quote,
         TransferCash,
     };
-    use crate::broker::{ ConcurrentBroker, Dividend, ReceievesOrdersAsync};
+    use crate::broker::{ConcurrentBroker, Dividend, ReceievesOrdersAsync};
     use crate::exchange::ConcurrentExchangeBuilder;
-    use crate::input::{fake_price_source_generator, HashMapCorporateEventsSource, HashMapPriceSource};
+    use crate::input::{
+        fake_price_source_generator, HashMapCorporateEventsSource, HashMapPriceSource,
+    };
     use crate::types::PortfolioAllocation;
     use crate::{clock::ClockBuilder, types::Frequency};
 
@@ -239,10 +241,11 @@ mod tests {
             .with_price_source(price_source)
             .build();
 
-        let mut brkr: ConcurrentBroker<Dividend, HashMapCorporateEventsSource<Dividend>, Quote> = ConcurrentBrokerBuilder::new()
-            .with_trade_costs(vec![BrokerCost::flat(1.0)])
-            .build(&mut exchange)
-            .await;
+        let mut brkr: ConcurrentBroker<Dividend, HashMapCorporateEventsSource<Dividend>, Quote> =
+            ConcurrentBrokerBuilder::new()
+                .with_trade_costs(vec![BrokerCost::flat(1.0)])
+                .build(&mut exchange)
+                .await;
 
         let mut weights = PortfolioAllocation::new();
         weights.insert("ABC", 1.0);
@@ -275,10 +278,11 @@ mod tests {
             .with_price_source(price_source)
             .build();
 
-        let mut brkr: ConcurrentBroker<Dividend, HashMapCorporateEventsSource<Dividend>, Quote> = ConcurrentBrokerBuilder::new()
-            .with_trade_costs(vec![BrokerCost::flat(1.0)])
-            .build(&mut exchange)
-            .await;
+        let mut brkr: ConcurrentBroker<Dividend, HashMapCorporateEventsSource<Dividend>, Quote> =
+            ConcurrentBrokerBuilder::new()
+                .with_trade_costs(vec![BrokerCost::flat(1.0)])
+                .build(&mut exchange)
+                .await;
 
         let mut weights = PortfolioAllocation::new();
         weights.insert("ABC", 1.0);
@@ -322,10 +326,11 @@ mod tests {
             .with_clock(clock.clone())
             .with_price_source(price_source)
             .build();
-        let mut brkr: ConcurrentBroker<Dividend, HashMapCorporateEventsSource<Dividend>, Quote> = ConcurrentBrokerBuilder::new()
-            .with_trade_costs(vec![BrokerCost::flat(1.0)])
-            .build(&mut exchange)
-            .await;
+        let mut brkr: ConcurrentBroker<Dividend, HashMapCorporateEventsSource<Dividend>, Quote> =
+            ConcurrentBrokerBuilder::new()
+                .with_trade_costs(vec![BrokerCost::flat(1.0)])
+                .build(&mut exchange)
+                .await;
 
         let mut weights = PortfolioAllocation::new();
         weights.insert("ABC", 0.5);
@@ -355,11 +360,12 @@ mod tests {
             .with_clock(clock.clone())
             .with_price_source(price_source)
             .build();
-        let mut brkr: ConcurrentBroker<Dividend, HashMapCorporateEventsSource<Dividend>, Quote> = ConcurrentBrokerBuilder::new()
-            .with_trade_costs(vec![BrokerCost::flat(1.0)])
-            .build(&mut exchange)
-            .await;
- 
+        let mut brkr: ConcurrentBroker<Dividend, HashMapCorporateEventsSource<Dividend>, Quote> =
+            ConcurrentBrokerBuilder::new()
+                .with_trade_costs(vec![BrokerCost::flat(1.0)])
+                .build(&mut exchange)
+                .await;
+
         let mut weights = PortfolioAllocation::new();
         weights.insert("ABC", 1.0);
 
@@ -415,9 +421,8 @@ mod tests {
             .with_price_source(price_source)
             .build();
 
-        let mut brkr: ConcurrentBroker<Dividend, HashMapCorporateEventsSource<Dividend>, Quote> = ConcurrentBrokerBuilder::new()
-            .build(&mut exchange)
-            .await;
+        let mut brkr: ConcurrentBroker<Dividend, HashMapCorporateEventsSource<Dividend>, Quote> =
+            ConcurrentBrokerBuilder::new().build(&mut exchange).await;
 
         brkr.deposit_cash(&100_000.0);
 
@@ -470,10 +475,9 @@ mod tests {
             .with_price_source(price_source)
             .build();
 
-        let mut brkr: ConcurrentBroker<Dividend, HashMapCorporateEventsSource<Dividend>, Quote> = ConcurrentBrokerBuilder::new()
-            .build(&mut exchange)
-            .await;
-        
+        let mut brkr: ConcurrentBroker<Dividend, HashMapCorporateEventsSource<Dividend>, Quote> =
+            ConcurrentBrokerBuilder::new().build(&mut exchange).await;
+
         brkr.deposit_cash(&100_000.0);
 
         let mut target_weights = PortfolioAllocation::new();

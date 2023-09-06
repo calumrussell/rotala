@@ -7,7 +7,7 @@ use std::marker::PhantomData;
 use std::sync::Arc;
 
 use crate::exchange::SingleExchange;
-use crate::input::{Dividendable, Quotable, CorporateEventsSource, PriceSource};
+use crate::input::{CorporateEventsSource, Dividendable, PriceSource, Quotable};
 use crate::types::{CashValue, PortfolioHoldings, PortfolioQty, Price};
 
 use super::{
@@ -377,11 +377,16 @@ mod tests {
         Quote, ReceievesOrders, TransferCash,
     };
     use crate::exchange::SingleExchangeBuilder;
-    use crate::input::{HashMapPriceSource, HashMapCorporateEventsSource};
+    use crate::input::{HashMapCorporateEventsSource, HashMapPriceSource};
 
     use super::{SingleBroker, SingleBrokerBuilder};
 
-    fn setup() -> SingleBroker<Dividend, HashMapCorporateEventsSource<Dividend>, Quote, HashMapPriceSource<Quote>> {
+    fn setup() -> SingleBroker<
+        Dividend,
+        HashMapCorporateEventsSource<Dividend>,
+        Quote,
+        HashMapPriceSource<Quote>,
+    > {
         let clock = crate::clock::ClockBuilder::with_length_in_seconds(100, 5)
             .with_frequency(&crate::types::Frequency::Second)
             .build();
@@ -583,7 +588,12 @@ mod tests {
             .with_price_source(price_source)
             .build();
 
-        let _brkr: SingleBroker<Dividend, HashMapCorporateEventsSource<Dividend>, Quote, HashMapPriceSource<Quote>> = SingleBrokerBuilder::new()
+        let _brkr: SingleBroker<
+            Dividend,
+            HashMapCorporateEventsSource<Dividend>,
+            Quote,
+            HashMapPriceSource<Quote>,
+        > = SingleBrokerBuilder::new()
             .with_exchange(exchange)
             .with_trade_costs(vec![BrokerCost::PctOfValue(0.01)])
             .build();
@@ -607,7 +617,7 @@ mod tests {
         //Trades execute here
         price_source.add_quotes(101, Quote::new(100.00, 101.00, 100, "ABC"));
         price_source.add_quotes(101, Quote::new(10.00, 11.00, 100, "BCD"));
-        
+
         //We are missing a quote for BCD on 101, but the broker should return the last seen value
         price_source.add_quotes(102, Quote::new(104.00, 105.00, 102, "ABC"));
 
@@ -620,8 +630,12 @@ mod tests {
             .with_clock(clock.clone())
             .build();
 
-
-        let mut brkr: SingleBroker<Dividend, HashMapCorporateEventsSource<Dividend>, Quote, HashMapPriceSource<Quote>> = SingleBrokerBuilder::new()
+        let mut brkr: SingleBroker<
+            Dividend,
+            HashMapCorporateEventsSource<Dividend>,
+            Quote,
+            HashMapPriceSource<Quote>,
+        > = SingleBrokerBuilder::new()
             .with_exchange(exchange)
             .with_trade_costs(vec![BrokerCost::PctOfValue(0.01)])
             .build();
@@ -670,7 +684,12 @@ mod tests {
             .with_price_source(price_source)
             .build();
 
-        let mut brkr: SingleBroker<Dividend, HashMapCorporateEventsSource<Dividend>, Quote, HashMapPriceSource<Quote>> = SingleBrokerBuilder::new()
+        let mut brkr: SingleBroker<
+            Dividend,
+            HashMapCorporateEventsSource<Dividend>,
+            Quote,
+            HashMapPriceSource<Quote>,
+        > = SingleBrokerBuilder::new()
             .with_exchange(exchange)
             .with_trade_costs(vec![BrokerCost::PctOfValue(0.01)])
             .build();

@@ -1,12 +1,12 @@
 use alator::clock::{Clock, ClockBuilder};
 use alator::exchange::ConcurrentExchangeBuilder;
-use alator::input::{HashMapPriceSource, HashMapCorporateEventsSource};
-use alator::strategy::{AsyncStaticWeightStrategyBuilder, AsyncStaticWeightStrategy};
+use alator::input::{HashMapCorporateEventsSource, HashMapPriceSource};
+use alator::strategy::{AsyncStaticWeightStrategy, AsyncStaticWeightStrategyBuilder};
 use rand::distributions::{Distribution, Uniform};
 use rand::thread_rng;
 
-use alator::broker::{BrokerCost, ConcurrentBrokerBuilder, Quote, ConcurrentBroker, Dividend};
-use alator::simcontext::{SimContextMultiBuilder, SimContextMulti};
+use alator::broker::{BrokerCost, ConcurrentBroker, ConcurrentBrokerBuilder, Dividend, Quote};
+use alator::simcontext::{SimContextMulti, SimContextMultiBuilder};
 use alator::types::{CashValue, Frequency, PortfolioAllocation};
 
 fn build_data(clock: Clock) -> HashMapPriceSource<Quote> {
@@ -63,10 +63,11 @@ async fn staticweight_integration_test() {
         .with_clock(clock.clone())
         .build();
 
-    let simbrkr_first: ConcurrentBroker<Dividend, HashMapCorporateEventsSource<Dividend>, Quote> = ConcurrentBrokerBuilder::new()
-        .with_trade_costs(vec![BrokerCost::Flat(1.0.into())])
-        .build(&mut exchange)
-        .await;
+    let simbrkr_first: ConcurrentBroker<Dividend, HashMapCorporateEventsSource<Dividend>, Quote> =
+        ConcurrentBrokerBuilder::new()
+            .with_trade_costs(vec![BrokerCost::Flat(1.0.into())])
+            .build(&mut exchange)
+            .await;
 
     let strat_first = AsyncStaticWeightStrategyBuilder::new()
         .with_brkr(simbrkr_first)
@@ -74,10 +75,11 @@ async fn staticweight_integration_test() {
         .with_clock(clock.clone())
         .default();
 
-    let simbrkr_second: ConcurrentBroker<Dividend, HashMapCorporateEventsSource<Dividend>, Quote> = ConcurrentBrokerBuilder::new()
-        .with_trade_costs(vec![BrokerCost::Flat(1.0.into())])
-        .build(&mut exchange)
-        .await;
+    let simbrkr_second: ConcurrentBroker<Dividend, HashMapCorporateEventsSource<Dividend>, Quote> =
+        ConcurrentBrokerBuilder::new()
+            .with_trade_costs(vec![BrokerCost::Flat(1.0.into())])
+            .build(&mut exchange)
+            .await;
 
     let strat_second = AsyncStaticWeightStrategyBuilder::new()
         .with_brkr(simbrkr_second)
@@ -85,10 +87,11 @@ async fn staticweight_integration_test() {
         .with_clock(clock.clone())
         .default();
 
-    let simbrkr_third: ConcurrentBroker<Dividend, HashMapCorporateEventsSource<Dividend>, Quote> = ConcurrentBrokerBuilder::new()
-        .with_trade_costs(vec![BrokerCost::Flat(1.0.into())])
-        .build(&mut exchange)
-        .await;
+    let simbrkr_third: ConcurrentBroker<Dividend, HashMapCorporateEventsSource<Dividend>, Quote> =
+        ConcurrentBrokerBuilder::new()
+            .with_trade_costs(vec![BrokerCost::Flat(1.0.into())])
+            .build(&mut exchange)
+            .await;
 
     let strat_third = AsyncStaticWeightStrategyBuilder::new()
         .with_brkr(simbrkr_third)
@@ -96,7 +99,12 @@ async fn staticweight_integration_test() {
         .with_clock(clock.clone())
         .default();
 
-    let mut sim: SimContextMulti<Dividend, Quote, HashMapPriceSource<Quote>, AsyncStaticWeightStrategy<Dividend, HashMapCorporateEventsSource<Dividend>, Quote>> = SimContextMultiBuilder::new()
+    let mut sim: SimContextMulti<
+        Dividend,
+        Quote,
+        HashMapPriceSource<Quote>,
+        AsyncStaticWeightStrategy<Dividend, HashMapCorporateEventsSource<Dividend>, Quote>,
+    > = SimContextMultiBuilder::new()
         .with_clock(clock.clone())
         .with_exchange(exchange)
         .add_strategy(strat_first)

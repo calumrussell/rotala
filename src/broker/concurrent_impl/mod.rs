@@ -9,7 +9,7 @@ use std::marker::PhantomData;
 use std::sync::Arc;
 
 use crate::exchange::{DefaultSubscriberId, NotifyReceiver, OrderSender, PriceReceiver};
-use crate::input::{Dividendable, Quotable, CorporateEventsSource};
+use crate::input::{CorporateEventsSource, Dividendable, Quotable};
 use crate::types::{CashValue, PortfolioHoldings, PortfolioQty, Price};
 
 use super::{
@@ -431,7 +431,7 @@ mod tests {
     };
     use crate::clock::ClockBuilder;
     use crate::exchange::{ConcurrentExchange, ConcurrentExchangeBuilder};
-    use crate::input::{HashMapPriceSource, HashMapCorporateEventsSource};
+    use crate::input::{HashMapCorporateEventsSource, HashMapPriceSource};
     use crate::types::Frequency;
 
     async fn setup() -> (
@@ -660,11 +660,11 @@ mod tests {
             .with_price_source(price_source)
             .build();
 
-
-        let _brkr: ConcurrentBroker<Dividend, HashMapCorporateEventsSource<Dividend>, Quote> = ConcurrentBrokerBuilder::new()
-            .with_trade_costs(vec![BrokerCost::PctOfValue(0.01)])
-            .build(&mut exchange)
-            .await;
+        let _brkr: ConcurrentBroker<Dividend, HashMapCorporateEventsSource<Dividend>, Quote> =
+            ConcurrentBrokerBuilder::new()
+                .with_trade_costs(vec![BrokerCost::PctOfValue(0.01)])
+                .build(&mut exchange)
+                .await;
     }
 
     #[tokio::test]
@@ -700,14 +700,17 @@ mod tests {
             .with_price_source(price_source)
             .build();
 
-        let mut brkr: ConcurrentBroker<Dividend, HashMapCorporateEventsSource<Dividend>, Quote> = ConcurrentBrokerBuilder::new()
-            .with_trade_costs(vec![BrokerCost::PctOfValue(0.01)])
-            .build(&mut exchange)
-            .await;
+        let mut brkr: ConcurrentBroker<Dividend, HashMapCorporateEventsSource<Dividend>, Quote> =
+            ConcurrentBrokerBuilder::new()
+                .with_trade_costs(vec![BrokerCost::PctOfValue(0.01)])
+                .build(&mut exchange)
+                .await;
 
         brkr.deposit_cash(&100_000.0);
-        brkr.send_order(Order::market(OrderType::MarketBuy, "ABC", 100.0)).await;
-        brkr.send_order(Order::market(OrderType::MarketBuy, "BCD", 100.0)).await;
+        brkr.send_order(Order::market(OrderType::MarketBuy, "ABC", 100.0))
+            .await;
+        brkr.send_order(Order::market(OrderType::MarketBuy, "BCD", 100.0))
+            .await;
 
         exchange.check().await;
         brkr.check().await;
@@ -752,10 +755,11 @@ mod tests {
             .with_price_source(price_source)
             .build();
 
-        let mut brkr: ConcurrentBroker<Dividend, HashMapCorporateEventsSource<Dividend>, Quote> = ConcurrentBrokerBuilder::new()
-            .with_trade_costs(vec![BrokerCost::PctOfValue(0.01)])
-            .build(&mut exchange)
-            .await;
+        let mut brkr: ConcurrentBroker<Dividend, HashMapCorporateEventsSource<Dividend>, Quote> =
+            ConcurrentBrokerBuilder::new()
+                .with_trade_costs(vec![BrokerCost::PctOfValue(0.01)])
+                .build(&mut exchange)
+                .await;
 
         brkr.deposit_cash(&100_000.0);
         //Because the price of ABC rises after this order is sent, we will end up with a negative

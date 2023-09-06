@@ -200,10 +200,7 @@ impl BrokerCalculations {
     //target_weights passed into the function.
     //Returns orders so calling function has control over when orders are executed
     //Requires mutable reference to brkr because it calls get_position_value
-    pub fn diff_brkr_against_target_weights<
-        Q: Quotable,
-        T: BacktestBroker + GetsQuote<Q>,
-    >(
+    pub fn diff_brkr_against_target_weights<Q: Quotable, T: BacktestBroker + GetsQuote<Q>>(
         target_weights: &PortfolioAllocation,
         brkr: &mut T,
     ) -> Vec<super::Order> {

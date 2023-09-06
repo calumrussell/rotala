@@ -10,7 +10,7 @@ use crate::broker::{
     EventLog, ReceievesOrders, ReceievesOrdersAsync, SingleBroker, Trade, TransferCash,
 };
 use crate::clock::Clock;
-use crate::input::{Dividendable, Quotable, CorporateEventsSource, PriceSource};
+use crate::input::{CorporateEventsSource, Dividendable, PriceSource, Quotable};
 use crate::schedule::{DefaultTradingSchedule, TradingSchedule};
 use crate::strategy::StrategyEvent;
 use crate::types::{CashValue, PortfolioAllocation, StrategySnapshot};
@@ -156,7 +156,7 @@ where
     }
 }
 
-impl<D, T, Q > History for AsyncStaticWeightStrategy<D, T, Q>
+impl<D, T, Q> History for AsyncStaticWeightStrategy<D, T, Q>
 where
     D: Dividendable,
     T: CorporateEventsSource<D>,

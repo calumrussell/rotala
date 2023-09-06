@@ -1,7 +1,7 @@
 use std::marker::PhantomData;
 
 use crate::clock::Clock;
-use crate::input::{Quotable, PriceSource};
+use crate::input::{PriceSource, Quotable};
 
 use super::SingleExchange;
 

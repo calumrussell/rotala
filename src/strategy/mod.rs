@@ -93,10 +93,13 @@ mod tests {
     use crate::broker::{BrokerCost, ConcurrentBroker, ConcurrentBrokerBuilder, Dividend, Quote};
     use crate::clock::{Clock, ClockBuilder};
     use crate::exchange::ConcurrentExchangeBuilder;
-    use crate::input::{HashMapPriceSource, HashMapCorporateEventsSource};
+    use crate::input::{HashMapCorporateEventsSource, HashMapPriceSource};
     use crate::types::{Frequency, PortfolioAllocation};
 
-    async fn setup() -> (ConcurrentBroker<Dividend, HashMapCorporateEventsSource<Dividend>, Quote>, Clock) {
+    async fn setup() -> (
+        ConcurrentBroker<Dividend, HashMapCorporateEventsSource<Dividend>, Quote>,
+        Clock,
+    ) {
         let clock = ClockBuilder::with_length_in_dates(100, 102)
             .with_frequency(&Frequency::Second)
             .build();
@@ -111,10 +114,11 @@ mod tests {
             .with_price_source(price_source)
             .build();
 
-        let brkr: ConcurrentBroker<Dividend, HashMapCorporateEventsSource<Dividend>, Quote> = ConcurrentBrokerBuilder::new()
-            .with_trade_costs(vec![BrokerCost::flat(0.1)])
-            .build(&mut exchange)
-            .await;
+        let brkr: ConcurrentBroker<Dividend, HashMapCorporateEventsSource<Dividend>, Quote> =
+            ConcurrentBrokerBuilder::new()
+                .with_trade_costs(vec![BrokerCost::flat(0.1)])
+                .build(&mut exchange)
+                .await;
         (brkr, clock)
     }
 
@@ -122,10 +126,14 @@ mod tests {
     #[should_panic]
     async fn test_that_static_builder_fails_without_weights() {
         let comp = setup().await;
-        let _strat = AsyncStaticWeightStrategyBuilder::<Dividend, HashMapCorporateEventsSource<Dividend>, Quote>::new()
-            .with_brkr(comp.0)
-            .with_clock(comp.1)
-            .default();
+        let _strat = AsyncStaticWeightStrategyBuilder::<
+            Dividend,
+            HashMapCorporateEventsSource<Dividend>,
+            Quote,
+        >::new()
+        .with_brkr(comp.0)
+        .with_clock(comp.1)
+        .default();
     }
 
     #[tokio::test]
@@ -133,10 +141,14 @@ mod tests {
     async fn test_that_static_builder_fails_without_brkr() {
         let comp = setup().await;
         let weights = PortfolioAllocation::new();
-        let _strat = AsyncStaticWeightStrategyBuilder::<Dividend, HashMapCorporateEventsSource<Dividend>, Quote>::new()
-            .with_weights(weights)
-            .with_clock(comp.1)
-            .default();
+        let _strat = AsyncStaticWeightStrategyBuilder::<
+            Dividend,
+            HashMapCorporateEventsSource<Dividend>,
+            Quote,
+        >::new()
+        .with_weights(weights)
+        .with_clock(comp.1)
+        .default();
     }
 
     #[tokio::test]
@@ -144,9 +156,13 @@ mod tests {
     async fn test_that_static_builder_fails_without_clock() {
         let comp = setup().await;
         let weights = PortfolioAllocation::new();
-        let _strat = AsyncStaticWeightStrategyBuilder::<Dividend, HashMapCorporateEventsSource<Dividend>, Quote>::new()
-            .with_weights(weights)
-            .with_brkr(comp.0)
-            .default();
+        let _strat = AsyncStaticWeightStrategyBuilder::<
+            Dividend,
+            HashMapCorporateEventsSource<Dividend>,
+            Quote,
+        >::new()
+        .with_weights(weights)
+        .with_brkr(comp.0)
+        .default();
     }
 }

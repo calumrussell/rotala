@@ -8,7 +8,7 @@ use futures::future::join_all;
 
 use crate::clock::Clock;
 use crate::exchange::ConcurrentExchange;
-use crate::input::{Dividendable, Quotable, PriceSource};
+use crate::input::{Dividendable, PriceSource, Quotable};
 use crate::perf::{BacktestOutput, PerformanceCalculator};
 use crate::strategy::{AsyncStrategy, History, Strategy};
 use crate::types::{CashValue, Frequency};

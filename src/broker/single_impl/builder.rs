@@ -3,7 +3,7 @@ use std::marker::PhantomData;
 
 use crate::broker::{BrokerCost, BrokerLog};
 use crate::exchange::SingleExchange;
-use crate::input::{Dividendable, Quotable, CorporateEventsSource, PriceSource};
+use crate::input::{CorporateEventsSource, Dividendable, PriceSource, Quotable};
 use crate::types::{CashValue, PortfolioHoldings};
 
 use super::SingleBroker;
@@ -22,7 +22,7 @@ where
     dividend: PhantomData<D>,
 }
 
-impl <D, T, Q, P> SingleBrokerBuilder<D, T, Q, P>
+impl<D, T, Q, P> SingleBrokerBuilder<D, T, Q, P>
 where
     D: Dividendable,
     T: CorporateEventsSource<D>,
@@ -99,4 +99,3 @@ where
         Self::new()
     }
 }
- 

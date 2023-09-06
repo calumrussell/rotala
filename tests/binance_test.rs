@@ -11,7 +11,7 @@ use alator::exchange::SingleExchangeBuilder;
 use alator::input::{HashMapCorporateEventsSource, HashMapPriceSource};
 use alator::simcontext::SimContextBuilder;
 use alator::strategy::{History, Strategy, StrategyEvent, TransferTo};
-use alator::types::{CashValue, Frequency, StrategySnapshot, DateTime};
+use alator::types::{CashValue, DateTime, Frequency, StrategySnapshot};
 
 /* Get the data from Binance, build quote from open and close of candle, insert the quotes into
  * QuotesHashMap using those dates.
@@ -131,7 +131,12 @@ impl MovingAverage {
 //tracking into the simulation lifecycle.
 struct MovingAverageStrategy {
     clock: Clock,
-    brkr: SingleBroker<Dividend, HashMapCorporateEventsSource<Dividend>, Quote, HashMapPriceSource<Quote>>,
+    brkr: SingleBroker<
+        Dividend,
+        HashMapCorporateEventsSource<Dividend>,
+        Quote,
+        HashMapPriceSource<Quote>,
+    >,
     ten: MovingAverage,
     fifty: MovingAverage,
     history: Vec<StrategySnapshot>,
@@ -225,7 +230,15 @@ impl Strategy for MovingAverageStrategy {
 }
 
 impl MovingAverageStrategy {
-    fn new(brkr: SingleBroker<Dividend, HashMapCorporateEventsSource<Dividend>, Quote, HashMapPriceSource<Quote>>, clock: Clock) -> Self {
+    fn new(
+        brkr: SingleBroker<
+            Dividend,
+            HashMapCorporateEventsSource<Dividend>,
+            Quote,
+            HashMapPriceSource<Quote>,
+        >,
+        clock: Clock,
+    ) -> Self {
         let ten = MovingAverage::new(10);
         let fifty = MovingAverage::new(50);
         let history = Vec::new();
@@ -268,9 +281,12 @@ fn binance_test() {
         .with_price_source(price_source)
         .build();
 
-    let simbrkr: SingleBroker<Dividend, HashMapCorporateEventsSource<Dividend>, Quote, HashMapPriceSource<Quote>> = SingleBrokerBuilder::new()
-        .with_exchange(exchange)
-        .build();
+    let simbrkr: SingleBroker<
+        Dividend,
+        HashMapCorporateEventsSource<Dividend>,
+        Quote,
+        HashMapPriceSource<Quote>,
+    > = SingleBrokerBuilder::new().with_exchange(exchange).build();
 
     let strat = MovingAverageStrategy::new(simbrkr, clock.clone());
 

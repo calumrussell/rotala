@@ -6,7 +6,7 @@ use std::marker::PhantomData;
 use std::sync::Arc;
 
 use crate::clock::Clock;
-use crate::input::{Quotable, PriceSource};
+use crate::input::{PriceSource, Quotable};
 
 #[derive(Debug)]
 pub struct SingleExchange<Q, P>

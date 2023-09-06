@@ -1,6 +1,6 @@
 use crate::broker::{ConcurrentBroker, SingleBroker};
 use crate::clock::Clock;
-use crate::input::{Dividendable, Quotable, CorporateEventsSource, PriceSource};
+use crate::input::{CorporateEventsSource, Dividendable, PriceSource, Quotable};
 use crate::types::PortfolioAllocation;
 
 use super::{AsyncStaticWeightStrategy, StaticWeightStrategy};

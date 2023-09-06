@@ -4,7 +4,7 @@ use std::sync::Arc;
 
 use crate::broker::{BrokerCost, BrokerLog, ConcurrentBroker};
 use crate::exchange::ConcurrentExchange;
-use crate::input::{Dividendable, Quotable, CorporateEventsSource, PriceSource};
+use crate::input::{CorporateEventsSource, Dividendable, PriceSource, Quotable};
 use crate::types::{CashValue, PortfolioHoldings};
 
 pub struct ConcurrentBrokerBuilder<D, T, Q>
@@ -30,7 +30,6 @@ where
         &mut self,
         exchange: &mut ConcurrentExchange<Q, P>,
     ) -> ConcurrentBroker<D, T, Q> {
-
         let (subscriber_id, mut price_rx, notify_rx, order_tx) = exchange.subscribe().await;
 
         let mut first_quotes = HashMap::new();

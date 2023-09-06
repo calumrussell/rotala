@@ -1,4 +1,4 @@
-use crate::input::{Quotable, PriceSource};
+use crate::input::{PriceSource, Quotable};
 use crate::types::CashValue;
 
 #[derive(Debug)]

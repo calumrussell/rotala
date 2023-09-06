@@ -258,7 +258,7 @@ mod tests {
     use crate::broker::{BrokerCost, Dividend, Quote, SingleBroker, SingleBrokerBuilder};
     use crate::clock::{Clock, ClockBuilder};
     use crate::exchange::SingleExchangeBuilder;
-    use crate::input::{HashMapPriceSource, HashMapCorporateEventsSource};
+    use crate::input::{HashMapCorporateEventsSource, HashMapPriceSource};
     use crate::perf::StrategySnapshot;
     use crate::strategy::{History, StaticWeightStrategyBuilder, Strategy};
     use crate::types::PortfolioAllocation;
@@ -267,8 +267,15 @@ mod tests {
     use super::PerformanceCalculator;
     use super::PortfolioCalculations;
 
-    fn setup() -> (SingleBroker<Dividend, HashMapCorporateEventsSource<Dividend>, Quote, HashMapPriceSource<Quote>>, Clock) {
-
+    fn setup() -> (
+        SingleBroker<
+            Dividend,
+            HashMapCorporateEventsSource<Dividend>,
+            Quote,
+            HashMapPriceSource<Quote>,
+        >,
+        Clock,
+    ) {
         let clock = ClockBuilder::with_length_in_dates(100, 103)
             .with_frequency(&Frequency::Second)
             .build();
