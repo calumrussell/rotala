@@ -4,16 +4,18 @@ use alator::broker::{
 };
 use alator::clock::ClockBuilder;
 use alator::exchange::SingleExchangeBuilder;
-use alator::input::{
-    fake_price_source_generator, DefaultCorporateEventsSource, DefaultPriceSource,
-};
+use alator::input::{ DefaultCorporateEventsSource, DefaultPriceSource };
 use alator::simcontext::SimContextBuilder;
 use alator::strategy::StaticWeightStrategyBuilder;
 use alator::types::{CashValue, Frequency, PortfolioAllocation};
 
 use criterion::{criterion_group, criterion_main, Criterion};
+use rand::thread_rng;
+use rand_distr::{Uniform, Distribution};
 
 fn full_backtest_random_data() {
+    let price_dist = Uniform::new(90.0, 100.0);
+    let mut rng = thread_rng();
     let length_in_days: i64 = 100;
     let start_date: i64 = 1609750800; //Date - 4/1/21 9:00:0000
     let clock = ClockBuilder::with_length_in_days(start_date, length_in_days)
@@ -21,7 +23,22 @@ fn full_backtest_random_data() {
         .build();
 
     let initial_cash: CashValue = 100_000.0.into();
-    let price_source = fake_price_source_generator(clock.clone());
+
+    let mut price_source = DefaultPriceSource::new(clock.clone());
+    for date in clock.peek() {
+        price_source.add_quotes(
+            price_dist.sample(&mut rng),
+            price_dist.sample(&mut rng),
+            date,
+            "ABC",
+        );
+        price_source.add_quotes(
+            price_dist.sample(&mut rng),
+            price_dist.sample(&mut rng),
+            date,
+            "BCD",
+        );
+    }
 
     let mut weights: PortfolioAllocation = PortfolioAllocation::new();
     weights.insert("ABC", 0.5);
