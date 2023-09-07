@@ -4,14 +4,14 @@ use alator::broker::{
 };
 use alator::clock::ClockBuilder;
 use alator::exchange::SingleExchangeBuilder;
-use alator::input::{ DefaultCorporateEventsSource, DefaultPriceSource };
+use alator::input::{DefaultCorporateEventsSource, DefaultPriceSource};
 use alator::simcontext::SimContextBuilder;
 use alator::strategy::StaticWeightStrategyBuilder;
 use alator::types::{CashValue, Frequency, PortfolioAllocation};
 
 use criterion::{criterion_group, criterion_main, Criterion};
 use rand::thread_rng;
-use rand_distr::{Uniform, Distribution};
+use rand_distr::{Distribution, Uniform};
 
 fn full_backtest_random_data() {
     let price_dist = Uniform::new(90.0, 100.0);
