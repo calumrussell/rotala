@@ -6,52 +6,47 @@ use std::marker::PhantomData;
 use std::sync::Arc;
 
 use crate::clock::Clock;
-use crate::input::{DataSource, Dividendable, Quotable};
+use crate::input::{PriceSource, Quotable};
 
 #[derive(Debug)]
-pub struct SingleExchange<T, Q, D>
+pub struct SingleExchange<Q, P>
 where
     Q: Quotable,
-    D: Dividendable,
-    T: DataSource<Q, D>,
+    P: PriceSource<Q>,
 {
     clock: Clock,
     orderbook: super::orderbook::OrderBook,
-    data_source: T,
+    price_source: P,
     trade_log: Vec<super::types::ExchangeTrade>,
     //This is cleared on every tick
     order_buffer: Vec<super::types::ExchangeOrder>,
     _quote: PhantomData<Q>,
-    _dividend: PhantomData<D>,
 }
 
-impl<T, Q, D> SingleExchange<T, Q, D>
+impl<Q, P> SingleExchange<Q, P>
 where
     Q: Quotable,
-    D: Dividendable,
-    T: DataSource<Q, D>,
+    P: PriceSource<Q>,
 {
-    pub fn new(clock: Clock, data_source: T) -> Self {
+    pub fn new(clock: Clock, price_source: P) -> Self {
         Self {
             clock,
             orderbook: super::orderbook::OrderBook::new(),
-            data_source,
+            price_source,
             trade_log: Vec::new(),
             order_buffer: Vec::new(),
-            _dividend: PhantomData,
             _quote: PhantomData,
         }
     }
 }
 
-impl<T, Q, D> SingleExchange<T, Q, D>
+impl<Q, P> SingleExchange<Q, P>
 where
     Q: Quotable,
-    D: Dividendable,
-    T: DataSource<Q, D>,
+    P: PriceSource<Q>,
 {
     pub fn fetch_quotes(&self) -> Vec<Arc<Q>> {
-        if let Some(quotes) = self.data_source.get_quotes() {
+        if let Some(quotes) = self.price_source.get_quotes() {
             return quotes;
         }
         vec![]
@@ -83,7 +78,7 @@ where
         }
 
         let now = self.clock.now();
-        let executed_trades = self.orderbook.execute_orders(now, &self.data_source);
+        let executed_trades = self.orderbook.execute_orders(now, &self.price_source);
         self.trade_log.extend(executed_trades.clone());
         self.order_buffer.clear();
         executed_trades
@@ -92,43 +87,24 @@ where
 
 #[cfg(test)]
 mod tests {
-    use std::collections::HashMap;
-    use std::sync::Arc;
-
-    use crate::broker::{Dividend, Quote};
+    use crate::broker::Quote;
     use crate::exchange::ExchangeOrder;
-    use crate::input::{HashMapInput, QuotesHashMap};
-    use crate::types::DateTime;
+    use crate::input::DefaultPriceSource;
 
     use super::{SingleExchange, SingleExchangeBuilder};
 
-    fn setup() -> SingleExchange<HashMapInput, Quote, Dividend> {
-        let mut quotes: QuotesHashMap = HashMap::new();
-        quotes.insert(
-            DateTime::from(100),
-            vec![Arc::new(Quote::new(101.00, 102.00, 100, "ABC"))],
-        );
-        quotes.insert(
-            DateTime::from(101),
-            vec![Arc::new(Quote::new(102.00, 103.00, 101, "ABC"))],
-        );
-        quotes.insert(
-            DateTime::from(102),
-            vec![Arc::new(Quote::new(105.00, 106.00, 102, "ABC"))],
-        );
-
+    fn setup() -> SingleExchange<Quote, DefaultPriceSource> {
         let clock = crate::clock::ClockBuilder::with_length_in_seconds(100, 3)
             .with_frequency(&crate::types::Frequency::Second)
             .build();
-
-        let source = crate::input::HashMapInputBuilder::new()
-            .with_clock(clock.clone())
-            .with_quotes(quotes)
-            .build();
+        let mut price_source = DefaultPriceSource::new(clock.clone());
+        price_source.add_quotes(101.00, 102.00, 100, "ABC");
+        price_source.add_quotes(102.00, 103.00, 101, "ABC");
+        price_source.add_quotes(105.00, 106.00, 102, "ABC");
 
         let exchange = SingleExchangeBuilder::new()
             .with_clock(clock.clone())
-            .with_data_source(source)
+            .with_price_source(price_source)
             .build();
 
         exchange
@@ -225,29 +201,16 @@ mod tests {
 
     #[test]
     fn test_that_order_with_missing_price_executes_later() {
-        let mut quotes: QuotesHashMap = HashMap::new();
-        quotes.insert(
-            DateTime::from(100),
-            vec![Arc::new(Quote::new(101.00, 102.00, 100, "ABC"))],
-        );
-        quotes.insert(DateTime::from(101), vec![]);
-        quotes.insert(
-            DateTime::from(102),
-            vec![Arc::new(Quote::new(105.00, 106.00, 102, "ABC"))],
-        );
-
         let clock = crate::clock::ClockBuilder::with_length_in_seconds(100, 3)
             .with_frequency(&crate::types::Frequency::Second)
             .build();
-
-        let source = crate::input::HashMapInputBuilder::new()
-            .with_clock(clock.clone())
-            .with_quotes(quotes)
-            .build();
+        let mut price_source = DefaultPriceSource::new(clock.clone());
+        price_source.add_quotes(101.00, 102.00, 100, "ABC");
+        price_source.add_quotes(105.00, 106.00, 102, "ABC");
 
         let mut exchange = SingleExchangeBuilder::new()
             .with_clock(clock.clone())
-            .with_data_source(source)
+            .with_price_source(price_source)
             .build();
 
         exchange.insert_order(ExchangeOrder::market_buy(0, "ABC", 100.0));

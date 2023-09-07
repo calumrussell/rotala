@@ -1,30 +1,27 @@
 use std::marker::PhantomData;
 
 use crate::clock::Clock;
-use crate::input::{DataSource, Dividendable, Quotable};
+use crate::input::{PriceSource, Quotable};
 
 use super::SingleExchange;
 
-pub struct SingleExchangeBuilder<T, Q, D>
+pub struct SingleExchangeBuilder<Q, T>
 where
     Q: Quotable,
-    D: Dividendable,
-    T: DataSource<Q, D>,
+    T: PriceSource<Q>,
 {
-    data_source: Option<T>,
+    price_source: Option<T>,
     clock: Option<Clock>,
     _quote: PhantomData<Q>,
-    _dividend: PhantomData<D>,
 }
 
-impl<T, Q, D> SingleExchangeBuilder<T, Q, D>
+impl<Q, T> SingleExchangeBuilder<Q, T>
 where
     Q: Quotable,
-    D: Dividendable,
-    T: DataSource<Q, D>,
+    T: PriceSource<Q>,
 {
-    pub fn build(&mut self) -> SingleExchange<T, Q, D> {
-        if self.data_source.is_none() {
+    pub fn build(&mut self) -> SingleExchange<Q, T> {
+        if self.price_source.is_none() {
             panic!("Exchange must have data source");
         }
 
@@ -32,9 +29,9 @@ where
             panic!("Exchange must have clock");
         }
 
-        let data = std::mem::take(&mut self.data_source).unwrap();
+        let data = std::mem::take(&mut self.price_source).unwrap();
 
-        SingleExchange::new(self.clock.as_ref().unwrap().clone(), data.clone())
+        SingleExchange::new(self.clock.as_ref().unwrap().clone(), data)
     }
 
     pub fn with_clock(&mut self, clock: Clock) -> &mut Self {
@@ -42,26 +39,24 @@ where
         self
     }
 
-    pub fn with_data_source(&mut self, data_source: T) -> &mut Self {
-        self.data_source = Some(data_source);
+    pub fn with_price_source(&mut self, price_source: T) -> &mut Self {
+        self.price_source = Some(price_source);
         self
     }
 
     pub fn new() -> Self {
         Self {
             clock: None,
-            data_source: None,
+            price_source: None,
             _quote: PhantomData,
-            _dividend: PhantomData,
         }
     }
 }
 
-impl<T, Q, D> Default for SingleExchangeBuilder<T, Q, D>
+impl<Q, T> Default for SingleExchangeBuilder<Q, T>
 where
     Q: Quotable,
-    D: Dividendable,
-    T: DataSource<Q, D>,
+    T: PriceSource<Q>,
 {
     fn default() -> Self {
         Self::new()

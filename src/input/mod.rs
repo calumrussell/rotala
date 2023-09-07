@@ -27,56 +27,34 @@ pub trait Dividendable: Clone + std::marker::Send + std::marker::Sync {
     fn get_value(&self) -> &Price;
 }
 
-///Retrieves price and dividends for symbol/symbols.
-///
-///Whilst this trait is created with backtests in mind, the calling pattern should match that used
-///in live-trading systems. All system time data is stored within structs implementing this trait
-///(in this case, a reference to `Clock`). Callers should not have to store time state themselves,
-///this pattern reduces runtime errors.
-///
-///Dates will be known at runtime so when allocating space for `QuotesHashMap`/`DividendsHashMap`,
-///`HashMap::with_capacity()` should be used using either length of dates or `len()` of `Clock`.
-pub trait DataSource<Q, D>: Clone
+pub trait PriceSource<Q>: Clone
 where
     Q: Quotable,
-    D: Dividendable,
 {
     fn get_quote(&self, symbol: &str) -> Option<Arc<Q>>;
     fn get_quotes(&self) -> Option<Vec<Arc<Q>>>;
+}
+
+pub trait CorporateEventsSource<D>: Clone
+where
+    D: Dividendable,
+{
     fn get_dividends(&self) -> Option<Vec<Arc<D>>>;
 }
 
-///Implementation of [DataSource trait that wraps around a HashMap. Time is kept with reference to
-///[Clock].
+type DefaultPriceSourceImpl<Q> = (HashMap<DateTime, Vec<Arc<Q>>>, Clock);
+
 #[derive(Debug)]
-pub struct HashMapInput {
-    inner: std::sync::Arc<HashMapInputInner>,
+pub struct DefaultPriceSource {
+    inner: Arc<DefaultPriceSourceImpl<Quote>>,
 }
 
-#[derive(Clone, Debug)]
-struct HashMapInputInner {
-    quotes: QuotesHashMap,
-    dividends: DividendsHashMap,
-    clock: Clock,
-}
-
-pub type QuotesHashMap = HashMap<DateTime, Vec<Arc<Quote>>>;
-pub type DividendsHashMap = HashMap<DateTime, Vec<Arc<Dividend>>>;
-
-impl Clone for HashMapInput {
-    fn clone(&self) -> Self {
-        Self {
-            inner: self.inner.clone(),
-        }
-    }
-}
-
-impl DataSource<Quote, Dividend> for HashMapInput {
+impl PriceSource<Quote> for DefaultPriceSource {
     fn get_quote(&self, symbol: &str) -> Option<Arc<Quote>> {
-        let curr_date = self.inner.clock.now();
-        if let Some(quotes) = self.inner.quotes.get(&curr_date) {
+        let curr_date = self.inner.1.now();
+        if let Some(quotes) = self.inner.0.get(&curr_date) {
             for quote in quotes {
-                if quote.symbol.eq(symbol) {
+                if quote.get_symbol().eq(symbol) {
                     return Some(quote.clone());
                 }
             }
@@ -85,92 +63,65 @@ impl DataSource<Quote, Dividend> for HashMapInput {
     }
 
     fn get_quotes(&self) -> Option<Vec<Arc<Quote>>> {
-        let curr_date = self.inner.clock.now();
-        if let Some(quotes) = self.inner.quotes.get(&curr_date) {
+        let curr_date = self.inner.1.now();
+        if let Some(quotes) = self.inner.0.get(&curr_date) {
             return Some(quotes.clone());
         }
         None
     }
-
-    fn get_dividends(&self) -> Option<Vec<Arc<Dividend>>> {
-        let curr_date = self.inner.clock.now();
-        if let Some(dividends) = self.inner.dividends.get(&curr_date) {
-            return Some(dividends.clone());
-        }
-        None
-    }
 }
 
-//Can run without dividends but users of struct must initialise date and must set quotes
-pub struct HashMapInputBuilder {
-    quotes: Option<QuotesHashMap>,
-    dividends: Option<DividendsHashMap>,
-    clock: Option<Clock>,
-}
-
-impl HashMapInputBuilder {
-    pub fn build(&mut self) -> HashMapInput {
-        if self.clock.is_none() || self.quotes.is_none() {
-            panic!("HashMapInput type must have quotes and must have date initialised");
-        }
-
-        let quotes = self.quotes.take().unwrap();
-        let dividends = if self.dividends.is_none() {
-            HashMap::new()
-        } else {
-            self.dividends.take().unwrap()
-        };
-
-        HashMapInput {
-            inner: Arc::new(HashMapInputInner {
-                quotes,
-                dividends,
-                clock: self.clock.as_ref().unwrap().clone(),
-            }),
-        }
-    }
-
-    pub fn with_quotes(&mut self, quotes: QuotesHashMap) -> &mut Self {
-        self.quotes = Some(quotes);
-        self
-    }
-
-    pub fn with_dividends(&mut self, dividends: DividendsHashMap) -> &mut Self {
-        self.dividends = Some(dividends);
-        self
-    }
-
-    pub fn with_clock(&mut self, clock: Clock) -> &mut Self {
-        self.clock = Some(clock);
-        self
-    }
-
-    pub fn new() -> Self {
+impl Clone for DefaultPriceSource {
+    fn clone(&self) -> Self {
         Self {
-            quotes: None,
-            dividends: None,
-            clock: None,
+            inner: self.inner.clone(),
         }
     }
 }
 
-impl Default for HashMapInputBuilder {
-    fn default() -> Self {
-        Self::new()
+impl DefaultPriceSource {
+    pub fn add_quotes(
+        &mut self,
+        bid: impl Into<Price>,
+        ask: impl Into<Price>,
+        date: impl Into<DateTime>,
+        symbol: impl Into<String>,
+    ) {
+        let inner = Arc::get_mut(&mut self.inner).unwrap();
+        let datetime: DateTime = date.into();
+
+        let quote = Quote::new(bid, ask, datetime, symbol);
+        if let Some(quotes) = inner.0.get_mut(&datetime) {
+            quotes.push(Arc::new(quote))
+        } else {
+            inner.0.insert(datetime, vec![Arc::new(quote)]);
+        }
+    }
+
+    pub fn from_hashmap(quotes: HashMap<DateTime, Vec<Arc<Quote>>>, clock: Clock) -> Self {
+        Self {
+            inner: Arc::new((quotes, clock)),
+        }
+    }
+
+    pub fn new(clock: Clock) -> Self {
+        let quotes = HashMap::with_capacity(clock.len());
+        Self {
+            inner: Arc::new((quotes, clock)),
+        }
     }
 }
 
 #[cfg(feature = "python")]
 #[derive(Clone, Debug)]
-pub struct PyInput<'a> {
+pub struct PyPriceSource<'a> {
     pub quotes: &'a PyDict,
-    pub dividends: &'a PyDict,
     pub tickers: &'a PyDict,
     pub clock: Clock,
 }
 
 #[cfg(feature = "python")]
-impl<'a> DataSource<PyQuote, PyDividend> for PyInput<'a> {
+impl<'a> PriceSource<PyQuote> for PyPriceSource<'a> {
     fn get_quote(&self, symbol: &str) -> Option<Arc<PyQuote>> {
         if let Some(ticker_pos_any) = self.tickers.get_item(symbol) {
             let curr_date = self.clock.now();
@@ -193,37 +144,91 @@ impl<'a> DataSource<PyQuote, PyDividend> for PyInput<'a> {
     fn get_quotes(&self) -> Option<Vec<Arc<PyQuote>>> {
         None
     }
+}
 
-    //TODO: need to implement, can't do this without Python-native types
+#[cfg(feature = "python")]
+#[derive(Clone, Debug)]
+pub struct PyCorporateEventsSource<'a> {
+    pub dividends: &'a PyDict,
+    pub clock: Clock,
+}
+
+#[cfg(feature = "python")]
+impl<'a> CorporateEventsSource<PyDividend> for PyCorporateEventsSource<'a> {
     fn get_dividends(&self) -> Option<Vec<Arc<PyDividend>>> {
         None
     }
 }
 
-pub fn fake_data_generator(clock: Clock) -> HashMapInput {
+type CorporateEventsSourceImpl<D> = (HashMap<DateTime, Vec<Arc<D>>>, Clock);
+
+#[derive(Debug)]
+pub struct DefaultCorporateEventsSource {
+    inner: std::sync::Arc<CorporateEventsSourceImpl<Dividend>>,
+}
+
+impl CorporateEventsSource<Dividend> for DefaultCorporateEventsSource {
+    fn get_dividends(&self) -> Option<Vec<Arc<Dividend>>> {
+        let curr_date = self.inner.1.now();
+        if let Some(dividends) = self.inner.0.get(&curr_date) {
+            return Some(dividends.clone());
+        }
+        None
+    }
+}
+
+impl Clone for DefaultCorporateEventsSource {
+    fn clone(&self) -> Self {
+        Self {
+            inner: self.inner.clone(),
+        }
+    }
+}
+
+impl DefaultCorporateEventsSource {
+    pub fn add_dividends(
+        &mut self,
+        value: impl Into<Price>,
+        symbol: impl Into<String>,
+        date: impl Into<DateTime>,
+    ) {
+        let inner = Arc::get_mut(&mut self.inner).unwrap();
+        let datetime: DateTime = date.into();
+        let dividend = Dividend::new(value, symbol, datetime);
+
+        if let Some(dividends) = inner.0.get_mut(&datetime) {
+            dividends.push(Arc::new(dividend));
+        } else {
+            inner.0.insert(datetime, vec![Arc::new(dividend)]);
+        }
+    }
+
+    pub fn new(clock: Clock) -> Self {
+        let quotes = HashMap::with_capacity(clock.len());
+        Self {
+            inner: Arc::new((quotes, clock)),
+        }
+    }
+}
+
+pub fn fake_price_source_generator(clock: Clock) -> DefaultPriceSource {
     let price_dist = Uniform::new(90.0, 100.0);
     let mut rng = thread_rng();
 
-    let mut raw_data: HashMap<DateTime, Vec<Arc<Quote>>> = HashMap::with_capacity(clock.len());
+    let mut price_source = DefaultPriceSource::new(clock.clone());
     for date in clock.peek() {
-        let q1 = Quote::new(
+        price_source.add_quotes(
             price_dist.sample(&mut rng),
             price_dist.sample(&mut rng),
             date,
             "ABC",
         );
-        let q2 = Quote::new(
+        price_source.add_quotes(
             price_dist.sample(&mut rng),
             price_dist.sample(&mut rng),
             date,
             "BCD",
         );
-        raw_data.insert(i64::from(date).into(), vec![Arc::new(q1), Arc::new(q2)]);
     }
-
-    let source = HashMapInputBuilder::new()
-        .with_quotes(raw_data)
-        .with_clock(clock.clone())
-        .build();
-    source
+    price_source
 }

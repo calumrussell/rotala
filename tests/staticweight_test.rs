@@ -1,43 +1,34 @@
 use alator::clock::{Clock, ClockBuilder};
 use alator::exchange::SingleExchangeBuilder;
-use alator::input::HashMapInputBuilder;
+use alator::input::{DefaultCorporateEventsSource, DefaultPriceSource};
 use alator::strategy::StaticWeightStrategyBuilder;
 use rand::distributions::{Distribution, Uniform};
 use rand::thread_rng;
-use std::collections::HashMap;
-use std::sync::Arc;
 
-use alator::broker::{BrokerCost, Quote, SingleBrokerBuilder};
-use alator::input::HashMapInput;
+use alator::broker::{BrokerCost, Dividend, Quote, SingleBroker, SingleBrokerBuilder};
 use alator::simcontext::SimContextBuilder;
-use alator::types::{CashValue, DateTime, Frequency, PortfolioAllocation};
+use alator::types::{CashValue, Frequency, PortfolioAllocation};
 
-fn build_data(clock: Clock) -> HashMapInput {
+fn build_data(clock: Clock) -> DefaultPriceSource {
     let price_dist = Uniform::new(90.0, 100.0);
     let mut rng = thread_rng();
 
-    let mut raw_data: HashMap<DateTime, Vec<Arc<Quote>>> = HashMap::with_capacity(clock.len());
+    let mut price_source = DefaultPriceSource::new(clock.clone());
     for date in clock.peek() {
-        let q1 = Quote::new(
+        price_source.add_quotes(
             price_dist.sample(&mut rng),
             price_dist.sample(&mut rng),
             date,
             "ABC",
         );
-        let q2 = Quote::new(
+        price_source.add_quotes(
             price_dist.sample(&mut rng),
             price_dist.sample(&mut rng),
             date,
             "BCD",
         );
-        raw_data.insert(date, vec![Arc::new(q1), Arc::new(q2)]);
     }
-
-    let source = HashMapInputBuilder::new()
-        .with_quotes(raw_data)
-        .with_clock(clock.clone())
-        .build();
-    source
+    price_source
 }
 
 #[test]
@@ -50,22 +41,22 @@ fn staticweight_integration_test() {
         .with_frequency(&Frequency::Daily)
         .build();
 
-    let data = build_data(clock.clone());
+    let price_source = build_data(clock.clone());
 
     let mut weights: PortfolioAllocation = PortfolioAllocation::new();
     weights.insert("ABC", 0.5);
     weights.insert("BCD", 0.5);
 
     let exchange = SingleExchangeBuilder::new()
-        .with_data_source(data.clone())
+        .with_price_source(price_source)
         .with_clock(clock.clone())
         .build();
 
-    let simbrkr = SingleBrokerBuilder::new()
-        .with_data(data)
-        .with_trade_costs(vec![BrokerCost::Flat(1.0.into())])
-        .with_exchange(exchange)
-        .build();
+    let simbrkr: SingleBroker<Dividend, DefaultCorporateEventsSource, Quote, DefaultPriceSource> =
+        SingleBrokerBuilder::new()
+            .with_trade_costs(vec![BrokerCost::Flat(1.0.into())])
+            .with_exchange(exchange)
+            .build();
 
     let strat = StaticWeightStrategyBuilder::new()
         .with_brkr(simbrkr)

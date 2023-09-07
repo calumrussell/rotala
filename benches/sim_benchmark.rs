@@ -1,22 +1,19 @@
 use alator::broker::{
-    BrokerCost, Order, OrderType, Quote, ReceievesOrders, SingleBrokerBuilder, TransferCash,
+    BrokerCost, Dividend, Order, OrderType, Quote, ReceievesOrders, SingleBroker,
+    SingleBrokerBuilder, TransferCash,
 };
 use alator::clock::ClockBuilder;
 use alator::exchange::SingleExchangeBuilder;
-use alator::input::HashMapInputBuilder;
+use alator::input::{DefaultCorporateEventsSource, DefaultPriceSource};
 use alator::simcontext::SimContextBuilder;
 use alator::strategy::StaticWeightStrategyBuilder;
-use alator::types::{CashValue, DateTime, Frequency, PortfolioAllocation};
+use alator::types::{CashValue, Frequency, PortfolioAllocation};
 
 use criterion::{criterion_group, criterion_main, Criterion};
-use rand::distributions::Uniform;
 use rand::thread_rng;
-use rand_distr::Distribution;
+use rand_distr::{Distribution, Uniform};
 
-use std::collections::HashMap;
-use std::sync::Arc;
-
-async fn full_backtest_random_data() {
+fn full_backtest_random_data() {
     let price_dist = Uniform::new(90.0, 100.0);
     let mut rng = thread_rng();
     let length_in_days: i64 = 100;
@@ -27,42 +24,36 @@ async fn full_backtest_random_data() {
 
     let initial_cash: CashValue = 100_000.0.into();
 
-    let mut raw_data: HashMap<DateTime, Vec<Arc<Quote>>> = HashMap::with_capacity(clock.len());
+    let mut price_source = DefaultPriceSource::new(clock.clone());
     for date in clock.peek() {
-        let q1 = Quote::new(
+        price_source.add_quotes(
             price_dist.sample(&mut rng),
             price_dist.sample(&mut rng),
             date,
             "ABC",
         );
-        let q2 = Quote::new(
+        price_source.add_quotes(
             price_dist.sample(&mut rng),
             price_dist.sample(&mut rng),
             date,
             "BCD",
         );
-        raw_data.insert(date, vec![Arc::new(q1), Arc::new(q2)]);
     }
-
-    let data = HashMapInputBuilder::new()
-        .with_quotes(raw_data)
-        .with_clock(clock.clone())
-        .build();
 
     let mut weights: PortfolioAllocation = PortfolioAllocation::new();
     weights.insert("ABC", 0.5);
     weights.insert("BCD", 0.5);
 
     let exchange = SingleExchangeBuilder::new()
-        .with_data_source(data.clone())
+        .with_price_source(price_source)
         .with_clock(clock.clone())
         .build();
 
-    let simbrkr = SingleBrokerBuilder::new()
-        .with_data(data)
-        .with_exchange(exchange)
-        .with_trade_costs(vec![BrokerCost::Flat(1.0.into())])
-        .build();
+    let simbrkr: SingleBroker<Dividend, DefaultCorporateEventsSource, Quote, DefaultPriceSource> =
+        SingleBrokerBuilder::new()
+            .with_exchange(exchange)
+            .with_trade_costs(vec![BrokerCost::Flat(1.0.into())])
+            .build();
 
     let strat = StaticWeightStrategyBuilder::new()
         .with_brkr(simbrkr)
@@ -79,42 +70,27 @@ async fn full_backtest_random_data() {
 }
 
 fn trade_execution_logic() {
-    let mut prices: HashMap<DateTime, Vec<Arc<Quote>>> = HashMap::new();
-    let quote = Arc::new(Quote::new(100.00, 101.00, 100, "ABC"));
-    let quote1 = Arc::new(Quote::new(10.00, 11.00, 100, "BCD"));
-
-    let quote2 = Arc::new(Quote::new(100.00, 101.00, 101, "ABC"));
-    let quote3 = Arc::new(Quote::new(10.00, 11.00, 101, "BCD"));
-
-    let quote4 = Arc::new(Quote::new(104.00, 105.00, 102, "ABC"));
-    let quote5 = Arc::new(Quote::new(10.00, 11.00, 102, "BCD"));
-
-    let quote6 = Arc::new(Quote::new(104.00, 105.00, 103, "ABC"));
-    let quote7 = Arc::new(Quote::new(12.00, 13.00, 103, "BCD"));
-
-    prices.insert(100.into(), vec![quote, quote1]);
-    prices.insert(101.into(), vec![quote2, quote3]);
-    prices.insert(102.into(), vec![quote4, quote5]);
-    prices.insert(103.into(), vec![quote6, quote7]);
-
     let clock = ClockBuilder::with_length_in_seconds(100, 5)
         .with_frequency(&Frequency::Second)
         .build();
 
-    let source = HashMapInputBuilder::new()
-        .with_quotes(prices)
-        .with_clock(clock.clone())
-        .build();
+    let mut price_source = DefaultPriceSource::new(clock.clone());
+    price_source.add_quotes(100.00, 101.00, 100, "ABC");
+    price_source.add_quotes(10.00, 11.00, 100, "BCD");
+    price_source.add_quotes(100.00, 101.00, 101, "ABC");
+    price_source.add_quotes(10.00, 11.00, 101, "BCD");
+    price_source.add_quotes(104.00, 105.00, 102, "ABC");
+    price_source.add_quotes(10.00, 11.00, 102, "BCD");
+    price_source.add_quotes(104.00, 105.00, 103, "ABC");
+    price_source.add_quotes(12.00, 13.00, 103, "BCD");
 
     let exchange = SingleExchangeBuilder::new()
         .with_clock(clock.clone())
-        .with_data_source(source.clone())
+        .with_price_source(price_source)
         .build();
 
-    let mut brkr = SingleBrokerBuilder::new()
-        .with_data(source)
-        .with_exchange(exchange)
-        .build();
+    let mut brkr: SingleBroker<Dividend, DefaultCorporateEventsSource, Quote, DefaultPriceSource> =
+        SingleBrokerBuilder::new().with_exchange(exchange).build();
 
     brkr.deposit_cash(&100_000.0);
     brkr.send_order(Order::market(OrderType::MarketBuy, "ABC", 100.0));

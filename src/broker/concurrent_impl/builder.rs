@@ -4,36 +4,32 @@ use std::sync::Arc;
 
 use crate::broker::{BrokerCost, BrokerLog, ConcurrentBroker};
 use crate::exchange::ConcurrentExchange;
-use crate::input::{DataSource, Dividendable, Quotable};
+use crate::input::{CorporateEventsSource, Dividendable, PriceSource, Quotable};
 use crate::types::{CashValue, PortfolioHoldings};
 
-pub struct ConcurrentBrokerBuilder<T, Q, D>
+pub struct ConcurrentBrokerBuilder<D, T, Q>
 where
-    Q: Quotable,
     D: Dividendable,
-    T: DataSource<Q, D>,
+    T: CorporateEventsSource<D>,
+    Q: Quotable,
 {
     //Cannot run without data but can run with empty trade_costs
-    data: Option<T>,
+    corporate_source: Option<T>,
     trade_costs: Vec<BrokerCost>,
-    _quote: PhantomData<Q>,
-    _dividend: PhantomData<D>,
+    dividend: PhantomData<D>,
+    quote: PhantomData<Q>,
 }
 
-impl<T, Q, D> ConcurrentBrokerBuilder<T, Q, D>
+impl<D, T, Q> ConcurrentBrokerBuilder<D, T, Q>
 where
-    Q: Quotable,
     D: Dividendable,
-    T: DataSource<Q, D>,
+    T: CorporateEventsSource<D>,
+    Q: Quotable,
 {
-    pub async fn build(
+    pub async fn build<P: PriceSource<Q>>(
         &mut self,
-        exchange: &mut ConcurrentExchange<T, Q, D>,
-    ) -> ConcurrentBroker<T, Q, D> {
-        if self.data.is_none() {
-            panic!("Cannot build broker without data");
-        }
-
+        exchange: &mut ConcurrentExchange<Q, P>,
+    ) -> ConcurrentBroker<D, T, Q> {
         let (subscriber_id, mut price_rx, notify_rx, order_tx) = exchange.subscribe().await;
 
         let mut first_quotes = HashMap::new();
@@ -42,13 +38,13 @@ where
                 first_quotes.insert(quote.get_symbol().to_string(), Arc::clone(quote));
             }
         }
-        let data = std::mem::take(&mut self.data).unwrap();
+        let corporate_source = std::mem::take(&mut self.corporate_source);
 
         let holdings = PortfolioHoldings::new();
         let log = BrokerLog::new();
 
         ConcurrentBroker {
-            data: data.clone(),
+            corporate_source,
             //Intialised as invalid so errors throw if client tries to run before init
             holdings,
             cash: CashValue::from(0.0),
@@ -60,12 +56,12 @@ where
             notify_receiver: notify_rx,
             exchange_subscriber_id: subscriber_id,
             latest_quotes: first_quotes,
-            _dividend: PhantomData,
+            dividend: PhantomData,
         }
     }
 
-    pub fn with_data(&mut self, data: T) -> &mut Self {
-        self.data = Some(data);
+    pub fn with_corporate_source(&mut self, corporate_source: T) -> &mut Self {
+        self.corporate_source = Some(corporate_source);
         self
     }
 
@@ -76,19 +72,19 @@ where
 
     pub fn new() -> Self {
         ConcurrentBrokerBuilder {
-            data: None,
+            corporate_source: None,
             trade_costs: Vec::new(),
-            _quote: PhantomData,
-            _dividend: PhantomData,
+            dividend: PhantomData,
+            quote: PhantomData,
         }
     }
 }
 
-impl<T, Q, D> Default for ConcurrentBrokerBuilder<T, Q, D>
+impl<D, T, Q> Default for ConcurrentBrokerBuilder<D, T, Q>
 where
-    Q: Quotable,
     D: Dividendable,
-    T: DataSource<Q, D>,
+    T: CorporateEventsSource<D>,
+    Q: Quotable,
 {
     fn default() -> Self {
         Self::new()

@@ -255,55 +255,43 @@ impl PerformanceCalculator {
 
 #[cfg(test)]
 mod tests {
-    use std::collections::HashMap;
-    use std::sync::Arc;
-
     use crate::broker::{BrokerCost, Dividend, Quote, SingleBroker, SingleBrokerBuilder};
     use crate::clock::{Clock, ClockBuilder};
     use crate::exchange::SingleExchangeBuilder;
-    use crate::input::{HashMapInput, HashMapInputBuilder};
+    use crate::input::{DefaultCorporateEventsSource, DefaultPriceSource};
     use crate::perf::StrategySnapshot;
     use crate::strategy::{History, StaticWeightStrategyBuilder, Strategy};
-    use crate::types::{DateTime, PortfolioAllocation};
+    use crate::types::PortfolioAllocation;
 
     use super::Frequency;
     use super::PerformanceCalculator;
     use super::PortfolioCalculations;
 
-    fn setup() -> (SingleBroker<HashMapInput, Quote, Dividend>, Clock) {
-        let mut raw_data: HashMap<DateTime, Vec<Arc<Quote>>> = HashMap::new();
-
-        let quote_a1 = Arc::new(Quote::new(101.0, 102.0, 100, "ABC"));
-        let quote_a2 = Arc::new(Quote::new(102.0, 103.0, 101, "ABC"));
-        let quote_a3 = Arc::new(Quote::new(97.0, 98.0, 102, "ABC"));
-        let quote_a4 = Arc::new(Quote::new(105.0, 106.0, 103, "ABC"));
-
-        let quote_b1 = Arc::new(Quote::new(501.0, 502.0, 100, "BCD"));
-        let quote_b2 = Arc::new(Quote::new(503.0, 504.0, 101, "BCD"));
-        let quote_b3 = Arc::new(Quote::new(498.0, 499.0, 102, "BCD"));
-        let quote_b4 = Arc::new(Quote::new(495.0, 496.0, 103, "BCD"));
-
-        raw_data.insert(100.into(), vec![quote_a1, quote_b1]);
-        raw_data.insert(101.into(), vec![quote_a2, quote_b2]);
-        raw_data.insert(102.into(), vec![quote_a3, quote_b3]);
-        raw_data.insert(103.into(), vec![quote_a4, quote_b4]);
-
+    fn setup() -> (
+        SingleBroker<Dividend, DefaultCorporateEventsSource, Quote, DefaultPriceSource>,
+        Clock,
+    ) {
         let clock = ClockBuilder::with_length_in_dates(100, 103)
             .with_frequency(&Frequency::Second)
             .build();
 
-        let source = HashMapInputBuilder::new()
-            .with_quotes(raw_data)
-            .with_clock(clock.clone())
-            .build();
+        let mut price_source = DefaultPriceSource::new(clock.clone());
+        price_source.add_quotes(101.0, 102.0, 100, "ABC");
+        price_source.add_quotes(102.0, 103.0, 101, "ABC");
+        price_source.add_quotes(97.0, 98.0, 102, "ABC");
+        price_source.add_quotes(105.0, 106.0, 103, "ABC");
+
+        price_source.add_quotes(501.0, 502.0, 100, "BCD");
+        price_source.add_quotes(503.0, 504.0, 101, "BCD");
+        price_source.add_quotes(498.0, 499.0, 102, "BCD");
+        price_source.add_quotes(495.0, 496.0, 103, "BCD");
 
         let exchange = SingleExchangeBuilder::new()
             .with_clock(clock.clone())
-            .with_data_source(source.clone())
+            .with_price_source(price_source)
             .build();
 
         let brkr = SingleBrokerBuilder::new()
-            .with_data(source)
             .with_trade_costs(vec![BrokerCost::PctOfValue(0.01)])
             .with_exchange(exchange)
             .build();

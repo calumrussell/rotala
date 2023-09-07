@@ -3,34 +3,33 @@ use std::marker::PhantomData;
 
 use crate::broker::{BrokerCost, BrokerLog};
 use crate::exchange::SingleExchange;
-use crate::input::{DataSource, Dividendable, Quotable};
+use crate::input::{CorporateEventsSource, Dividendable, PriceSource, Quotable};
 use crate::types::{CashValue, PortfolioHoldings};
 
 use super::SingleBroker;
 
-pub struct SingleBrokerBuilder<T, Q, D>
+pub struct SingleBrokerBuilder<D, T, Q, P>
 where
-    Q: Quotable,
     D: Dividendable,
-    T: DataSource<Q, D>,
+    T: CorporateEventsSource<D>,
+    Q: Quotable,
+    P: PriceSource<Q>,
 {
     //Cannot run without data but can run with empty trade_costs
-    data: Option<T>,
+    corporate_source: Option<T>,
     trade_costs: Vec<BrokerCost>,
-    exchange: Option<SingleExchange<T, Q, D>>,
+    exchange: Option<SingleExchange<Q, P>>,
+    dividend: PhantomData<D>,
 }
 
-impl<T, Q, D> SingleBrokerBuilder<T, Q, D>
+impl<D, T, Q, P> SingleBrokerBuilder<D, T, Q, P>
 where
-    Q: Quotable,
     D: Dividendable,
-    T: DataSource<Q, D>,
+    T: CorporateEventsSource<D>,
+    Q: Quotable,
+    P: PriceSource<Q>,
 {
-    pub fn build(&mut self) -> SingleBroker<T, Q, D> {
-        if self.data.is_none() {
-            panic!("Cannot build broker without data");
-        }
-
+    pub fn build(&mut self) -> SingleBroker<D, T, Q, P> {
         if self.exchange.is_none() {
             panic!("Cannot build broker without exchange");
         }
@@ -38,20 +37,20 @@ where
         //If we don't have quotes on first tick, we shouldn't error but we should expect every
         //`DataSource` to provide a first tick
         let mut first_quotes = HashMap::new();
-        if let Some(quotes) = self.data.as_ref().unwrap().get_quotes() {
-            for quote in &quotes {
-                first_quotes.insert(quote.get_symbol().to_string(), std::sync::Arc::clone(quote));
-            }
+        let quotes = self.exchange.as_ref().unwrap().fetch_quotes();
+        for quote in &quotes {
+            first_quotes.insert(quote.get_symbol().to_string(), std::sync::Arc::clone(quote));
         }
 
         let holdings = PortfolioHoldings::new();
         let log = BrokerLog::new();
 
         let exchange = std::mem::take(&mut self.exchange).unwrap();
-        let data = std::mem::take(&mut self.data).unwrap();
+
+        let corporate_source = std::mem::take(&mut self.corporate_source);
 
         SingleBroker {
-            data: data.clone(),
+            corporate_source,
             //Intialised as invalid so errors throw if client tries to run before init
             holdings,
             cash: CashValue::from(0.0),
@@ -60,16 +59,16 @@ where
             exchange,
             trade_costs: self.trade_costs.clone(),
             latest_quotes: first_quotes,
-            _dividend: PhantomData,
+            dividend: PhantomData,
         }
     }
 
-    pub fn with_data(&mut self, data: T) -> &mut Self {
-        self.data = Some(data);
+    pub fn with_corporate_source(&mut self, data: T) -> &mut Self {
+        self.corporate_source = Some(data);
         self
     }
 
-    pub fn with_exchange(&mut self, exchange: SingleExchange<T, Q, D>) -> &mut Self {
+    pub fn with_exchange(&mut self, exchange: SingleExchange<Q, P>) -> &mut Self {
         self.exchange = Some(exchange);
         self
     }
@@ -81,18 +80,20 @@ where
 
     pub fn new() -> Self {
         SingleBrokerBuilder {
-            data: None,
+            corporate_source: None,
             trade_costs: Vec::new(),
             exchange: None,
+            dividend: PhantomData,
         }
     }
 }
 
-impl<T, Q, D> Default for SingleBrokerBuilder<T, Q, D>
+impl<D, T, Q, P> Default for SingleBrokerBuilder<D, T, Q, P>
 where
-    Q: Quotable,
     D: Dividendable,
-    T: DataSource<Q, D>,
+    T: CorporateEventsSource<D>,
+    Q: Quotable,
+    P: PriceSource<Q>,
 {
     fn default() -> Self {
         Self::new()

@@ -2,11 +2,10 @@ mod builder;
 
 pub use builder::ConcurrentExchangeBuilder;
 
-use std::marker::PhantomData;
 use std::sync::Arc;
 
 use crate::clock::Clock;
-use crate::input::{DataSource, Dividendable, Quotable};
+use crate::input::{PriceSource, Quotable};
 
 ///Exchanges accept orders for securities, store them on an internal order book, and then execute
 ///them over time.
@@ -39,65 +38,58 @@ use crate::input::{DataSource, Dividendable, Quotable};
 ///In both cases, we are potentially creating silent errors but this more closely represents the
 ///execution model that would exist in reality.
 #[derive(Debug)]
-pub struct ConcurrentExchange<T, Q, D>
+pub struct ConcurrentExchange<Q, P>
 where
     Q: Quotable,
-    D: Dividendable,
-    T: DataSource<Q, D>,
+    P: PriceSource<Q>,
 {
     clock: Clock,
     orderbook: super::orderbook::OrderBook,
-    data_source: T,
+    price_source: P,
     trade_log: Vec<super::types::ExchangeTrade>,
     price_sender: Vec<super::types::PriceSender<Q>>,
     notify_sender: Vec<super::types::NotifySender>,
     order_reciever: Vec<super::types::OrderReciever>,
     last_subscriber_id: super::types::DefaultSubscriberId,
-    _dividend: PhantomData<D>,
 }
 
-unsafe impl<T, Q, D> Send for ConcurrentExchange<T, Q, D>
+unsafe impl<Q, P> Send for ConcurrentExchange<Q, P>
 where
     Q: Quotable,
-    D: Dividendable,
-    T: DataSource<Q, D>,
+    P: PriceSource<Q>,
 {
 }
 
-unsafe impl<T, Q, D> Sync for ConcurrentExchange<T, Q, D>
+unsafe impl<Q, P> Sync for ConcurrentExchange<Q, P>
 where
     Q: Quotable,
-    D: Dividendable,
-    T: DataSource<Q, D>,
+    P: PriceSource<Q>,
 {
 }
 
-impl<T, Q, D> ConcurrentExchange<T, Q, D>
+impl<Q, P> ConcurrentExchange<Q, P>
 where
     Q: Quotable,
-    D: Dividendable,
-    T: DataSource<Q, D>,
+    P: PriceSource<Q>,
 {
-    pub fn new(clock: Clock, data_source: T) -> Self {
+    pub fn new(clock: Clock, price_source: P) -> Self {
         Self {
             clock,
             orderbook: super::orderbook::OrderBook::new(),
             last_subscriber_id: 0,
-            data_source,
+            price_source,
             trade_log: Vec::new(),
             price_sender: Vec::new(),
             notify_sender: Vec::new(),
             order_reciever: Vec::new(),
-            _dividend: PhantomData,
         }
     }
 }
 
-impl<T, Q, D> ConcurrentExchange<T, Q, D>
+impl<Q, P> ConcurrentExchange<Q, P>
 where
     Q: Quotable,
-    D: Dividendable,
-    T: DataSource<Q, D>,
+    P: PriceSource<Q>,
 {
     pub async fn subscribe(
         &mut self,
@@ -114,7 +106,7 @@ where
             tokio::sync::mpsc::channel::<super::types::ExchangeOrderMessage>(100000);
 
         //Initialize the price channel
-        match self.data_source.get_quotes() {
+        match self.price_source.get_quotes() {
             Some(quotes) => price_channel.0.send(quotes).await.unwrap(),
             None => panic!("Missing data source, cannot initialize exchange"),
         };
@@ -138,7 +130,7 @@ where
         //To eliminate lookahead bias, we only start executing orders on the next
         //tick.
         self.clock.tick();
-        match self.data_source.get_quotes() {
+        match self.price_source.get_quotes() {
             Some(quotes) => {
                 for price_sender in &self.price_sender {
                     //TODO: clone here, don't have to optimize away but this is an owned value
@@ -202,7 +194,7 @@ where
         }
 
         let now = self.clock.now();
-        let executed_trades = self.orderbook.execute_orders(now, &self.data_source);
+        let executed_trades = self.orderbook.execute_orders(now, &self.price_source);
         for trade in executed_trades {
             //Should always be valid, so we can unwrap
             let notifier = self
@@ -221,51 +213,32 @@ where
 
 #[cfg(test)]
 mod tests {
-    use std::collections::HashMap;
-    use std::sync::Arc;
-
     use super::{ConcurrentExchange, ConcurrentExchangeBuilder};
-    use crate::broker::{Dividend, Quote};
+    use crate::broker::Quote;
     use crate::exchange::types::{
         DefaultSubscriberId, ExchangeNotificationMessage, ExchangeOrderMessage, NotifyReceiver,
         OrderSender, PriceReceiver,
     };
-    use crate::input::{HashMapInput, QuotesHashMap};
-    use crate::types::DateTime;
+    use crate::input::DefaultPriceSource;
 
     async fn setup() -> (
-        ConcurrentExchange<HashMapInput, Quote, Dividend>,
+        ConcurrentExchange<Quote, DefaultPriceSource>,
         DefaultSubscriberId,
         PriceReceiver<Quote>,
         OrderSender,
         NotifyReceiver,
     ) {
-        let mut quotes: QuotesHashMap = HashMap::new();
-        quotes.insert(
-            DateTime::from(100),
-            vec![Arc::new(Quote::new(101.00, 102.00, 100, "ABC"))],
-        );
-        quotes.insert(
-            DateTime::from(101),
-            vec![Arc::new(Quote::new(102.00, 103.00, 101, "ABC"))],
-        );
-        quotes.insert(
-            DateTime::from(102),
-            vec![Arc::new(Quote::new(105.00, 106.00, 102, "ABC"))],
-        );
-
         let clock = crate::clock::ClockBuilder::with_length_in_seconds(100, 3)
             .with_frequency(&crate::types::Frequency::Second)
             .build();
-
-        let source = crate::input::HashMapInputBuilder::new()
-            .with_clock(clock.clone())
-            .with_quotes(quotes)
-            .build();
+        let mut price_source = DefaultPriceSource::new(clock.clone());
+        price_source.add_quotes(101.00, 102.00, 100, "ABC");
+        price_source.add_quotes(102.00, 103.00, 101, "ABC");
+        price_source.add_quotes(105.00, 106.00, 102, "ABC");
 
         let mut exchange = ConcurrentExchangeBuilder::new()
             .with_clock(clock.clone())
-            .with_data_source(source)
+            .with_price_source(price_source)
             .build();
 
         let (id, price_rx, notify_rx, order_tx) = exchange.subscribe().await;
@@ -436,29 +409,16 @@ mod tests {
 
     #[tokio::test]
     async fn test_that_order_with_missing_price_executes_later() {
-        let mut quotes: QuotesHashMap = HashMap::new();
-        quotes.insert(
-            DateTime::from(100),
-            vec![Arc::new(Quote::new(101.00, 102.00, 100, "ABC"))],
-        );
-        quotes.insert(DateTime::from(101), vec![]);
-        quotes.insert(
-            DateTime::from(102),
-            vec![Arc::new(Quote::new(105.00, 106.00, 102, "ABC"))],
-        );
-
         let clock = crate::clock::ClockBuilder::with_length_in_seconds(100, 3)
             .with_frequency(&crate::types::Frequency::Second)
             .build();
-
-        let source = crate::input::HashMapInputBuilder::new()
-            .with_clock(clock.clone())
-            .with_quotes(quotes)
-            .build();
+        let mut price_source = DefaultPriceSource::new(clock.clone());
+        price_source.add_quotes(101.00, 102.00, 100, "ABC");
+        price_source.add_quotes(105.00, 106.00, 102, "ABC");
 
         let mut exchange = ConcurrentExchangeBuilder::new()
             .with_clock(clock.clone())
-            .with_data_source(source)
+            .with_price_source(price_source)
             .build();
 
         let (id, _price_rx, _notify_rx, order_tx) = exchange.subscribe().await;

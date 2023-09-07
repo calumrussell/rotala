@@ -1,12 +1,14 @@
 mod builder;
 
+use std::marker::PhantomData;
+
 pub use builder::{SimContextBuilder, SimContextMultiBuilder};
 
 use futures::future::join_all;
 
 use crate::clock::Clock;
 use crate::exchange::ConcurrentExchange;
-use crate::input::{DataSource, Dividendable, Quotable};
+use crate::input::{Dividendable, PriceSource, Quotable};
 use crate::perf::{BacktestOutput, PerformanceCalculator};
 use crate::strategy::{AsyncStrategy, History, Strategy};
 use crate::types::{CashValue, Frequency};
@@ -47,23 +49,24 @@ where
     }
 }
 
-pub struct SimContextMulti<Q, D, T, S>
+pub struct SimContextMulti<D, Q, P, S>
 where
-    Q: Quotable,
     D: Dividendable,
-    T: DataSource<Q, D>,
+    Q: Quotable,
+    P: PriceSource<Q>,
     S: AsyncStrategy + History,
 {
     clock: Clock,
+    exchange: ConcurrentExchange<Q, P>,
     strategies: Vec<S>,
-    exchange: ConcurrentExchange<T, Q, D>,
+    dividend: PhantomData<D>,
 }
 
-impl<Q, D, T, S> SimContextMulti<Q, D, T, S>
+impl<D, Q, P, S> SimContextMulti<D, Q, P, S>
 where
-    Q: Quotable,
     D: Dividendable,
-    T: DataSource<Q, D>,
+    Q: Quotable,
+    P: PriceSource<Q>,
     S: AsyncStrategy + History,
 {
     pub async fn run(&mut self) {

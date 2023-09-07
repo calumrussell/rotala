@@ -7,7 +7,7 @@ use std::marker::PhantomData;
 use std::sync::Arc;
 
 use crate::exchange::SingleExchange;
-use crate::input::{DataSource, Dividendable, Quotable};
+use crate::input::{CorporateEventsSource, Dividendable, PriceSource, Quotable};
 use crate::types::{CashValue, PortfolioHoldings, PortfolioQty, Price};
 
 use super::{
@@ -16,32 +16,33 @@ use super::{
 };
 
 #[derive(Debug)]
-pub struct SingleBroker<T, Q, D>
+pub struct SingleBroker<D, T, Q, P>
 where
-    Q: Quotable,
     D: Dividendable,
-    T: DataSource<Q, D>,
+    T: CorporateEventsSource<D>,
+    Q: Quotable,
+    P: PriceSource<Q>,
 {
-    //We have overlapping functionality because we are storing
-    data: T,
+    cash: CashValue,
+    corporate_source: Option<T>,
+    exchange: SingleExchange<Q, P>,
     //TODO: this could be preallocated, tiny gains but this can only be as large as
     //the number of stocks in the universe. If we have a lot of changes then the HashMap
     //will be constantly resized.
     holdings: PortfolioHoldings,
-    cash: CashValue,
-    log: BrokerLog,
-    trade_costs: Vec<BrokerCost>,
     last_seen_trade: usize,
     latest_quotes: HashMap<String, Arc<Q>>,
-    exchange: SingleExchange<T, Q, D>,
-    _dividend: PhantomData<D>,
+    log: BrokerLog,
+    trade_costs: Vec<BrokerCost>,
+    dividend: PhantomData<D>,
 }
 
-impl<T, Q, D> SingleBroker<T, Q, D>
+impl<D, T, Q, P> SingleBroker<D, T, Q, P>
 where
-    Q: Quotable,
     D: Dividendable,
-    T: DataSource<Q, D>,
+    T: CorporateEventsSource<D>,
+    Q: Quotable,
+    P: PriceSource<Q>,
 {
     pub fn cost_basis(&self, symbol: &str) -> Option<Price> {
         self.log.cost_basis(symbol)
@@ -101,11 +102,12 @@ where
     }
 }
 
-impl<T, Q, D> GetsQuote<Q, D> for SingleBroker<T, Q, D>
+impl<D, T, Q, P> GetsQuote<Q> for SingleBroker<D, T, Q, P>
 where
-    Q: Quotable,
     D: Dividendable,
-    T: DataSource<Q, D>,
+    T: CorporateEventsSource<D>,
+    Q: Quotable,
+    P: PriceSource<Q>,
 {
     fn get_quote(&self, symbol: &str) -> Option<Arc<Q>> {
         self.latest_quotes.get(symbol).cloned()
@@ -124,11 +126,12 @@ where
     }
 }
 
-impl<T, Q, D> BacktestBroker for SingleBroker<T, Q, D>
+impl<D, T, Q, P> BacktestBroker for SingleBroker<D, T, Q, P>
 where
-    Q: Quotable,
     D: Dividendable,
-    T: DataSource<Q, D>,
+    T: CorporateEventsSource<D>,
+    Q: Quotable,
+    P: PriceSource<Q>,
 {
     //Identical to deposit_cash but is seperated to distinguish internal cash
     //transactions from external with no value returned to client
@@ -237,9 +240,14 @@ where
     }
 
     fn pay_dividends(&mut self) {
+        if self.corporate_source.is_none() {
+            //No possible dividends to be paid
+            return;
+        }
+
         info!("BROKER: Checking dividends");
         let mut dividend_value: CashValue = CashValue::from(0.0);
-        if let Some(dividends) = self.data.get_dividends() {
+        if let Some(dividends) = self.corporate_source.as_ref().unwrap().get_dividends() {
             for dividend in dividends.iter() {
                 //Our dataset can include dividends for stocks we don't own so we need to check
                 //that we own the stock, not performant but can be changed later
@@ -264,11 +272,12 @@ where
     }
 }
 
-impl<T, Q, D> ReceievesOrders for SingleBroker<T, Q, D>
+impl<D, T, Q, P> ReceievesOrders for SingleBroker<D, T, Q, P>
 where
-    Q: Quotable,
     D: Dividendable,
-    T: DataSource<Q, D>,
+    T: CorporateEventsSource<D>,
+    Q: Quotable,
+    P: PriceSource<Q>,
 {
     fn send_order(&mut self, order: Order) -> BrokerEvent {
         //This is an estimate of the cost based on the current price, can still end with negative
@@ -336,19 +345,21 @@ where
     }
 }
 
-impl<T, Q, D> TransferCash for SingleBroker<T, Q, D>
+impl<D, T, Q, P> TransferCash for SingleBroker<D, T, Q, P>
 where
-    Q: Quotable,
     D: Dividendable,
-    T: DataSource<Q, D>,
+    T: CorporateEventsSource<D>,
+    Q: Quotable,
+    P: PriceSource<Q>,
 {
 }
 
-impl<T, Q, D> EventLog for SingleBroker<T, Q, D>
+impl<D, T, Q, P> EventLog for SingleBroker<D, T, Q, P>
 where
-    Q: Quotable,
     D: Dividendable,
-    T: DataSource<Q, D>,
+    T: CorporateEventsSource<D>,
+    Q: Quotable,
+    P: PriceSource<Q>,
 {
     fn trades_between(&self, start: &i64, end: &i64) -> Vec<Trade> {
         self.log.trades_between(start, end)
@@ -361,56 +372,44 @@ where
 
 #[cfg(test)]
 mod tests {
-    use std::collections::HashMap;
-    use std::sync::Arc;
-
     use crate::broker::{
         BacktestBroker, BrokerCashEvent, BrokerCost, BrokerEvent, Dividend, Order, OrderType,
         Quote, ReceievesOrders, TransferCash,
     };
     use crate::exchange::SingleExchangeBuilder;
-    use crate::input::{HashMapInput, HashMapInputBuilder};
-    use crate::types::DateTime;
+    use crate::input::{DefaultCorporateEventsSource, DefaultPriceSource};
 
     use super::{SingleBroker, SingleBrokerBuilder};
 
-    fn setup() -> SingleBroker<HashMapInput, Quote, Dividend> {
-        let mut prices: HashMap<DateTime, Vec<Arc<Quote>>> = HashMap::new();
-        let mut dividends: HashMap<DateTime, Vec<Arc<Dividend>>> = HashMap::new();
-        let quote = Arc::new(Quote::new(100.00, 101.00, 100, "ABC"));
-        let quote1 = Arc::new(Quote::new(10.00, 11.00, 100, "BCD"));
-        let quote2 = Arc::new(Quote::new(104.00, 105.00, 101, "ABC"));
-        let quote3 = Arc::new(Quote::new(14.00, 15.00, 101, "BCD"));
-        let quote4 = Arc::new(Quote::new(95.00, 96.00, 102, "ABC"));
-        let quote5 = Arc::new(Quote::new(10.00, 11.00, 102, "BCD"));
-        let quote6 = Arc::new(Quote::new(95.00, 96.00, 103, "ABC"));
-        let quote7 = Arc::new(Quote::new(10.00, 11.00, 103, "BCD"));
-
-        prices.insert(100.into(), vec![quote, quote1]);
-        prices.insert(101.into(), vec![quote2, quote3]);
-        prices.insert(102.into(), vec![quote4, quote5]);
-        prices.insert(103.into(), vec![quote6, quote7]);
-
-        let divi1 = Arc::new(Dividend::new(5.0, "ABC", 102));
-        dividends.insert(102.into(), vec![divi1]);
-
+    fn setup() -> SingleBroker<Dividend, DefaultCorporateEventsSource, Quote, DefaultPriceSource> {
         let clock = crate::clock::ClockBuilder::with_length_in_seconds(100, 5)
             .with_frequency(&crate::types::Frequency::Second)
             .build();
 
-        let source = crate::input::HashMapInputBuilder::new()
-            .with_clock(clock.clone())
-            .with_quotes(prices)
-            .with_dividends(dividends)
-            .build();
+        let mut price_source = DefaultPriceSource::new(clock.clone());
+
+        price_source.add_quotes(100.00, 101.00, 100, "ABC");
+        price_source.add_quotes(10.00, 11.00, 100, "BCD");
+
+        price_source.add_quotes(104.00, 105.00, 101, "ABC");
+        price_source.add_quotes(14.00, 15.00, 101, "BCD");
+
+        price_source.add_quotes(95.00, 96.00, 102, "ABC");
+        price_source.add_quotes(10.00, 11.00, 102, "BCD");
+
+        price_source.add_quotes(95.00, 96.00, 103, "ABC");
+        price_source.add_quotes(10.00, 11.00, 103, "BCD");
+
+        let mut corporate_source = DefaultCorporateEventsSource::new(clock.clone());
+        corporate_source.add_dividends(5.0, "ABC", 102);
 
         let exchange = SingleExchangeBuilder::new()
             .with_clock(clock.clone())
-            .with_data_source(source.clone())
+            .with_price_source(price_source)
             .build();
 
         let brkr = SingleBrokerBuilder::new()
-            .with_data(source)
+            .with_corporate_source(corporate_source)
             .with_exchange(exchange)
             .with_trade_costs(vec![BrokerCost::PctOfValue(0.01)])
             .build();
@@ -570,34 +569,25 @@ mod tests {
 
     #[test]
     fn test_that_broker_build_passes_without_trade_costs() {
-        let mut prices: HashMap<DateTime, Vec<Arc<Quote>>> = HashMap::new();
-
-        let quote = Arc::new(Quote::new(100.00, 101.00, 100, "ABC"));
-        let quote2 = Arc::new(Quote::new(104.00, 105.00, 101, "ABC"));
-        let quote4 = Arc::new(Quote::new(95.00, 96.00, 102, "ABC"));
-        prices.insert(100.into(), vec![quote]);
-        prices.insert(101.into(), vec![quote2]);
-        prices.insert(102.into(), vec![quote4]);
-
         let clock = crate::clock::ClockBuilder::with_length_in_dates(100, 102)
             .with_frequency(&crate::types::Frequency::Second)
             .build();
 
-        let source = HashMapInputBuilder::new()
-            .with_quotes(prices)
-            .with_clock(clock.clone())
-            .build();
+        let mut price_source = DefaultPriceSource::new(clock.clone());
+        price_source.add_quotes(100.00, 101.00, 100, "ABC");
+        price_source.add_quotes(104.00, 105.00, 101, "ABC");
+        price_source.add_quotes(95.00, 96.00, 102, "ABC");
 
         let exchange = SingleExchangeBuilder::new()
             .with_clock(clock.clone())
-            .with_data_source(source.clone())
+            .with_price_source(price_source)
             .build();
 
-        let _brkr = SingleBrokerBuilder::new()
-            .with_data(source)
-            .with_exchange(exchange)
-            .with_trade_costs(vec![BrokerCost::PctOfValue(0.01)])
-            .build();
+        let _brkr: SingleBroker<Dividend, DefaultCorporateEventsSource, Quote, DefaultPriceSource> =
+            SingleBrokerBuilder::new()
+                .with_exchange(exchange)
+                .with_trade_costs(vec![BrokerCost::PctOfValue(0.01)])
+                .build();
     }
 
     #[test]
@@ -607,45 +597,36 @@ mod tests {
         //bank holiday, and if the broker is attempting to value the portfolio on that day
         //they will ask for a quote, not find one, and then use a value of zero which is
         //incorrect.
-
-        let mut prices: HashMap<DateTime, Vec<Arc<Quote>>> = HashMap::new();
-        let dividends: HashMap<DateTime, Vec<Arc<Dividend>>> = HashMap::new();
-        let quote = Arc::new(Quote::new(100.00, 101.00, 100, "ABC"));
-        let quote1 = Arc::new(Quote::new(10.00, 11.00, 100, "BCD"));
-
-        let quote2 = Arc::new(Quote::new(100.00, 101.00, 101, "ABC"));
-        let quote3 = Arc::new(Quote::new(10.00, 11.00, 101, "BCD"));
-
-        let quote4 = Arc::new(Quote::new(104.00, 105.00, 102, "ABC"));
-
-        let quote5 = Arc::new(Quote::new(104.00, 105.00, 103, "ABC"));
-        let quote6 = Arc::new(Quote::new(12.00, 13.00, 103, "BCD"));
-
-        prices.insert(100.into(), vec![quote, quote1]);
-        //Trades execute here
-        prices.insert(101.into(), vec![quote2, quote3]);
-        //We are missing a quote for BCD on 101, but the broker should return the last seen value
-        prices.insert(102.into(), vec![quote4]);
-        //And when we check the next date, it updates correctly
-        prices.insert(103.into(), vec![quote5, quote6]);
-
         let clock = crate::clock::ClockBuilder::with_length_in_seconds(100, 5)
             .with_frequency(&crate::types::Frequency::Second)
             .build();
 
-        let source = HashMapInputBuilder::new()
-            .with_quotes(prices)
-            .with_dividends(dividends)
-            .with_clock(clock.clone())
-            .build();
+        let mut price_source = DefaultPriceSource::new(clock.clone());
+        price_source.add_quotes(100.00, 101.00, 100, "ABC");
+        price_source.add_quotes(10.00, 11.00, 100, "BCD");
+
+        //Trades execute here
+        price_source.add_quotes(100.00, 101.00, 101, "ABC");
+        price_source.add_quotes(10.00, 11.00, 101, "BCD");
+
+        //We are missing a quote for BCD on 101, but the broker should return the last seen value
+        price_source.add_quotes(104.00, 105.00, 102, "ABC");
+
+        //And when we check the next date, it updates correctly
+        price_source.add_quotes(104.00, 105.00, 103, "ABC");
+        price_source.add_quotes(12.00, 13.00, 103, "BCD");
 
         let exchange = SingleExchangeBuilder::new()
+            .with_price_source(price_source)
             .with_clock(clock.clone())
-            .with_data_source(source.clone())
             .build();
 
-        let mut brkr = SingleBrokerBuilder::new()
-            .with_data(source)
+        let mut brkr: SingleBroker<
+            Dividend,
+            DefaultCorporateEventsSource,
+            Quote,
+            DefaultPriceSource,
+        > = SingleBrokerBuilder::new()
             .with_exchange(exchange)
             .with_trade_costs(vec![BrokerCost::PctOfValue(0.01)])
             .build();
@@ -680,31 +661,26 @@ mod tests {
         //For example, if orders are issued for 100% of the portfolio then if prices rises then we
         //can end up with negative balances.
 
-        let mut prices: HashMap<DateTime, Vec<Arc<Quote>>> = HashMap::new();
-        let quote = Arc::new(Quote::new(100.00, 101.00, 100, "ABC"));
-        let quote1 = Arc::new(Quote::new(150.00, 151.00, 101, "ABC"));
-        let quote2 = Arc::new(Quote::new(150.00, 151.00, 102, "ABC"));
-
-        prices.insert(100.into(), vec![quote]);
-        prices.insert(101.into(), vec![quote1]);
-        prices.insert(102.into(), vec![quote2]);
-
         let clock = crate::clock::ClockBuilder::with_length_in_seconds(100, 5)
             .with_frequency(&crate::types::Frequency::Second)
             .build();
 
-        let source = HashMapInputBuilder::new()
-            .with_quotes(prices)
-            .with_clock(clock.clone())
-            .build();
+        let mut price_source = DefaultPriceSource::new(clock.clone());
+        price_source.add_quotes(100.00, 101.00, 100, "ABC");
+        price_source.add_quotes(150.00, 151.00, 101, "ABC");
+        price_source.add_quotes(150.00, 151.00, 102, "ABC");
 
         let exchange = SingleExchangeBuilder::new()
             .with_clock(clock.clone())
-            .with_data_source(source.clone())
+            .with_price_source(price_source)
             .build();
 
-        let mut brkr = SingleBrokerBuilder::new()
-            .with_data(source)
+        let mut brkr: SingleBroker<
+            Dividend,
+            DefaultCorporateEventsSource,
+            Quote,
+            DefaultPriceSource,
+        > = SingleBrokerBuilder::new()
             .with_exchange(exchange)
             .with_trade_costs(vec![BrokerCost::PctOfValue(0.01)])
             .build();
