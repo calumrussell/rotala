@@ -1,54 +1,61 @@
 # What is Alator?
 
-
-Rust library with components for investment portfolio backtesting.
-
-This library is used as a back-end for a Python financial simulation [app](https://pytho.uk). A feature of this application is Monte-Carlo simulations of investor lifetimes, and to run hundreds of these complex, event-driven simulations within a few seconds requires a fast backtesting engine.
+Components for backtesting a financial portfolio. Built with Rust.
 
 # How does Alator work?
 
-The primary development goal is providing a simple, flexible backtesting library that doesn't have huge performance sacrifices.
+The development goal is to a provide a simple and flexible backtesting library whilst achieving resonable performance.
 
-Most of the logic lies within `Strategy` and `Broker`: a strategy tells the broker what trades to execute, and a broker executes them. Dependencies on outside data are not shared, as there are many cases when components require different data. The only shared dependence is `Clock` which tells other components the current point in a backtest.
+A backtest is composed of three components: `Strategy`, `Broker`, and `Exchange`. A strategy tells the broker what trades to execute, the broker is responsible for creating orders, and the exchange orders into completed trades. Alator provides implementations for each of these components, these can be used interchangeably with user-provided components by implementing traits.
 
-`Broker` holds a reference to an `Exchange`. The exchange holds the execution logic and supports multiple `OrderType`. 
+Before v0.3, alator just provided single-threaded implementations. After v0.3, we began providing components that can run in multiple threads (potentially, determining the appropriate runtime is left to the user, we just introduce the option of using more than one thread). This is not foolproof as a backtest requires correct ordering but does provide easier translation to a production environment where strategy code would expect to be non-blocking. 
 
-Orders are not executed instaneously. Versions up to v.0.1.7 offered instaneous execution but this feature was changed to sequential execution (i.e. an order does not execute until the next period). This change adds complexity to the `Broker` (which then has to be reconciled against `Exchange`) but offers better separation of concerns and eliminates lookahead-bias.
+Library implementations of components use tokio as the runtime. This leaves it up to the user to decide what resource bound their strategies may have. For example, strategies will often be I/O bound as they may query other data sources but they may not. It is up to the user to decide how many threads will work best. The implementation of the multi-threaded code still needs to be refined and may change over time.
 
-Because orders are not executed instanteously, it is not advisable to use data with frequencies longer than a month. Reconciliation of cash happens automatically (it is not something that is left to `Strategy`) but the level of volatility at frequencies greater than monthly would mean `Broker` rebalancing significantly on every step and deviation of expected performance. Instaneous execution may be added back for these cases.
+Adding multi-threaded code involved substantial changes to the code as, for reasons explored in the next section, there wasn't full separation of `Broker` and `Exchange`. For the most part, the implementation of multi-threading has not impacted the definition of components but there are exceptions: `RecievesOrders`/`RecievesOrdersAsync`. Hopefully, it will be possible to remove these at some point but it is something to be aware of when implementing your own components.
 
-A conscious choice was made not to completely split `Strategy` and `Broker`, as is common in event-driven architectures having each component communicate with the other through messages. This approach would provide superior horizontal scalability in a live HFT environment but at the cost of some duplication of code/responsibility and complexity. Whilst this library could be used in production, and some components (for example, `Clock`) are designed with this in mind, it is not a primary focus, so there is no need to think about scalability beyond the confines of a single backtest run. And, hopefully, the code is easier to understand too.
+## Execution
+
+One of the problems with backtesting libraries is that orders will execute instanteously: an order is submitted to an exchange, the exchange queries a price source and receives the precise time set by the system, and that price is filled in as an executed trade. Trades do not execute instanteously in production environments: your strategy looks at some price source but due to latency that price is very likely untradeable. This lookahead bias is why many strategies that backtest well end up performing poorly out-of-sample.
+
+Many backtesting libraries execute trades instantneously, as it can be more complicated to implement in an environment with more than one running thread, but do not explain this to users. AFter v0.1.7, alator removed instanteous execution. The soonest that orders could execute was the next tick. Multi-threaded library implementations of components offer the same guarantee.
+
+Because orders are not executed instaneously it is not advisable to use low-frequency data as orders won't execute until the next tick, which would be a month later with monthly frequencies.Cash reconciliation is not triggered externally but will typically occur at the tick frequency so low-frequency execution will also poorly replicate the underlying as cash reconciliations will skew expected performance (it is possible to run cash reconciliations at a different frequency, but it is easier to perform common modifications to the data i.e. add extra "fake" prices around period end where trades can execute).
+
+## Example
 
 An example backtest (with data creation excluded):
 
 ```
     let initial_cash: CashValue = 100_000.0.into();
-    let length_in_days: i64 = 200;
+    let length_in_days: i64 = 1000;
     let start_date: i64 = 1609750800; //Date - 4/1/21 9:00:0000
-    let clock = ClockBuilder::from_length(start_date, length_in_days).daily();
+    let clock = ClockBuilder::with_length_in_days(start_date, length_in_days)
+        .with_frequency(&Frequency::Daily)
+        .build();
 
-    let data = build_data(clock.clone());
+    let price_source = build_data(clock.clone());
 
-    let mut weights: PortfolioAllocation<PortfolioWeight> = PortfolioAllocation::new();
-    weights.insert(ABC, 0.5);
-    weights.insert(BCD, 0.5);
+    let mut weights: PortfolioAllocation = PortfolioAllocation::new();
+    weights.insert("ABC", 0.5);
+    weights.insert("BCD", 0.5);
 
-    let exchange = DefaultExchangeBuilder::new()
-        .with_data_source(data.clone())
+    let exchange = SingleExchangeBuilder::new()
+        .with_price_source(price_source)
         .with_clock(clock.clone())
         .build();
 
-    let simbrkr = ConcurrentBrokerBuilder::new()
-        .with_data(data)
-        .with_exchange(exchange)
-        .with_trade_costs(vec![BrokerCost::Flat(1.0)])
-        .build();
+    let simbrkr: SingleBroker<Dividend, DefaultCorporateEventsSource, Quote, DefaultPriceSource> =
+        SingleBrokerBuilder::new()
+            .with_trade_costs(vec![BrokerCost::Flat(1.0.into())])
+            .with_exchange(exchange)
+            .build();
 
     let strat = StaticWeightStrategyBuilder::new()
         .with_brkr(simbrkr)
         .with_weights(weights)
         .with_clock(clock.clone())
-        .daily();
+        .default();
 
     let mut sim = SimContextBuilder::new()
         .with_clock(clock.clone())
@@ -56,30 +63,31 @@ An example backtest (with data creation excluded):
         .init(&initial_cash);
 
     sim.run();
+
 ```
 Alator comes with a `StaticWeightStrategy` and clients will typically need to implement the `Strategy` trait to build a new strategy. The `Broker` component should be reusable for most cases but may lack the features for some use-cases, the three biggest being: leverage, multiple-currency support, and shorting. Because of the current uses of the library, the main priority in the near future is to add support for multiple-currencies.
 
-# How do you get data into Alator for backtesting?
+## Data
 
-Alator is flexible about the underlying representation of data: at the bottom is just an implementation of a broker that operates on types that implement the `Quotable` and `Dividendable` traits. So all you need to provide the broker is a structure that implements the traits.You can use ticks, you can use candlesticks, there is no dependency on underlying structure within the default broker implementation (but it is often the case that the strategy you implement will have a dependency on the data structure used i.e. a moving average system contains some assumptions about data frequency).
+Alator is extremely flexible about the underlying representation of data requiring, in the case of prices, only something that implements `Quotable` which can be used with `PriceSource`. Users can create their own data types but, in most cases, the library implementation `PriceSource` can be used. Corporate events are structured in a similar way but, currently, dividends are the only corporate event supported.
 
 In the tests folder, we have provided an implementation of a simple moving average crossover strategy that pulls data directly from Binance. To see the system running: fail the test with an assert and pass `RUST_LOG=info` to the command.
+
+## Cross-language support
+
+Alator backtests can be run from Python and price data transferred into Rust without copying (this hasn't been fully tested but seems to be the case). JS/WASM support will be added and, hopefully, strategies can be written in Python. Multi-threading is not supported within these contexts.
 
 # Missing features that you may expect
 
 * Leverage
 * Multi-currency
 * Shorting 
-* Performance benchmarks
-* Concurrency
 
 # Development priorities
 
-* Improving performance
-* Making the code simpler, particularly around the code that ensures tests cannot run with lookahead bias
-* Improving test coverage
-* Adding integrations with other languages, currently missing JS and a Python implementation of a trading strategy that runs in Rust.
-* Documentation, publishing to crates.io
+* Improving performance/test coverage/documentation
+* Adding integration with other languages, currently missing JS/WASM and implementation of a trading strategy in Python that can run in Rust.
+* Making the code simpler, when type underlying `PriceSource` was made generic that added a lot of weight to component definitions.
 
 # Change Log
 
