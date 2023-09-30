@@ -11,6 +11,8 @@ use std::sync::Arc;
 use crate::exchange::{DefaultSubscriberId, NotifyReceiver, OrderSender, PriceReceiver};
 use crate::input::{CorporateEventsSource, Dividendable, Quotable};
 use crate::types::{CashValue, PortfolioHoldings, PortfolioQty, Price};
+#[allow(unused)]
+use crate::broker::SingleBroker;
 
 use super::{
     BacktestBroker, BrokerCalculations, BrokerCashEvent, BrokerCost, BrokerEvent, BrokerLog,
@@ -18,30 +20,21 @@ use super::{
     TransferCash,
 };
 
-///Broker implementation that can be used to replicate the execution logic and data structures of a
-///broker. Created through the Builder struct, and requires an implementation of `DataSource` to
-///run correctly.
-///
-///Orders are executed through a seperate exchange implementation that is held on the broker
-///implementation. When a broker receives an order from the client, this order cannot be executed
-///immediately but is sent to an exchange that executes the order in the next period for which
-///there is a price. This structure ensures that clients cannot lookahead.
-///
-///Supports multiple `BrokerCost` models defined in broker/mod.rs: Flat, PerShare, PctOfValue.
-///
-///Cash balance held in single currency, which is assumed to be the same currency used in all
-///quotes found in the implementation of `DataSource` passed to `ConcurrentBroker`. Cash balance can
-///be negative due to the non-immediate execution of trades. Broker will try to re-balance
-///automatically.
-///
-///If series has a lot of volatility between periods, this will cause unexpected outcomes as
-///the broker tries to continuously rebalance the negative cash balance.
-///
-///Broker is initialized with a cash buffer. When making transactions to raise cash, this is the
-///value that will be targeted (as opposed to zero).
-///
-///Keeps an internal log of trades executed and dividends received/paid. The events supported by
-///the `BrokerLog` are stored in the `BrokerRecordedEvent` enum in broker/mod.rs.
+/// Library implementation of multi-threaded broker. Created through builder to ensure 
+/// dependencies all present.
+/// 
+/// Multi-threaded broker holds a reference to channels for:
+/// * Receiving price updates from an `Exchange`
+/// * Receiving notifications, for example completed trades, from an `Exchange`
+/// * Sending orders to an `Exchange` 
+/// 
+/// Every strategy in a multi-threaded environment has a broker. Every broker is 
+/// assigned a unique id by the `Exchange` when initiailizing channels to the `Exchange`. Strategy-
+/// level metrics, such as position profit which could be an input used to create new trades, are
+/// calculated without sharing between brokers. So all channels are shared but the unique id is
+/// used to denote which broker is sending/receiving. 
+/// 
+/// Refer to [SingleBroker] for common aspects of broker implementation. 
 #[derive(Debug)]
 pub struct ConcurrentBroker<D, T, Q>
 where

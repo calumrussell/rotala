@@ -15,6 +15,37 @@ use super::{
     DividendPayment, EventLog, GetsQuote, Order, OrderType, ReceievesOrders, Trade, TransferCash,
 };
 
+/// Library implementation of single-threaded broker. Created through builder to ensure 
+/// dependencies all present.
+/// 
+/// Single-threaded broker holds a reference to an exchange to which orders are passed for
+/// execution. Orders are not executed until the next tick so broker state has to be synchronized
+/// with the exchange on every tick. Clients can trigger this synchronization by calling `check`. 
+/// 
+/// The broker can hold negative cash values due to the non-immediate execution of trades. Once a
+/// broker has received the notification of completed trades and finds a negative value then
+/// re-balancing is triggered automatically. Responsibility for moving the portfolio back to the
+/// correct state is left with owner, broker implementations take responsibility for correcting
+/// invalid internal state (like negative cash values).
+/// 
+/// If a series has high levels of volatility between periods then performance will fail to
+/// replicate the strategy due to continued rebalancing.
+/// 
+/// To minimize the distortions due to rebalancing behaviour, the broker will target a minimum
+/// cash value. This is currently set at an arbitrary level, 1_000, as this is something library
+/// dependent and potentially difficult to explain.
+/// 
+/// If a portfolio has a negative value, the current behaviour is to continue trading potentially
+/// producing unexpected results. Previous versions would exit early when this happened but this
+/// behaviour was removed.
+/// 
+/// Default implementations support multiple [BrokerCost] models: Flat, PerShare, and PctOfValue.
+/// 
+/// Cash balances are held in single currency which is assumed to be the same currency used across
+/// the simulation.
+/// 
+/// Keeps an internal log of trades executed and dividends received/paid. This is distinct from
+/// performance calculations.
 #[derive(Debug)]
 pub struct SingleBroker<D, T, Q, P>
 where
@@ -30,6 +61,7 @@ where
     //the number of stocks in the universe. If we have a lot of changes then the HashMap
     //will be constantly resized.
     holdings: PortfolioHoldings,
+    //Used to mark last trade seen by broker when reconciling completed trades with exchange
     last_seen_trade: usize,
     latest_quotes: HashMap<String, Arc<Q>>,
     log: BrokerLog,
@@ -48,8 +80,13 @@ where
         self.log.cost_basis(symbol)
     }
 
-    //Contains tasks that should be run on every iteration of the simulation irregardless of the
-    //state on the client.
+    /// Called on every tick of clock to ensure that state is synchronized with other components.
+    /// 
+    /// * Pays dividends
+    /// * Calls `check` on exchange
+    /// * Updates last seen prices for exchange tick
+    /// * Reconciles internal state against trades completed on current tick
+    /// * Rebalances cash, which can trigger new trades if broker is in invalid state
     pub fn check(&mut self) {
         self.pay_dividends();
         self.exchange.check();
@@ -86,6 +123,10 @@ where
         self.rebalance_cash();
     }
 
+    /// If current round of trades have caused broker to run out of cash then this will rebalance.
+    /// 
+    /// Has a fixed value buffer, currently set to 1000, to reduce the probability of the broker
+    /// moving into an insufficient cash state.
     fn rebalance_cash(&mut self) {
         //Has to be less than, we can have zero value without needing to liquidate if we initialize
         //the portfolio but exchange doesn't execute any trades. This can happen if we are missing

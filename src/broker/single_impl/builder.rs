@@ -1,13 +1,19 @@
 use std::collections::HashMap;
 use std::marker::PhantomData;
 
-use crate::broker::{BrokerCost, BrokerLog};
+use crate::broker::{BrokerCost, BrokerLog, SingleBroker};
 use crate::exchange::SingleExchange;
 use crate::input::{CorporateEventsSource, Dividendable, PriceSource, Quotable};
 use crate::types::{CashValue, PortfolioHoldings};
 
-use super::SingleBroker;
-
+/// Used to build [SingleBroker].
+/// 
+/// Broker should be the only owner of a [CorporateEventsSource] in a backtest.
+/// 
+/// Broker should be the only owner of a [SingleExchange] in a backtest.
+/// 
+/// Trade costs are optional. If no trade costs are passed to the broker then no costs will be
+/// taken when orders execute.
 pub struct SingleBrokerBuilder<D, T, Q, P>
 where
     D: Dividendable,
