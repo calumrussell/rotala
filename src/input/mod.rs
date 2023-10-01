@@ -14,6 +14,7 @@ use pyo3::pycell::PyCell;
 #[cfg(feature = "python")]
 use pyo3::types::{PyDict, PyList};
 
+/// Inner type for [PriceSource].
 pub trait Quotable: Clone + std::marker::Send + std::marker::Sync {
     fn get_bid(&self) -> &Price;
     fn get_ask(&self) -> &Price;
@@ -21,12 +22,21 @@ pub trait Quotable: Clone + std::marker::Send + std::marker::Sync {
     fn get_symbol(&self) -> &String;
 }
 
+/// Inner type for dividends for [CorporateEventsSource].
 pub trait Dividendable: Clone + std::marker::Send + std::marker::Sync {
     fn get_symbol(&self) -> &String;
     fn get_date(&self) -> &DateTime;
     fn get_value(&self) -> &Price;
 }
 
+/// Represents structure that generates price quotes.
+/// 
+/// Related to [Quotable]. Other components are tightly bound to the types that implement these
+/// traits.
+/// 
+/// Whilst this can be cloned, users should be aware that cloning multiple times will likely be
+/// one of the most expensive operations in a backtest so care should be taken to minimize these
+/// operations.
 pub trait PriceSource<Q>: Clone
 where
     Q: Quotable,
@@ -35,6 +45,9 @@ where
     fn get_quotes(&self) -> Option<Vec<Arc<Q>>>;
 }
 
+/// Represents structure that generates dividend information.
+/// 
+/// There can be multiple types of corporate events but we currently only support dividends.
 pub trait CorporateEventsSource<D>: Clone
 where
     D: Dividendable,
@@ -44,8 +57,15 @@ where
 
 type DefaultPriceSourceImpl<Q> = (HashMap<DateTime, Vec<Arc<Q>>>, Clock);
 
+/// Default implementation of [PriceSource] using [Quote] as inner type.
+/// 
+/// This implementation is thread-safe but users should consider the conditions under which
+/// multiple threads should be accesssing prices. In library implementations, this is tightly
+/// controlled for performance/simplicity reasons with the exchange being the only source.
 #[derive(Debug)]
 pub struct DefaultPriceSource {
+    //It isn't strictly necessary that this access is thread-safe as exchange is the only price
+    //source but this protects new implementations.
     inner: Arc<DefaultPriceSourceImpl<Quote>>,
 }
 
@@ -162,6 +182,7 @@ impl<'a> CorporateEventsSource<PyDividend> for PyCorporateEventsSource<'a> {
 
 type CorporateEventsSourceImpl<D> = (HashMap<DateTime, Vec<Arc<D>>>, Clock);
 
+/// Default implementation of [CorporateEventsSource] with [Dividend] as inner type.
 #[derive(Debug)]
 pub struct DefaultCorporateEventsSource {
     inner: std::sync::Arc<CorporateEventsSourceImpl<Dividend>>,
@@ -211,6 +232,7 @@ impl DefaultCorporateEventsSource {
     }
 }
 
+/// Generates random [DefaultPriceSource] for use in tests that don't depend on prices.
 pub fn fake_price_source_generator(clock: Clock) -> DefaultPriceSource {
     let price_dist = Uniform::new(90.0, 100.0);
     let mut rng = thread_rng();
