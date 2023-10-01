@@ -1,7 +1,7 @@
 use crate::types::{Frequency, StrategySnapshot};
 use itertools::Itertools;
 
-///Performance output from a single backtest run.
+/// Output for single backtest run.
 #[derive(Clone, Debug)]
 pub struct BacktestOutput {
     pub ret: f64,
@@ -22,10 +22,11 @@ pub struct BacktestOutput {
     pub frequency: String,
 }
 
+/// Group of functions common to portfolio performance calculations.
 struct CalculationAlgos;
 
 impl CalculationAlgos {
-    ///Returns a tuple containing (max drawdown, position of drawdown start, end position)
+    /// Returns a tuple containing (max drawdown, position of drawdown start, end position)
     fn maxdd(values: &[f64]) -> (f64, usize, usize) {
         let mut maxdd = 0.0;
         let mut peak = 0.0;
@@ -69,11 +70,6 @@ impl CalculationAlgos {
     }
 }
 
-/// A set of calculations that relate to portfolios. For example, compounded annual
-/// growth rate. These calculations depend on the underlying representation of the data,
-/// such as asset class, so they are a higher-level than `Series` calculations.
-/// Calculations are intentionally stateless as it is up to the client to decide when
-/// the calculations are performed, and where the data for those calcs is stored.
 pub struct PortfolioCalculations;
 
 impl PortfolioCalculations {
@@ -179,8 +175,9 @@ impl PortfolioCalculations {
     }
 }
 
-///Stateless calculations of performance statistics from [Vec<StrategySnapshot>]. Runs seperately
-///after the simulation is completed.
+/// Calculates performance statistics from [Vec<StrategySnapshot>].
+/// 
+/// Intended to be run after the simulation is completed.
 #[derive(Debug, Clone)]
 pub struct PerformanceCalculator;
 
