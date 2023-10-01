@@ -6,37 +6,20 @@ use std::sync::Arc;
 
 use crate::clock::Clock;
 use crate::input::{PriceSource, Quotable};
+#[allow(unused)]
+use crate::exchange::SingleExchange;
 
-///Exchanges accept orders for securities, store them on an internal order book, and then execute
-///them over time.
-///
-///[Exchange] does not execute orders immediately. [Broker] owns the exchange/s, passes orders to the
-///exchange and then checks back to find out the result. Orders are not triggered by the broker but
-///prie changes over time within the exchange. And the results are not reported back to broker
-///immediately but must be polled.
-///
-///[Broker] polls a buffer of trades that is flushed empty after every check.
-///
-///This execution model is more complex than executing trades immediately with no exchange
-///abstraction. But this creates clear separation between the responsibility of the broker between
-///storing results and executing trades.
-///
-///This model also creates a dependency on the client to call all operations in order. For example,
-///the client should not insert new orders into the book, check them, and then insert more orders.
-///Clients must check, then insert new orders, then finish; ordering of operations should be
-///maintained through state in the implementation.
-///Implementation of [Exchange]. Supports all [OrderType]. Generic implementation of the execution
-///and updating logic of an exchange.
-///
-///If the client sends an order for a non-existent security or a spurious value, we will fail
-///silently and do not execute the trade. [Broker] implementations should also attempt to catch
-///these errors but errors are not bubbled up in order to keep the simulation running.
-///
-///If a price is missing then the client does not execute the trade but the order will stay in the
-///book until it can be executed.
-///
-///In both cases, we are potentially creating silent errors but this more closely represents the
-///execution model that would exist in reality.
+/// Exchange accepts messages containing orders and executes them over time.
+/// 
+/// Generic information about exchanges is included in [SingleExchange].
+/// 
+/// Multi-threaded exchanges operate through three channels that:
+/// * Send updated prices to recievers.
+/// * Send notifications to recievers.
+/// * Recieve orders to be executed.
+/// 
+/// An exchange may interact with multiple brokers so issues a unique id to each one that is used
+/// for communications that are relevant to individual brokers, for example completed trades.
 #[derive(Debug)]
 pub struct ConcurrentExchange<Q, P>
 where

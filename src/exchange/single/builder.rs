@@ -2,9 +2,9 @@ use std::marker::PhantomData;
 
 use crate::clock::Clock;
 use crate::input::{PriceSource, Quotable};
+use crate::exchange::SingleExchange;
 
-use super::SingleExchange;
-
+/// Used to build [SingleExchange].
 pub struct SingleExchangeBuilder<Q, T>
 where
     Q: Quotable,

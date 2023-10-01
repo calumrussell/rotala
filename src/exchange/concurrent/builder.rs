@@ -2,9 +2,9 @@ use std::marker::PhantomData;
 
 use crate::clock::Clock;
 use crate::input::{PriceSource, Quotable};
+use crate::exchange::ConcurrentExchange;
 
-use super::ConcurrentExchange;
-
+/// Used to build [ConcurrentExchange].
 pub struct ConcurrentExchangeBuilder<Q, P>
 where
     Q: Quotable,
