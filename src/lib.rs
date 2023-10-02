@@ -55,6 +55,16 @@
 //! An example backtest (with data creation excluded):
 //! 
 //! ```
+//!     use alator::broker::{ Dividend, Quote };
+//!     use alator::broker::implement::single::{ SingleBroker, SingleBrokerBuilder };
+//!     use alator::broker::BrokerCost;
+//!     use alator::clock::ClockBuilder;
+//!     use alator::exchange::implement::single::SingleExchangeBuilder;
+//!     use alator::input::{ fake_price_source_generator, DefaultCorporateEventsSource, DefaultPriceSource };
+//!     use alator::strategy::StaticWeightStrategyBuilder;
+//!     use alator::simcontext::SimContextBuilder;
+//!     use alator::types::{ CashValue, Frequency, PortfolioAllocation };
+//! 
 //!     let initial_cash: CashValue = 100_000.0.into();
 //!     let length_in_days: i64 = 1000;
 //!     let start_date: i64 = 1609750800; //Date - 4/1/21 9:00:0000
@@ -62,7 +72,7 @@
 //!         .with_frequency(&Frequency::Daily)
 //!         .build();
 //! 
-//!     let price_source = build_data(clock.clone());
+//!     let price_source = fake_price_source_generator(clock.clone());
 //! 
 //!     let mut weights: PortfolioAllocation = PortfolioAllocation::new();
 //!     weights.insert("ABC", 0.5);

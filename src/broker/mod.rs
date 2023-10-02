@@ -1,8 +1,7 @@
 mod calculations;
-mod concurrent_impl;
 mod record;
-mod single_impl;
 mod types;
+pub mod implement;
 
 pub use calculations::BrokerCalculations;
 #[doc(hidden)]
@@ -11,8 +10,6 @@ pub use types::{
     BrokerCashEvent, BrokerCost, BrokerEvent, BrokerRecordedEvent, Dividend, DividendPayment,
     Order, OrderType, Quote, Trade, TradeType,
 };
-pub use concurrent_impl::{ConcurrentBroker, ConcurrentBrokerBuilder};
-pub use single_impl::{SingleBroker, SingleBrokerBuilder};
 
 #[cfg(feature = "python")]
 pub use types::{PyDividend, PyQuote};
@@ -223,11 +220,12 @@ impl Display for UnexecutableOrderError {
 mod tests {
 
     use super::{
-        BacktestBroker, BrokerCalculations, BrokerCost, ConcurrentBrokerBuilder, OrderType, Quote,
+        BacktestBroker, BrokerCalculations, BrokerCost, OrderType, Quote,
         TransferCash,
     };
-    use crate::broker::{ConcurrentBroker, Dividend, ReceievesOrdersAsync};
-    use crate::exchange::ConcurrentExchangeBuilder;
+    use crate::broker::implement::multi::{ConcurrentBroker, ConcurrentBrokerBuilder};
+    use crate::broker::{Dividend, ReceievesOrdersAsync};
+    use crate::exchange::implement::multi::ConcurrentExchangeBuilder;
     use crate::input::{
         fake_price_source_generator, DefaultCorporateEventsSource, DefaultPriceSource,
     };

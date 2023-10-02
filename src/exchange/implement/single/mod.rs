@@ -31,7 +31,7 @@ use crate::input::{PriceSource, Quotable};
 /// Within library implementations, the exchange is also responsible for [Clock] ticking forward.
 /// In some previous versions, this was done at the top-level of the application and required
 /// complex guarantees to ensure that calling functions were ticking forward when every component
-/// had completed their operations in the correct order. Moving the tick down to the lowest level
+/// had completed their operations it is all stuff that has never been tried n the correct order. Moving the tick down to the lowest level
 /// removes the requirement for this code. But does also require understanding that calling `check`
 /// mutates state across the application.
 /// 
@@ -46,12 +46,12 @@ where
     P: PriceSource<Q>,
 {
     clock: Clock,
-    orderbook: super::orderbook::OrderBook,
+    orderbook: crate::exchange::OrderBook,
     price_source: P,
-    trade_log: Vec<super::types::ExchangeTrade>,
+    trade_log: Vec<crate::exchange::types::ExchangeTrade>,
     //This is cleared on every tick
-    order_buffer: Vec<super::types::ExchangeOrder>,
-    _quote: PhantomData<Q>,
+    order_buffer: Vec<crate::exchange::types::ExchangeOrder>,
+    _quote: PhantomData<Q>
 }
 
 impl<Q, P> SingleExchange<Q, P>
@@ -62,7 +62,7 @@ where
     pub fn new(clock: Clock, price_source: P) -> Self {
         Self {
             clock,
-            orderbook: super::orderbook::OrderBook::new(),
+            orderbook: super::super::orderbook::OrderBook::new(),
             price_source,
             trade_log: Vec::new(),
             order_buffer: Vec::new(),
@@ -83,15 +83,15 @@ where
         vec![]
     }
 
-    pub fn fetch_trades(&self, from: usize) -> &[super::ExchangeTrade] {
+    pub fn fetch_trades(&self, from: usize) -> &[crate::exchange::ExchangeTrade] {
         &self.trade_log[from..]
     }
 
-    pub fn insert_order(&mut self, order: super::types::ExchangeOrder) {
+    pub fn insert_order(&mut self, order: super::super::types::ExchangeOrder) {
         self.order_buffer.push(order);
     }
 
-    pub fn delete_order(&mut self, order_id: super::types::DefaultExchangeOrderId) {
+    pub fn delete_order(&mut self, order_id: super::super::types::DefaultExchangeOrderId) {
         self.orderbook.delete_order(order_id);
     }
 
@@ -99,7 +99,7 @@ where
         self.orderbook.clear_orders_by_symbol(&symbol);
     }
 
-    pub fn check(&mut self) -> Vec<super::types::ExchangeTrade> {
+    pub fn check(&mut self) -> Vec<super::super::types::ExchangeTrade> {
         //To eliminate lookahead bias, we only start executing orders on the next
         //tick.
         self.clock.tick();

@@ -5,20 +5,21 @@ pub use builder::{AsyncStaticWeightStrategyBuilder, StaticWeightStrategyBuilder}
 use async_trait::async_trait;
 use log::info;
 
+use crate::broker::implement::multi::ConcurrentBroker;
+use crate::broker::implement::single::SingleBroker;
 use crate::broker::{
-    BacktestBroker, BrokerCalculations, BrokerCashEvent, ConcurrentBroker, DividendPayment,
-    EventLog, ReceievesOrders, ReceievesOrdersAsync, SingleBroker, Trade, TransferCash,
+    BacktestBroker, BrokerCalculations, BrokerCashEvent, DividendPayment,
+    EventLog, ReceievesOrders, ReceievesOrdersAsync, Trade, TransferCash,
 };
 use crate::clock::Clock;
 use crate::input::{CorporateEventsSource, Dividendable, PriceSource, Quotable};
 use crate::schedule::{DefaultTradingSchedule, TradingSchedule};
-use crate::strategy::StrategyEvent;
+use crate::strategy::{AsyncStrategy, AsyncTransferFrom, Audit, History, Strategy, StrategyEvent, TransferFrom, TransferTo};
 use crate::types::{CashValue, PortfolioAllocation, StrategySnapshot};
 
-use super::{AsyncStrategy, AsyncTransferFrom, Audit, History, Strategy, TransferFrom, TransferTo};
-
-///Basic implementation of an investment strategy which takes a set of fixed-weight allocations and
-///rebalances over time towards those weights.
+/// Fixed-weight allocations over the full simulation.
+/// 
+/// Broker accepts orders but the portfolio is modelled as target percentages.
 pub struct AsyncStaticWeightStrategy<D, T, Q>
 where
     D: Dividendable,

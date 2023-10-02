@@ -1,4 +1,5 @@
-use crate::broker::{ConcurrentBroker, SingleBroker};
+use crate::broker::implement::multi::ConcurrentBroker;
+use crate::broker::implement::single::SingleBroker;
 use crate::clock::Clock;
 use crate::input::{CorporateEventsSource, Dividendable, PriceSource, Quotable};
 use crate::types::PortfolioAllocation;

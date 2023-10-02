@@ -1,11 +1,12 @@
 use alator::clock::{Clock, ClockBuilder};
-use alator::exchange::ConcurrentExchangeBuilder;
+use alator::exchange::implement::multi::ConcurrentExchangeBuilder;
 use alator::input::{DefaultCorporateEventsSource, DefaultPriceSource};
 use alator::strategy::{AsyncStaticWeightStrategy, AsyncStaticWeightStrategyBuilder};
 use rand::distributions::{Distribution, Uniform};
 use rand::thread_rng;
 
-use alator::broker::{BrokerCost, ConcurrentBroker, ConcurrentBrokerBuilder, Dividend, Quote};
+use alator::broker::implement::multi::{ConcurrentBroker, ConcurrentBrokerBuilder};
+use alator::broker::{BrokerCost, Dividend, Quote};
 use alator::simcontext::{SimContextMulti, SimContextMultiBuilder};
 use alator::types::{CashValue, Frequency, PortfolioAllocation};
 

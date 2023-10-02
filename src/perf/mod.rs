@@ -252,9 +252,10 @@ impl PerformanceCalculator {
 
 #[cfg(test)]
 mod tests {
-    use crate::broker::{BrokerCost, Dividend, Quote, SingleBroker, SingleBrokerBuilder};
+    use crate::broker::implement::single::{SingleBroker, SingleBrokerBuilder};
+    use crate::broker::{BrokerCost, Dividend, Quote};
     use crate::clock::{Clock, ClockBuilder};
-    use crate::exchange::SingleExchangeBuilder;
+    use crate::exchange::implement::single::SingleExchangeBuilder;
     use crate::input::{DefaultCorporateEventsSource, DefaultPriceSource};
     use crate::perf::StrategySnapshot;
     use crate::strategy::{History, StaticWeightStrategyBuilder, Strategy};

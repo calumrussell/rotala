@@ -2,8 +2,9 @@ use std::collections::HashMap;
 use std::marker::PhantomData;
 use std::sync::Arc;
 
-use crate::broker::{BrokerCost, BrokerLog, ConcurrentBroker};
-use crate::exchange::ConcurrentExchange;
+use crate::broker::implement::multi::ConcurrentBroker;
+use crate::broker::{BrokerCost, BrokerLog};
+use crate::exchange::implement::multi::ConcurrentExchange;
 use crate::input::{CorporateEventsSource, Dividendable, PriceSource, Quotable};
 use crate::types::{CashValue, PortfolioHoldings};
 

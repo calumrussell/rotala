@@ -7,7 +7,7 @@ pub use builder::{SimContextBuilder, SimContextMultiBuilder};
 use futures::future::join_all;
 
 use crate::clock::Clock;
-use crate::exchange::ConcurrentExchange;
+use crate::exchange::implement::multi::ConcurrentExchange;
 use crate::input::{Dividendable, PriceSource, Quotable};
 use crate::perf::{BacktestOutput, PerformanceCalculator};
 use crate::strategy::{AsyncStrategy, History, Strategy};
