@@ -3,7 +3,7 @@ use pyo3::prelude::*;
 
 use alator::clock::ClockBuilder;
 use alator::input::{PyPriceSource, PyCorporateEventsSource};
-use alator::strategy::StaticWeightStrategyBuilder;
+use alator::strategy::implement::staticweight::StaticWeightStrategyBuilder;
 use alator::broker::implement::single::{SingleBroker, SingleBrokerBuilder};
 use alator::broker::{BrokerCost, PyQuote, PyDividend};
 use alator::simcontext::SimContextBuilder;

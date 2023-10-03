@@ -1,3 +1,5 @@
+//! Generic types used across package
+
 use itertools::Itertools;
 use std::hash::Hash;
 use std::ops::Deref;

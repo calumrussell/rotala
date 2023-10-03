@@ -1,3 +1,5 @@
+//! Synchronizes time across components
+
 use std::sync::Arc;
 use std::sync::Mutex;
 use std::vec::IntoIter;

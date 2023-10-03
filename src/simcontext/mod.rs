@@ -1,3 +1,5 @@
+//! Running context for backtest
+
 mod builder;
 
 use std::marker::PhantomData;

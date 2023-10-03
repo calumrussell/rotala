@@ -61,7 +61,7 @@
 //!     use alator::clock::ClockBuilder;
 //!     use alator::exchange::implement::single::SingleExchangeBuilder;
 //!     use alator::input::{ fake_price_source_generator, DefaultCorporateEventsSource, DefaultPriceSource };
-//!     use alator::strategy::StaticWeightStrategyBuilder;
+//!     use alator::strategy::implement::staticweight::StaticWeightStrategyBuilder;
 //!     use alator::simcontext::SimContextBuilder;
 //!     use alator::types::{ CashValue, Frequency, PortfolioAllocation };
 //! 
@@ -134,21 +134,12 @@
 //! * Multi-currency
 //! * Shorting 
 
-/// Information about backtest state and order execution logic
 pub mod broker;
-/// Synchronizes time across components
 pub mod clock;
-/// Trade execution logic
 pub mod exchange;
-/// Data sources
 pub mod input;
-/// Generates performance stats for backtest
 pub mod perf;
-/// Schedules for running backtests
 pub mod schedule;
-/// Running context for backtest
 pub mod simcontext;
-/// Generates orders
 pub mod strategy;
-/// Generic types used across package
 pub mod types;

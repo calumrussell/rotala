@@ -1,3 +1,5 @@
+//! Schedules for running backtests
+ 
 use crate::types::{DateTime, Weekday};
 
 /// Returns [bool] when it is time to trade.

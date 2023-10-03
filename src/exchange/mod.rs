@@ -1,3 +1,5 @@
+//! Trade execution logic
+
 pub mod implement;
 mod orderbook;
 mod types;

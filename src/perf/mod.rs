@@ -1,3 +1,5 @@
+//! Generates performance stats for backtest
+
 use crate::types::{Frequency, StrategySnapshot};
 use itertools::Itertools;
 
@@ -258,7 +260,8 @@ mod tests {
     use crate::exchange::implement::single::SingleExchangeBuilder;
     use crate::input::{DefaultCorporateEventsSource, DefaultPriceSource};
     use crate::perf::StrategySnapshot;
-    use crate::strategy::{History, StaticWeightStrategyBuilder, Strategy};
+    use crate::strategy::implement::staticweight::StaticWeightStrategyBuilder;
+    use crate::strategy::{History, Strategy};
     use crate::types::PortfolioAllocation;
 
     use super::Frequency;

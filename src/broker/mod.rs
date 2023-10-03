@@ -1,3 +1,5 @@
+//! Information about backtest state and order execution logic
+
 mod calculations;
 mod record;
 mod types;

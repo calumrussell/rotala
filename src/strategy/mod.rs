@@ -1,8 +1,6 @@
-mod implement;
-pub use implement::staticweight::{
-    AsyncStaticWeightStrategy, AsyncStaticWeightStrategyBuilder, StaticWeightStrategy,
-    StaticWeightStrategyBuilder,
-};
+//! Generates orders
+
+pub mod implement;
 
 use async_trait::async_trait;
 
@@ -81,7 +79,7 @@ pub trait History {
 
 #[cfg(test)]
 mod tests {
-    use super::AsyncStaticWeightStrategyBuilder;
+    use crate::strategy::implement::staticweight::AsyncStaticWeightStrategyBuilder;
     use crate::broker::implement::multi::{ConcurrentBroker, ConcurrentBrokerBuilder};
     use crate::broker::{BrokerCost, Dividend, Quote};
     use crate::clock::{Clock, ClockBuilder};

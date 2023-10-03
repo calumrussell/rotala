@@ -1,3 +1,5 @@
+//! Data sources
+
 use rand::distributions::{Distribution, Uniform};
 use rand::thread_rng;
 use std::collections::HashMap;
