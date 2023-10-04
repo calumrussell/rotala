@@ -1,8 +1,8 @@
 use std::marker::PhantomData;
 
 use crate::clock::Clock;
-use crate::input::{PriceSource, Quotable};
 use crate::exchange::implement::single::SingleExchange;
+use crate::input::{PriceSource, Quotable};
 
 /// Builds [SingleExchange].
 pub struct SingleExchangeBuilder<Q, T>

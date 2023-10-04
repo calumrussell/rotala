@@ -10,8 +10,8 @@ use crate::broker::{DividendPayment, Trade};
 use crate::types::{CashValue, StrategySnapshot};
 
 /// Generate changes for broker to act upon.
-/// 
-/// Within multi-threaded context, strategy 
+///
+/// Within multi-threaded context, strategy
 #[async_trait]
 pub trait AsyncStrategy: TransferTo {
     async fn update(&mut self);
@@ -19,11 +19,11 @@ pub trait AsyncStrategy: TransferTo {
 }
 
 /// Generates changes for broker to act upon.
-/// 
+///
 /// Within the single-threaded context, strategy triggers all downstream changes to other
 /// components. `update` is called, strategy gathers information, calculates new target
 /// portfolio and passes the required orders to broker passing the information down.
-/// 
+///
 /// [Strategy] also manages snapshots which are used for performance calculation.
 pub trait Strategy: TransferTo {
     fn update(&mut self);
@@ -31,10 +31,10 @@ pub trait Strategy: TransferTo {
 }
 
 /// Logs certain events triggered by client.
-/// 
+///
 /// Does not cover internally-generated events, such as order creation, but only events that are
 /// triggered by the owning context at some point in the simulation.
-/// 
+///
 /// These events are used to lock cash flows and, at this stage, are related to the [TransferTo]
 /// and/or [TransferFrom] traits. Mirrors [BrokerEvent].
 pub enum StrategyEvent {
@@ -44,8 +44,8 @@ pub enum StrategyEvent {
     DepositSuccess(CashValue),
 }
 
-/// Set of functions for reporting events. 
-/// 
+/// Set of functions for reporting events.
+///
 /// Used for tax calculations at the moment. Mirrors functions on broker.
 pub trait Audit {
     fn trades_between(&self, start: &i64, end: &i64) -> Vec<Trade>;
@@ -70,8 +70,8 @@ pub trait TransferFrom {
     fn withdraw_cash_with_liquidation(&mut self, cash: &f64) -> StrategyEvent;
 }
 
-/// Strategy records and can return history to client. 
-/// 
+/// Strategy records and can return history to client.
+///
 /// Records using [StrategySnapshot].
 pub trait History {
     fn get_history(&self) -> Vec<StrategySnapshot>;
@@ -79,12 +79,12 @@ pub trait History {
 
 #[cfg(test)]
 mod tests {
-    use crate::strategy::implement::staticweight::AsyncStaticWeightStrategyBuilder;
     use crate::broker::implement::multi::{ConcurrentBroker, ConcurrentBrokerBuilder};
     use crate::broker::{BrokerCost, Dividend, Quote};
     use crate::clock::{Clock, ClockBuilder};
     use crate::exchange::implement::multi::ConcurrentExchangeBuilder;
     use crate::input::{DefaultCorporateEventsSource, DefaultPriceSource};
+    use crate::strategy::implement::staticweight::AsyncStaticWeightStrategyBuilder;
     use crate::types::{Frequency, PortfolioAllocation};
 
     async fn setup() -> (

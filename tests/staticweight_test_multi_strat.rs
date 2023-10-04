@@ -1,7 +1,9 @@
 use alator::clock::{Clock, ClockBuilder};
 use alator::exchange::implement::multi::ConcurrentExchangeBuilder;
 use alator::input::{DefaultCorporateEventsSource, DefaultPriceSource};
-use alator::strategy::implement::staticweight::{AsyncStaticWeightStrategy, AsyncStaticWeightStrategyBuilder};
+use alator::strategy::implement::staticweight::{
+    AsyncStaticWeightStrategy, AsyncStaticWeightStrategyBuilder,
+};
 use rand::distributions::{Distribution, Uniform};
 use rand::thread_rng;
 

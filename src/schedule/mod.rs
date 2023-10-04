@@ -1,9 +1,9 @@
 //! Schedules for running backtests
- 
+
 use crate::types::{DateTime, Weekday};
 
 /// Returns [bool] when it is time to trade.
-/// 
+///
 /// Should be use within a strategy to control when the strategy can issue new orders. This doesn't
 /// relate to the frequency of operations that run within broker or exchange. These will run at the
 /// clock frequency on every tick, this schedule is purely for generating new orders.

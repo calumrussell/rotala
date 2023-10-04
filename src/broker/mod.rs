@@ -1,8 +1,8 @@
 //! Issues orders to exchange and tracks changes as exchange executes orders.
 mod calculations;
+pub mod implement;
 mod record;
 mod types;
-pub mod implement;
 
 pub use calculations::BrokerCalculations;
 #[doc(hidden)]
@@ -26,11 +26,11 @@ use crate::input::Quotable;
 use crate::types::{CashValue, PortfolioHoldings, PortfolioQty, PortfolioValues, Price};
 
 /// Essential traits for standard library definition of a broker.
-/// 
+///
 /// Functionality for brokers is spread across multiple traits, these traits are the functions
-/// that seem to be necessary for any backtest. 
-/// 
-/// [GetsQuote] isn't included because having the broker as a source and user of data is 
+/// that seem to be necessary for any backtest.
+///
+/// [GetsQuote] isn't included because having the broker as a source and user of data is
 /// implementation-dependent.
 #[async_trait]
 pub trait BacktestBroker {
@@ -144,9 +144,9 @@ pub trait TransferCash: BacktestBroker {
 }
 
 /// Broker can receive (and fulfill) orders once the backtest has started.
-/// 
+///
 /// This is connected to functionality within [BrokerCalculations]. If this trait is not
-/// implemented then it may not be possible to perform, for example, portfolio liquidations neatly. 
+/// implemented then it may not be possible to perform, for example, portfolio liquidations neatly.
 pub trait ReceivesOrders {
     //TODO: this needs to use another kind of order
     fn send_order(&mut self, order: types::Order) -> types::BrokerEvent;
@@ -154,9 +154,9 @@ pub trait ReceivesOrders {
 }
 
 /// Broker can receive (and fulfill) orders once the backtest has started.
-/// 
+///
 /// This is connected to functionality within [BrokerCalculations]. If this trait is not
-/// implemented then it may not be possible to perform, for example, portfolio liquidations neatly. 
+/// implemented then it may not be possible to perform, for example, portfolio liquidations neatly.
 #[async_trait]
 pub trait ReceivesOrdersAsync {
     //TODO: this needs to use another kind of order
@@ -165,15 +165,15 @@ pub trait ReceivesOrdersAsync {
 }
 
 /// Broker produces price data.
-/// 
-/// Library implementations of brokers can be treated as a source of data equivalent to an 
-/// `Exchange`. Calling functions can call `get_quote` and expect to see the same result as 
+///
+/// Library implementations of brokers can be treated as a source of data equivalent to an
+/// `Exchange`. Calling functions can call `get_quote` and expect to see the same result as
 /// calling the `Exchange` at the same time. However, this requires continous synchronization of
 /// state between `Exchange` and `Broker`. In some cases, for example with several thousand prices,
 /// this won't be performant. This synchronization is used to prevent lookahead bias in multi-
 /// threaded contexts so users with this limitation will need to consider carefully whether broker
 /// should be a data source (and this trait implemented) when re-implementing broker.
-/// 
+///
 /// In the case of missing data, library implementations store the last-seen price. Strategies
 /// would, therefore, be operating with stale data. This is a consequence of protecting against
 /// lookahead bias.
@@ -183,10 +183,10 @@ pub trait GetsQuote<Q: Quotable> {
 }
 
 /// Broker stores completed trades and paid dividends.
-/// 
+///
 /// Implemented for taxation calculations. Functions are distinct from a performance calculation
 /// as, for a backtest, performance is calculated at the end but this provides a way to query
-/// transactions completed whilst the backtest is ongoing. 
+/// transactions completed whilst the backtest is ongoing.
 pub trait EventLog {
     fn trades_between(&self, start: &i64, end: &i64) -> Vec<types::Trade>;
     fn dividends_between(&self, start: &i64, end: &i64) -> Vec<types::DividendPayment>;
@@ -220,10 +220,7 @@ impl Display for UnexecutableOrderError {
 #[cfg(test)]
 mod tests {
 
-    use super::{
-        BacktestBroker, BrokerCalculations, BrokerCost, OrderType, Quote,
-        TransferCash,
-    };
+    use super::{BacktestBroker, BrokerCalculations, BrokerCost, OrderType, Quote, TransferCash};
     use crate::broker::implement::multi::{ConcurrentBroker, ConcurrentBrokerBuilder};
     use crate::broker::{Dividend, ReceivesOrdersAsync};
     use crate::exchange::implement::multi::ConcurrentExchangeBuilder;

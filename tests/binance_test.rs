@@ -2,11 +2,10 @@ use std::collections::HashMap;
 use std::io::{Cursor, Write};
 use std::sync::Arc;
 
-use alator::broker::{
-    BacktestBroker, Dividend, GetsQuote, Order, OrderType, Quote, ReceivesOrders,
-    TransferCash,
-};
 use alator::broker::implement::single::{SingleBroker, SingleBrokerBuilder};
+use alator::broker::{
+    BacktestBroker, Dividend, GetsQuote, Order, OrderType, Quote, ReceivesOrders, TransferCash,
+};
 use alator::clock::{Clock, ClockBuilder};
 use alator::exchange::implement::single::SingleExchangeBuilder;
 use alator::input::{DefaultCorporateEventsSource, DefaultPriceSource};

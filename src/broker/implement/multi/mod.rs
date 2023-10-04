@@ -9,11 +9,11 @@ use std::collections::HashMap;
 use std::marker::PhantomData;
 use std::sync::Arc;
 
+#[allow(unused)]
+use crate::broker::implement::single::SingleBroker;
 use crate::exchange::{DefaultSubscriberId, NotifyReceiver, OrderSender, PriceReceiver};
 use crate::input::{CorporateEventsSource, Dividendable, Quotable};
 use crate::types::{CashValue, PortfolioHoldings, PortfolioQty, Price};
-#[allow(unused)]
-use crate::broker::implement::single::SingleBroker;
 
 use crate::broker::{
     BacktestBroker, BrokerCalculations, BrokerCashEvent, BrokerCost, BrokerEvent, BrokerLog,
@@ -404,12 +404,11 @@ where
 #[cfg(test)]
 mod tests {
 
-    use crate::broker::{
-        BacktestBroker, BrokerCashEvent, BrokerCost, BrokerEvent,
-        Dividend, Order, OrderType, Quote, ReceivesOrdersAsync,
-        TransferCash,
-    };
     use crate::broker::implement::multi::{ConcurrentBroker, ConcurrentBrokerBuilder};
+    use crate::broker::{
+        BacktestBroker, BrokerCashEvent, BrokerCost, BrokerEvent, Dividend, Order, OrderType,
+        Quote, ReceivesOrdersAsync, TransferCash,
+    };
     use crate::clock::ClockBuilder;
     use crate::exchange::implement::multi::{ConcurrentExchange, ConcurrentExchangeBuilder};
     use crate::input::{DefaultCorporateEventsSource, DefaultPriceSource};

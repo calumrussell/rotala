@@ -16,7 +16,7 @@ use crate::strategy::{AsyncStrategy, History, Strategy};
 use crate::types::{CashValue, Frequency};
 
 /// Context for single-threaded simulation run.
-/// 
+///
 /// Within the single-threaded context, the call stack it totally vertical: strategy passes signal
 /// to broker, broker passes signal to exchange, and then the exchange gets updated and there is a
 /// quick update of the broker before we get passed back to the top-level context. This call
@@ -52,13 +52,13 @@ where
 }
 
 /// Context for multi-threaded simulation run
-/// 
+///
 /// Unlike the single-threaded run, context has to play some role in co-ordinating operations
 /// between components. Because broker cannot pass trades through to the exchange directly,
 /// as it only holds a reference to a channel to which it sends orders, we have to first tick
 /// the exchange (which ticks, passes updated prices and notifications and executes any trades)
 /// and then strategy updates, potentially telling broker to send new orders.
-/// 
+///
 /// Context, therefore, contains more logic orchestrating between components.
 pub struct SimContextMulti<D, Q, P, S>
 where

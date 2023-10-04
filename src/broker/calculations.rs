@@ -15,7 +15,7 @@ impl BrokerCalculations {
     /// Withdrawing with liquidation will queue orders to generate the expected amount of cash. No
     /// ordering to the assets that are sold, the broker is responsible for managing cash but not
     /// re-aligning to a target portfolio.
-    /// 
+    ///
     /// Because orders are not executed instaneously this method can be the source of significant
     /// divergences in performance from the underlying in certain cases. For example, if prices are
     /// volatile, in the case of low-frequency data, then the broker will end up continuously
@@ -101,7 +101,7 @@ impl BrokerCalculations {
     /// Withdrawing with liquidation will queue orders to generate the expected amount of cash. No
     /// ordering to the assets that are sold, the broker is responsible for managing cash but not
     /// re-aligning to a target portfolio.
-    /// 
+    ///
     /// Because orders are not executed instaneously this method can be the source of significant
     /// divergences in performance from the underlying in certain cases. For example, if prices are
     /// volatile, in the case of low-frequency data, then the broker will end up continuously
@@ -184,7 +184,7 @@ impl BrokerCalculations {
 
     /// Calculates difference between current broker state and a target allocation, the latter
     /// typically passed from a strategy.
-    /// 
+    ///
     /// Brokers do not expect target wights, they merely respond to orders so this structure
     /// is not required to create backtests.
     pub fn diff_brkr_against_target_weights<Q: Quotable, T: BacktestBroker + GetsQuote<Q>>(

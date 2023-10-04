@@ -52,7 +52,7 @@ where
     }
 
     /// Called on every tick of clock to ensure that state is synchronized with other components.
-    /// 
+    ///
     /// * Pays dividends
     /// * Calls `check` on exchange
     /// * Updates last seen prices for exchange tick
@@ -95,7 +95,7 @@ where
     }
 
     /// If current round of trades have caused broker to run out of cash then this will rebalance.
-    /// 
+    ///
     /// Has a fixed value buffer, currently set to 1000, to reduce the probability of the broker
     /// moving into an insufficient cash state.
     fn rebalance_cash(&mut self) {

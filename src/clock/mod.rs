@@ -16,10 +16,10 @@ pub struct ClockInner {
 }
 
 /// Used to synchronize time between components.
-/// 
+///
 /// Shared clock simplifies the synchronization of components that rely on data sources during
-/// backtests. 
-/// 
+/// backtests.
+///
 /// [Clock] is thread-safe and wrapped in [Arc] so can be cheaply cloned and references held across
 /// the application.
 #[derive(Debug)]

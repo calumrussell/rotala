@@ -22,7 +22,7 @@ where
     trade_log: Vec<crate::exchange::types::ExchangeTrade>,
     //This is cleared on every tick
     order_buffer: Vec<crate::exchange::types::ExchangeOrder>,
-    _quote: PhantomData<Q>
+    _quote: PhantomData<Q>,
 }
 
 impl<Q, P> SingleExchange<Q, P>

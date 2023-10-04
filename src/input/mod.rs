@@ -32,10 +32,10 @@ pub trait Dividendable: Clone + std::marker::Send + std::marker::Sync {
 }
 
 /// Represents structure that generates price quotes.
-/// 
+///
 /// Related to [Quotable]. Other components are tightly bound to the types that implement these
 /// traits.
-/// 
+///
 /// Whilst this can be cloned, users should be aware that cloning multiple times will likely be
 /// one of the most expensive operations in a backtest so care should be taken to minimize these
 /// operations.
@@ -48,7 +48,7 @@ where
 }
 
 /// Represents structure that generates dividend information.
-/// 
+///
 /// There can be multiple types of corporate events but we currently only support dividends.
 pub trait CorporateEventsSource<D>: Clone
 where
@@ -60,7 +60,7 @@ where
 type DefaultPriceSourceImpl<Q> = (HashMap<DateTime, Vec<Arc<Q>>>, Clock);
 
 /// Default implementation of [PriceSource] using [Quote] as inner type.
-/// 
+///
 /// This implementation is thread-safe but users should consider the conditions under which
 /// multiple threads should be accesssing prices. In library implementations, this is tightly
 /// controlled for performance/simplicity reasons with the exchange being the only source.

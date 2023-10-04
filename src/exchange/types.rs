@@ -13,7 +13,7 @@ pub type DefaultExchangeOrderId = u32;
 pub type DefaultSubscriberId = u8;
 
 /// Order types supported by the exchange.
-/// 
+///
 /// This may be different from order types supported by the broker.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum OrderType {
@@ -26,7 +26,7 @@ pub enum OrderType {
 }
 
 /// Order supported by the exchange.
-/// 
+///
 /// This may be different from order created by the broker.
 #[derive(Clone, Debug)]
 pub struct ExchangeOrder {
