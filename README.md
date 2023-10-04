@@ -10,6 +10,8 @@ Components for backtesting a financial portfolio. Built with Rust.
 
 # Change Log
 
+v0.3.1 - Docs organized. Path for implementation `use` had to be lengthened for docs organziation.
+
 v0.3.0 - Added concurrent strategies. Library still supports running synchronously but multiple strategies can now be updated at the same time significantly improving performance. Perf in inner trade loop was also improved 25% and 5% in a full backtest. Docs haven't been updated as a further architectural change needs to be pushed but tests cover how to run sync/async backtests. 
 
 v0.2.11 - Added (hopefully) zero-copy Python integration. No other way to do this but making everything generic on `Quotable`/`Dividendable` traits which has led to substantial changes in the signature of Broker/Strategy/Exchange implementations. This also comes with perf improvements for the `DataSource` trait and general improvements throughout the library.
