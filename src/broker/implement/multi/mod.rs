@@ -17,7 +17,7 @@ use crate::broker::implement::single::SingleBroker;
 
 use crate::broker::{
     BacktestBroker, BrokerCalculations, BrokerCashEvent, BrokerCost, BrokerEvent, BrokerLog,
-    DividendPayment, EventLog, GetsQuote, Order, OrderType, ReceievesOrdersAsync, Trade,
+    DividendPayment, EventLog, GetsQuote, Order, OrderType, ReceivesOrdersAsync, Trade,
     TransferCash,
 };
 
@@ -140,7 +140,7 @@ where
 }
 
 #[async_trait]
-impl<D, T, Q> ReceievesOrdersAsync for ConcurrentBroker<D, T, Q>
+impl<D, T, Q> ReceivesOrdersAsync for ConcurrentBroker<D, T, Q>
 where
     D: Dividendable,
     T: CorporateEventsSource<D>,
@@ -406,7 +406,7 @@ mod tests {
 
     use crate::broker::{
         BacktestBroker, BrokerCashEvent, BrokerCost, BrokerEvent,
-        Dividend, Order, OrderType, Quote, ReceievesOrdersAsync,
+        Dividend, Order, OrderType, Quote, ReceivesOrdersAsync,
         TransferCash,
     };
     use crate::broker::implement::multi::{ConcurrentBroker, ConcurrentBrokerBuilder};

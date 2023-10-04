@@ -13,7 +13,7 @@ use crate::types::{CashValue, PortfolioHoldings, PortfolioQty, Price};
 
 use crate::broker::{
     BacktestBroker, BrokerCalculations, BrokerCashEvent, BrokerCost, BrokerEvent, BrokerLog,
-    DividendPayment, EventLog, GetsQuote, Order, OrderType, ReceievesOrders, Trade, TransferCash,
+    DividendPayment, EventLog, GetsQuote, Order, OrderType, ReceivesOrders, Trade, TransferCash,
 };
 
 /// Single-threaded broker. Created with [SingleBrokerBuilder].
@@ -284,7 +284,7 @@ where
     }
 }
 
-impl<D, T, Q, P> ReceievesOrders for SingleBroker<D, T, Q, P>
+impl<D, T, Q, P> ReceivesOrders for SingleBroker<D, T, Q, P>
 where
     D: Dividendable,
     T: CorporateEventsSource<D>,
@@ -386,7 +386,7 @@ where
 mod tests {
     use crate::broker::{
         BacktestBroker, BrokerCashEvent, BrokerCost, BrokerEvent, Dividend, Order, OrderType,
-        Quote, ReceievesOrders, TransferCash,
+        Quote, ReceivesOrders, TransferCash,
     };
 
     use crate::exchange::implement::single::SingleExchangeBuilder;

@@ -7,6 +7,9 @@ use crate::{
     types::{CashValue, DateTime, PortfolioQty, Price},
 };
 
+#[allow(unused)]
+use crate::types::PortfolioAllocation;
+
 //Contains data structures and traits that refer solely to the data held and operations required
 //for broker implementations.
 

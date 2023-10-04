@@ -46,5 +46,12 @@
 //! An exchange may interact with multiple brokers so issues a unique id to each one that is used
 //! for communications that are relevant to individual brokers, for example completed trades.
 
+#[allow(unused)]
+use single::SingleExchange;
+#[allow(unused)]
+use crate::clock::Clock;
+#[allow(unused)]
+use crate::input::PriceSource;
+
 pub mod multi;
 pub mod single;

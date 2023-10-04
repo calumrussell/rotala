@@ -58,5 +58,16 @@
 //! Keeps an internal log of trades executed and dividends received/paid. This is distinct from
 //! performance calculations.
 
+#[allow(unused)]
+use single::SingleBroker;
+#[allow(unused)]
+use multi::ConcurrentBroker;
+#[allow(unused)]
+use crate::input::CorporateEventsSource;
+#[allow(unused)]
+use crate::exchange::implement::single::SingleExchange;
+#[allow(unused)]
+use crate::broker::BrokerCost;
+
 pub mod single;
 pub mod multi;

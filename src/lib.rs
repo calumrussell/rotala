@@ -1,4 +1,3 @@
-
 //! # How does Alator work?
 //! 
 //! The development goal is to a provide a simple and flexible backtesting library whilst achieving
@@ -24,7 +23,7 @@
 //! Adding multi-threaded code involved substantial changes to the code as, for reasons explored in
 //! the next section, there wasn't full separation of `Broker` and `Exchange`. For the most part,
 //! the implementation of multi-threading has not impacted the definition of components but there
-//! are exceptions: [RecievesOrders]/[RecievesOrdersAsync]. Hopefully, it will be possible to
+//! are exceptions: [ReceivesOrders]/[ReceivesOrdersAsync]. Hopefully, it will be possible to
 //! remove these at some point but it is something to be aware of when implementing your own
 //! components.
 //! 
@@ -133,6 +132,11 @@
 //! * Leverage
 //! * Multi-currency
 //! * Shorting 
+
+#[allow(unused)]
+use crate::broker::{ ReceivesOrders, ReceivesOrdersAsync };
+#[allow(unused)]
+use crate::input::{ PriceSource, Quotable };
 
 pub mod broker;
 pub mod clock;

@@ -9,7 +9,7 @@ use crate::broker::implement::multi::ConcurrentBroker;
 use crate::broker::implement::single::SingleBroker;
 use crate::broker::{
     BacktestBroker, BrokerCalculations, BrokerCashEvent, DividendPayment,
-    EventLog, ReceievesOrders, ReceievesOrdersAsync, Trade, TransferCash,
+    EventLog, ReceivesOrders, ReceivesOrdersAsync, Trade, TransferCash,
 };
 use crate::clock::Clock;
 use crate::input::{CorporateEventsSource, Dividendable, PriceSource, Quotable};

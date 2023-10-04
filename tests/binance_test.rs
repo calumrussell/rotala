@@ -3,7 +3,7 @@ use std::io::{Cursor, Write};
 use std::sync::Arc;
 
 use alator::broker::{
-    BacktestBroker, Dividend, GetsQuote, Order, OrderType, Quote, ReceievesOrders,
+    BacktestBroker, Dividend, GetsQuote, Order, OrderType, Quote, ReceivesOrders,
     TransferCash,
 };
 use alator::broker::implement::single::{SingleBroker, SingleBrokerBuilder};

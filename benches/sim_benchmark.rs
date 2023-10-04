@@ -1,5 +1,5 @@
 use alator::broker::{
-    BrokerCost, Dividend, Order, OrderType, Quote, ReceievesOrders,
+    BrokerCost, Dividend, Order, OrderType, Quote, ReceivesOrders,
     TransferCash,
 };
 use alator::broker::implement::single::{SingleBroker, SingleBrokerBuilder};

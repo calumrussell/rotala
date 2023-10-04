@@ -5,7 +5,7 @@ use crate::{
     types::{CashValue, PortfolioAllocation, PortfolioQty, Price},
 };
 
-use super::{BacktestBroker, GetsQuote, ReceievesOrders, ReceievesOrdersAsync};
+use super::{BacktestBroker, GetsQuote, ReceivesOrders, ReceivesOrdersAsync};
 
 /// Groups calculations standard to most brokers. These are not bound into any other implementation
 /// and operate on traits rather than specific implementations.
@@ -22,7 +22,7 @@ impl BrokerCalculations {
     /// re-balancing in a random way under certain price movements.
     pub fn withdraw_cash_with_liquidation<
         Q: Quotable,
-        T: BacktestBroker + GetsQuote<Q> + ReceievesOrders,
+        T: BacktestBroker + GetsQuote<Q> + ReceivesOrders,
     >(
         cash: &f64,
         brkr: &mut T,
@@ -108,7 +108,7 @@ impl BrokerCalculations {
     /// re-balancing in a random way under certain price movements.
     pub async fn withdraw_cash_with_liquidation_async<
         Q: Quotable,
-        T: BacktestBroker + GetsQuote<Q> + ReceievesOrdersAsync,
+        T: BacktestBroker + GetsQuote<Q> + ReceivesOrdersAsync,
     >(
         cash: &f64,
         brkr: &mut T,

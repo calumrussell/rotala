@@ -147,7 +147,7 @@ pub trait TransferCash: BacktestBroker {
 /// 
 /// This is connected to functionality within [BrokerCalculations]. If this trait is not
 /// implemented then it may not be possible to perform, for example, portfolio liquidations neatly. 
-pub trait ReceievesOrders {
+pub trait ReceivesOrders {
     //TODO: this needs to use another kind of order
     fn send_order(&mut self, order: types::Order) -> types::BrokerEvent;
     fn send_orders(&mut self, order: &[types::Order]) -> Vec<types::BrokerEvent>;
@@ -158,7 +158,7 @@ pub trait ReceievesOrders {
 /// This is connected to functionality within [BrokerCalculations]. If this trait is not
 /// implemented then it may not be possible to perform, for example, portfolio liquidations neatly. 
 #[async_trait]
-pub trait ReceievesOrdersAsync {
+pub trait ReceivesOrdersAsync {
     //TODO: this needs to use another kind of order
     async fn send_order(&mut self, order: types::Order) -> types::BrokerEvent;
     async fn send_orders(&mut self, order: &[types::Order]) -> Vec<types::BrokerEvent>;
@@ -167,7 +167,7 @@ pub trait ReceievesOrdersAsync {
 /// Broker produces price data.
 /// 
 /// Library implementations of brokers can be treated as a source of data equivalent to an 
-/// `Exchange`. Calling functions can call [get_quote] and expect to see the same result as 
+/// `Exchange`. Calling functions can call `get_quote` and expect to see the same result as 
 /// calling the `Exchange` at the same time. However, this requires continous synchronization of
 /// state between `Exchange` and `Broker`. In some cases, for example with several thousand prices,
 /// this won't be performant. This synchronization is used to prevent lookahead bias in multi-
@@ -225,7 +225,7 @@ mod tests {
         TransferCash,
     };
     use crate::broker::implement::multi::{ConcurrentBroker, ConcurrentBrokerBuilder};
-    use crate::broker::{Dividend, ReceievesOrdersAsync};
+    use crate::broker::{Dividend, ReceivesOrdersAsync};
     use crate::exchange::implement::multi::ConcurrentExchangeBuilder;
     use crate::input::{
         fake_price_source_generator, DefaultCorporateEventsSource, DefaultPriceSource,

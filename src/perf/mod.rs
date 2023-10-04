@@ -177,7 +177,7 @@ impl PortfolioCalculations {
     }
 }
 
-/// Calculates performance statistics from [Vec<StrategySnapshot>].
+/// Calculates performance statistics from [`Vec<StrategySnapshot>`].
 /// 
 /// Intended to be run after the simulation is completed.
 #[derive(Debug, Clone)]
