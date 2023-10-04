@@ -3,6 +3,11 @@ name = "alator"
 version = "0.3.0"
 authors = ["Calum Russell <calum.mj.russell@gmail.com>"]
 edition = "2021"
+license-file = "LICENCE"
+description = "Library for backtesting investment strategies"
+documentation = "https://docs.rs/alator" 
+repository = "https://github.com/calumrussell/alator"
+readme = "README.md"
 
 [dependencies]
 itertools = "0.11.0"
