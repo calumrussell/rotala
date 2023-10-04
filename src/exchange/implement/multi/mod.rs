@@ -1,3 +1,4 @@
+//! Multi-threaded exchange
 mod builder;
 
 pub use builder::ConcurrentExchangeBuilder;
@@ -5,38 +6,11 @@ pub use builder::ConcurrentExchangeBuilder;
 use std::sync::Arc;
 
 use crate::clock::Clock;
+#[allow(unused)]
+use crate::exchange::implement::single::SingleExchange;
 use crate::input::{PriceSource, Quotable};
 
-///Exchanges accept orders for securities, store them on an internal order book, and then execute
-///them over time.
-///
-///[Exchange] does not execute orders immediately. [Broker] owns the exchange/s, passes orders to the
-///exchange and then checks back to find out the result. Orders are not triggered by the broker but
-///prie changes over time within the exchange. And the results are not reported back to broker
-///immediately but must be polled.
-///
-///[Broker] polls a buffer of trades that is flushed empty after every check.
-///
-///This execution model is more complex than executing trades immediately with no exchange
-///abstraction. But this creates clear separation between the responsibility of the broker between
-///storing results and executing trades.
-///
-///This model also creates a dependency on the client to call all operations in order. For example,
-///the client should not insert new orders into the book, check them, and then insert more orders.
-///Clients must check, then insert new orders, then finish; ordering of operations should be
-///maintained through state in the implementation.
-///Implementation of [Exchange]. Supports all [OrderType]. Generic implementation of the execution
-///and updating logic of an exchange.
-///
-///If the client sends an order for a non-existent security or a spurious value, we will fail
-///silently and do not execute the trade. [Broker] implementations should also attempt to catch
-///these errors but errors are not bubbled up in order to keep the simulation running.
-///
-///If a price is missing then the client does not execute the trade but the order will stay in the
-///book until it can be executed.
-///
-///In both cases, we are potentially creating silent errors but this more closely represents the
-///execution model that would exist in reality.
+/// Multi-threaded exchange. Created with [ConcurrentExchangeBuilder].
 #[derive(Debug)]
 pub struct ConcurrentExchange<Q, P>
 where
@@ -44,13 +18,13 @@ where
     P: PriceSource<Q>,
 {
     clock: Clock,
-    orderbook: super::orderbook::OrderBook,
+    orderbook: crate::exchange::OrderBook,
     price_source: P,
-    trade_log: Vec<super::types::ExchangeTrade>,
-    price_sender: Vec<super::types::PriceSender<Q>>,
-    notify_sender: Vec<super::types::NotifySender>,
-    order_reciever: Vec<super::types::OrderReciever>,
-    last_subscriber_id: super::types::DefaultSubscriberId,
+    trade_log: Vec<crate::exchange::types::ExchangeTrade>,
+    price_sender: Vec<crate::exchange::types::PriceSender<Q>>,
+    notify_sender: Vec<crate::exchange::types::NotifySender>,
+    order_reciever: Vec<crate::exchange::types::OrderReciever>,
+    last_subscriber_id: crate::exchange::types::DefaultSubscriberId,
 }
 
 unsafe impl<Q, P> Send for ConcurrentExchange<Q, P>
@@ -75,7 +49,7 @@ where
     pub fn new(clock: Clock, price_source: P) -> Self {
         Self {
             clock,
-            orderbook: super::orderbook::OrderBook::new(),
+            orderbook: super::super::orderbook::OrderBook::new(),
             last_subscriber_id: 0,
             price_source,
             trade_log: Vec::new(),
@@ -94,16 +68,17 @@ where
     pub async fn subscribe(
         &mut self,
     ) -> (
-        super::types::DefaultSubscriberId,
-        super::types::PriceReceiver<Q>,
-        super::types::NotifyReceiver,
-        super::types::OrderSender,
+        crate::exchange::types::DefaultSubscriberId,
+        crate::exchange::types::PriceReceiver<Q>,
+        crate::exchange::types::NotifyReceiver,
+        crate::exchange::types::OrderSender,
     ) {
         let price_channel = tokio::sync::mpsc::channel::<Vec<Arc<Q>>>(100000);
-        let notify_channel =
-            tokio::sync::mpsc::channel::<super::types::ExchangeNotificationMessage>(100000);
+        let notify_channel = tokio::sync::mpsc::channel::<
+            crate::exchange::types::ExchangeNotificationMessage,
+        >(100000);
         let order_channel =
-            tokio::sync::mpsc::channel::<super::types::ExchangeOrderMessage>(100000);
+            tokio::sync::mpsc::channel::<crate::exchange::types::ExchangeOrderMessage>(100000);
 
         //Initialize the price channel
         match self.price_source.get_quotes() {
@@ -154,39 +129,51 @@ where
 
         for message in recieved_orders {
             match message {
-                super::types::ExchangeOrderMessage::CreateOrder(order) => {
+                crate::exchange::types::ExchangeOrderMessage::CreateOrder(order) => {
                     let order_id = self.orderbook.insert_order(order.clone());
                     let notifier = self
                         .notify_sender
                         .get(*order.get_subscriber_id() as usize)
                         .unwrap();
                     let _ = notifier
-                        .send(super::types::ExchangeNotificationMessage::OrderBooked(
-                            order_id, order,
-                        ))
+                        .send(
+                            crate::exchange::types::ExchangeNotificationMessage::OrderBooked(
+                                order_id, order,
+                            ),
+                        )
                         .await;
                 }
-                super::types::ExchangeOrderMessage::DeleteOrder(subscriber_id, order_id) => {
+                crate::exchange::types::ExchangeOrderMessage::DeleteOrder(
+                    subscriber_id,
+                    order_id,
+                ) => {
                     //TODO: we don't check the subscriber_id so subscribers can delete orders
                     //for different subscribers
                     self.orderbook.delete_order(order_id);
                     let notifier = self.notify_sender.get(subscriber_id as usize).unwrap();
                     let _ = notifier
-                        .send(super::types::ExchangeNotificationMessage::OrderDeleted(
-                            order_id,
-                        ))
+                        .send(
+                            crate::exchange::types::ExchangeNotificationMessage::OrderDeleted(
+                                order_id,
+                            ),
+                        )
                         .await;
                 }
-                super::types::ExchangeOrderMessage::ClearOrdersBySymbol(subscriber_id, symbol) => {
+                crate::exchange::types::ExchangeOrderMessage::ClearOrdersBySymbol(
+                    subscriber_id,
+                    symbol,
+                ) => {
                     //TODO: there is a bug here with operation ordering whereby an order can get executed before
                     //it gets cleared by a later operation
                     let removed = self.orderbook.clear_orders_by_symbol(symbol.as_str());
                     for order_id in removed {
                         let notifier = self.notify_sender.get(subscriber_id as usize).unwrap();
                         let _ = notifier
-                            .send(super::types::ExchangeNotificationMessage::OrderDeleted(
-                                order_id,
-                            ))
+                            .send(
+                                crate::exchange::types::ExchangeNotificationMessage::OrderDeleted(
+                                    order_id,
+                                ),
+                            )
                             .await;
                     }
                 }
@@ -202,9 +189,11 @@ where
                 .get(trade.subscriber_id as usize)
                 .unwrap();
             let _ = notifier
-                .send(super::types::ExchangeNotificationMessage::TradeCompleted(
-                    trade.clone(),
-                ))
+                .send(
+                    crate::exchange::types::ExchangeNotificationMessage::TradeCompleted(
+                        trade.clone(),
+                    ),
+                )
                 .await;
             self.trade_log.push(trade);
         }

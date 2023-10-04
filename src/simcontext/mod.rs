@@ -1,3 +1,5 @@
+//! Running context for backtest
+
 mod builder;
 
 use std::marker::PhantomData;
@@ -7,19 +9,19 @@ pub use builder::{SimContextBuilder, SimContextMultiBuilder};
 use futures::future::join_all;
 
 use crate::clock::Clock;
-use crate::exchange::ConcurrentExchange;
+use crate::exchange::implement::multi::ConcurrentExchange;
 use crate::input::{Dividendable, PriceSource, Quotable};
 use crate::perf::{BacktestOutput, PerformanceCalculator};
 use crate::strategy::{AsyncStrategy, History, Strategy};
 use crate::types::{CashValue, Frequency};
 
-///Provides context for a single run of a simulation. Once a run has started, all communication
-///with the components of a simulation should happen through this context.
+/// Context for single-threaded simulation run.
 ///
-///This occurs because there is no separation between components: the context must hold the
-///reference to a `Strategy` to run it. Passing references around with smart pointers would
-///introduce a level of complexity beyond the requirements of current use-cases. The cost of this
-///is that `SimContext` is tightly-bound to `Strategy`.
+/// Within the single-threaded context, the call stack it totally vertical: strategy passes signal
+/// to broker, broker passes signal to exchange, and then the exchange gets updated and there is a
+/// quick update of the broker before we get passed back to the top-level context. This call
+/// pattern is very simple and performant but does mean that operations aren't transparent from this
+/// level.
 pub struct SimContext<S>
 where
     S: Strategy + History,
@@ -49,6 +51,15 @@ where
     }
 }
 
+/// Context for multi-threaded simulation run
+///
+/// Unlike the single-threaded run, context has to play some role in co-ordinating operations
+/// between components. Because broker cannot pass trades through to the exchange directly,
+/// as it only holds a reference to a channel to which it sends orders, we have to first tick
+/// the exchange (which ticks, passes updated prices and notifications and executes any trades)
+/// and then strategy updates, potentially telling broker to send new orders.
+///
+/// Context, therefore, contains more logic orchestrating between components.
 pub struct SimContextMulti<D, Q, P, S>
 where
     D: Dividendable,

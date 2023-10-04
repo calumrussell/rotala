@@ -1,6 +1,7 @@
 use crate::input::{PriceSource, Quotable};
 use crate::types::CashValue;
 
+#[doc(hidden)]
 #[derive(Debug)]
 pub struct OrderBook {
     inner: std::collections::HashMap<

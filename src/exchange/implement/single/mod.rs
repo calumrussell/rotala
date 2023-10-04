@@ -1,3 +1,4 @@
+//! Single-threaded exchange
 mod builder;
 
 pub use builder::SingleExchangeBuilder;
@@ -8,6 +9,7 @@ use std::sync::Arc;
 use crate::clock::Clock;
 use crate::input::{PriceSource, Quotable};
 
+/// Single-threaded exchange. Created with [SingleExchangeBuilder].
 #[derive(Debug)]
 pub struct SingleExchange<Q, P>
 where
@@ -15,11 +17,11 @@ where
     P: PriceSource<Q>,
 {
     clock: Clock,
-    orderbook: super::orderbook::OrderBook,
+    orderbook: crate::exchange::OrderBook,
     price_source: P,
-    trade_log: Vec<super::types::ExchangeTrade>,
+    trade_log: Vec<crate::exchange::types::ExchangeTrade>,
     //This is cleared on every tick
-    order_buffer: Vec<super::types::ExchangeOrder>,
+    order_buffer: Vec<crate::exchange::types::ExchangeOrder>,
     _quote: PhantomData<Q>,
 }
 
@@ -31,7 +33,7 @@ where
     pub fn new(clock: Clock, price_source: P) -> Self {
         Self {
             clock,
-            orderbook: super::orderbook::OrderBook::new(),
+            orderbook: super::super::orderbook::OrderBook::new(),
             price_source,
             trade_log: Vec::new(),
             order_buffer: Vec::new(),
@@ -52,15 +54,15 @@ where
         vec![]
     }
 
-    pub fn fetch_trades(&self, from: usize) -> &[super::ExchangeTrade] {
+    pub fn fetch_trades(&self, from: usize) -> &[crate::exchange::ExchangeTrade] {
         &self.trade_log[from..]
     }
 
-    pub fn insert_order(&mut self, order: super::types::ExchangeOrder) {
+    pub fn insert_order(&mut self, order: super::super::types::ExchangeOrder) {
         self.order_buffer.push(order);
     }
 
-    pub fn delete_order(&mut self, order_id: super::types::DefaultExchangeOrderId) {
+    pub fn delete_order(&mut self, order_id: super::super::types::DefaultExchangeOrderId) {
         self.orderbook.delete_order(order_id);
     }
 
@@ -68,7 +70,7 @@ where
         self.orderbook.clear_orders_by_symbol(&symbol);
     }
 
-    pub fn check(&mut self) -> Vec<super::types::ExchangeTrade> {
+    pub fn check(&mut self) -> Vec<super::super::types::ExchangeTrade> {
         //To eliminate lookahead bias, we only start executing orders on the next
         //tick.
         self.clock.tick();

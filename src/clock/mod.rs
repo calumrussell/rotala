@@ -1,9 +1,12 @@
+//! Synchronizes time across components
+
 use std::sync::Arc;
 use std::sync::Mutex;
 use std::vec::IntoIter;
 
 use crate::types::{DateTime, Frequency};
 
+#[doc(hidden)]
 #[derive(Debug)]
 pub struct ClockInner {
     //We have a position and Vec because we should be able to return an iterator without changing
@@ -12,14 +15,13 @@ pub struct ClockInner {
     dates: Vec<DateTime>,
 }
 
-///Clock is a reference to the internal clock used be all components that have a dependency on the
-///date within the backtest.
+/// Used to synchronize time between components.
 ///
-///Previous implementations did not use a shared clock which result in runtime errors and
-///complexity when some parts of the system updated their time but others did not. By creating a
-///shared reference, we significantly reduce the scope for unexpected behaviour due to
-///inadvertently incorrect sequencing of operations. An added benefit is that this significantly
-///simplifies the interface for data queries so that live-trading would be possible.
+/// Shared clock simplifies the synchronization of components that rely on data sources during
+/// backtests.
+///
+/// [Clock] is thread-safe and wrapped in [Arc] so can be cheaply cloned and references held across
+/// the application.
 #[derive(Debug)]
 pub struct Clock {
     inner: Arc<Mutex<ClockInner>>,
@@ -81,6 +83,7 @@ impl Clock {
     }
 }
 
+/// Used to build [Clock].
 pub struct ClockBuilder {
     pub start: DateTime,
     pub end: DateTime,

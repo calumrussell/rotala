@@ -1,11 +1,12 @@
+//! Schedules for running backtests
+
 use crate::types::{DateTime, Weekday};
 
-///`TradingSchedule` should be used within `Strategy` implementations to control when a rebalancing
-///should run. This is a helper to the creation of strategies, and is not required by any other
-///component. Despite the name, which implies use for rebalancing only, it can also be used to
-///indicate when `Strategy` data needs to be updated or similar.
-//TODO: make this more generic, there is no reason why it has to only concern a rebalancing
-//schedule
+/// Returns [bool] when it is time to trade.
+///
+/// Should be use within a strategy to control when the strategy can issue new orders. This doesn't
+/// relate to the frequency of operations that run within broker or exchange. These will run at the
+/// clock frequency on every tick, this schedule is purely for generating new orders.
 pub trait TradingSchedule {
     fn should_trade(date: &DateTime) -> bool;
 }
@@ -37,7 +38,6 @@ impl TradingSchedule for LastBusinessDayTradingSchedule {
         //either be a weekend or a day with a different month. If either of these things is false
         //then we return false.
         //The day of the new month is not necessarily the first day.
-        //
         for i in 1..4 {
             let seconds_in_day = 86400;
             let offset_time = DateTime::from(**date + (i * seconds_in_day));

@@ -1,13 +1,13 @@
 use std::collections::HashMap;
 use std::marker::PhantomData;
 
+use crate::broker::implement::single::SingleBroker;
 use crate::broker::{BrokerCost, BrokerLog};
-use crate::exchange::SingleExchange;
+use crate::exchange::implement::single::SingleExchange;
 use crate::input::{CorporateEventsSource, Dividendable, PriceSource, Quotable};
 use crate::types::{CashValue, PortfolioHoldings};
 
-use super::SingleBroker;
-
+/// Builds [SingleBroker].
 pub struct SingleBrokerBuilder<D, T, Q, P>
 where
     D: Dividendable,

@@ -1,12 +1,10 @@
-use alator::broker::{
-    BrokerCost, Dividend, Order, OrderType, Quote, ReceievesOrders, SingleBroker,
-    SingleBrokerBuilder, TransferCash,
-};
+use alator::broker::implement::single::{SingleBroker, SingleBrokerBuilder};
+use alator::broker::{BrokerCost, Dividend, Order, OrderType, Quote, ReceivesOrders, TransferCash};
 use alator::clock::ClockBuilder;
-use alator::exchange::SingleExchangeBuilder;
+use alator::exchange::implement::single::SingleExchangeBuilder;
 use alator::input::{DefaultCorporateEventsSource, DefaultPriceSource};
 use alator::simcontext::SimContextBuilder;
-use alator::strategy::StaticWeightStrategyBuilder;
+use alator::strategy::implement::staticweight::StaticWeightStrategyBuilder;
 use alator::types::{CashValue, Frequency, PortfolioAllocation};
 
 use criterion::{criterion_group, criterion_main, Criterion};

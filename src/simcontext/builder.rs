@@ -1,13 +1,14 @@
 use std::marker::PhantomData;
 
 use crate::clock::Clock;
-use crate::exchange::ConcurrentExchange;
+use crate::exchange::implement::multi::ConcurrentExchange;
 use crate::input::{Dividendable, PriceSource, Quotable};
 use crate::strategy::{AsyncStrategy, History, Strategy};
 use crate::types::CashValue;
 
 use super::{SimContext, SimContextMulti};
 
+/// Creates a single-threaded [SimContext]
 pub struct SimContextBuilder<S>
 where
     S: Strategy + History,
@@ -66,6 +67,7 @@ where
     }
 }
 
+/// Creates a multi-threaded [SimContextMulti]
 pub struct SimContextMultiBuilder<D, Q, P, S>
 where
     D: Dividendable,

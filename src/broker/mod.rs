@@ -1,13 +1,12 @@
+//! Issues orders to exchange and tracks changes as exchange executes orders.
 mod calculations;
-mod concurrent_impl;
+pub mod implement;
 mod record;
-mod single_impl;
 mod types;
 
 pub use calculations::BrokerCalculations;
-pub use concurrent_impl::{ConcurrentBroker, ConcurrentBrokerBuilder};
+#[doc(hidden)]
 pub use record::BrokerLog;
-pub use single_impl::{SingleBroker, SingleBrokerBuilder};
 pub use types::{
     BrokerCashEvent, BrokerCost, BrokerEvent, BrokerRecordedEvent, Dividend, DividendPayment,
     Order, OrderType, Quote, Trade, TradeType,
@@ -25,28 +24,14 @@ use std::sync::Arc;
 
 use crate::input::Quotable;
 use crate::types::{CashValue, PortfolioHoldings, PortfolioQty, PortfolioValues, Price};
-//Key traits for broker implementations.
-//
-//Whilst broker is implemented within this package as a singular broker, the intention of these
-//traits is to hide the implementation from the user so that it could be one or a combination of
-//brokers returning the data. Similarly, strategy implementations should not create any
-//dependencies on the underlying state of the broker.
-//
-///Represents functionality that all brokers have to support in order to perform any backtests at
-///all. Implementations may choose not to implement some part of this functionality but this trait
-///represents a general base case.
+
+/// Essential traits for standard library definition of a broker.
 ///
-///In practice, the only optional trait that seems to be included often is [GetsQuote]. This is not
-///included in the base definition because turning the broker into both a source and user of data
-///is implementation-dependent.
+/// Functionality for brokers is spread across multiple traits, these traits are the functions
+/// that seem to be necessary for any backtest.
 ///
-///This confusion in the implementation is also why get_position_value requires mutation: broker
-///not only asks for prices but keeps state about prices so that we can find a valuation for the
-///security if we are missing a price for the current date. At some point, we make relax this
-///mutability constraint.
-///
-///Clients should not be able to call debit or credit themselves. Deposits or withdrawals are
-///implemented through [TransferCash] trait.
+/// [GetsQuote] isn't included because having the broker as a source and user of data is
+/// implementation-dependent.
 #[async_trait]
 pub trait BacktestBroker {
     fn get_position_profit(&self, symbol: &str) -> Option<CashValue> {
@@ -127,8 +112,7 @@ pub trait BacktestBroker {
     fn debit_force(&mut self, value: &f64) -> types::BrokerCashEvent;
 }
 
-///Implementation allows clients to alter the cash balance through withdrawing or depositing cash.
-///This does not come with base implementation because clients may wish to restrict this behaviour.
+/// Cash balance can be modified once the backtest has started.
 pub trait TransferCash: BacktestBroker {
     fn withdraw_cash(&mut self, cash: &f64) -> types::BrokerCashEvent {
         if cash > &self.get_cash_balance() {
@@ -159,39 +143,56 @@ pub trait TransferCash: BacktestBroker {
     }
 }
 
-pub trait ReceievesOrders {
+/// Broker can receive (and fulfill) orders once the backtest has started.
+///
+/// This is connected to functionality within [BrokerCalculations]. If this trait is not
+/// implemented then it may not be possible to perform, for example, portfolio liquidations neatly.
+pub trait ReceivesOrders {
     //TODO: this needs to use another kind of order
     fn send_order(&mut self, order: types::Order) -> types::BrokerEvent;
     fn send_orders(&mut self, order: &[types::Order]) -> Vec<types::BrokerEvent>;
 }
 
+/// Broker can receive (and fulfill) orders once the backtest has started.
+///
+/// This is connected to functionality within [BrokerCalculations]. If this trait is not
+/// implemented then it may not be possible to perform, for example, portfolio liquidations neatly.
 #[async_trait]
-pub trait ReceievesOrdersAsync {
+pub trait ReceivesOrdersAsync {
     //TODO: this needs to use another kind of order
     async fn send_order(&mut self, order: types::Order) -> types::BrokerEvent;
     async fn send_orders(&mut self, order: &[types::Order]) -> Vec<types::BrokerEvent>;
 }
 
-//Implementation allows clients to retrieve prices. This trait may be used to retrieve prices
-//internally too, and this confusion comes from broker implementations being both a consumer and
-//source of data. So this trait is seperated out now but may disappear in future versions.
+/// Broker produces price data.
+///
+/// Library implementations of brokers can be treated as a source of data equivalent to an
+/// `Exchange`. Calling functions can call `get_quote` and expect to see the same result as
+/// calling the `Exchange` at the same time. However, this requires continous synchronization of
+/// state between `Exchange` and `Broker`. In some cases, for example with several thousand prices,
+/// this won't be performant. This synchronization is used to prevent lookahead bias in multi-
+/// threaded contexts so users with this limitation will need to consider carefully whether broker
+/// should be a data source (and this trait implemented) when re-implementing broker.
+///
+/// In the case of missing data, library implementations store the last-seen price. Strategies
+/// would, therefore, be operating with stale data. This is a consequence of protecting against
+/// lookahead bias.
 pub trait GetsQuote<Q: Quotable> {
     fn get_quote(&self, symbol: &str) -> Option<Arc<Q>>;
     fn get_quotes(&self) -> Option<Vec<Arc<Q>>>;
 }
 
-///Implementation allows clients to query properties of the transaction history of the broker.
-///Again, this is an optional feature but is useful for things like tax calculations.
+/// Broker stores completed trades and paid dividends.
 ///
-///When using this note that it offers operations that are distinct in purpose from a performance
-///calculation. Performance statistics are created at the end of a backtest but the intention here
-///is to provide a view into transactions whilst the simulation is still running i.e. for tax
-///calculations.
+/// Implemented for taxation calculations. Functions are distinct from a performance calculation
+/// as, for a backtest, performance is calculated at the end but this provides a way to query
+/// transactions completed whilst the backtest is ongoing.
 pub trait EventLog {
     fn trades_between(&self, start: &i64, end: &i64) -> Vec<types::Trade>;
     fn dividends_between(&self, start: &i64, end: &i64) -> Vec<types::DividendPayment>;
 }
 
+/// Broker has attempted to execute an order which cannot be completed due to insufficient cash.
 #[derive(Debug, Clone)]
 pub struct InsufficientCashError;
 
@@ -204,6 +205,8 @@ impl Display for InsufficientCashError {
 }
 
 #[derive(Debug, Clone)]
+/// Broker has attempted to execute an order which cannot be completed due to a problem with the
+/// order.
 pub struct UnexecutableOrderError;
 
 impl Error for UnexecutableOrderError {}
@@ -217,12 +220,10 @@ impl Display for UnexecutableOrderError {
 #[cfg(test)]
 mod tests {
 
-    use super::{
-        BacktestBroker, BrokerCalculations, BrokerCost, ConcurrentBrokerBuilder, OrderType, Quote,
-        TransferCash,
-    };
-    use crate::broker::{ConcurrentBroker, Dividend, ReceievesOrdersAsync};
-    use crate::exchange::ConcurrentExchangeBuilder;
+    use super::{BacktestBroker, BrokerCalculations, BrokerCost, OrderType, Quote, TransferCash};
+    use crate::broker::implement::multi::{ConcurrentBroker, ConcurrentBrokerBuilder};
+    use crate::broker::{Dividend, ReceivesOrdersAsync};
+    use crate::exchange::implement::multi::ConcurrentExchangeBuilder;
     use crate::input::{
         fake_price_source_generator, DefaultCorporateEventsSource, DefaultPriceSource,
     };

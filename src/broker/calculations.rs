@@ -5,37 +5,30 @@ use crate::{
     types::{CashValue, PortfolioAllocation, PortfolioQty, Price},
 };
 
-use super::{BacktestBroker, GetsQuote, ReceievesOrders, ReceievesOrdersAsync};
+use super::{BacktestBroker, GetsQuote, ReceivesOrders, ReceivesOrdersAsync};
 
-///Implements functionality that is standard to most brokers. These calculations are generic so are
-///compiled into functionality for the implementation at run-time. Brokers do not necessarily need
-///to use this logic but it represents functionality that is common to implementations that we use
-///now.
+/// Groups calculations standard to most brokers. These are not bound into any other implementation
+/// and operate on traits rather than specific implementations.
 pub struct BrokerCalculations;
 
 impl BrokerCalculations {
-    //Withdrawing with liquidation will execute orders in order to generate the target amount of cash
-    //required.
-    //
-    //This function should be used relatively sparingly because it breaks the update cycle between
-    //`Strategy` and `Broker`: the orders are not executed in any particular order so the state within
-    //`Broker` is left in a random state, which may not be immediately clear to clients and can cause
-    //significant unexpected drift in performance if this function is called repeatedly with long
-    //rebalance cycles.
-    //
-    //The primary use-case for this functionality is for clients that implement tax payments: these are
-    //mandatory reductions in cash that have to be paid before the simulation can proceed to the next
-    //valid state.
+    /// Withdrawing with liquidation will queue orders to generate the expected amount of cash. No
+    /// ordering to the assets that are sold, the broker is responsible for managing cash but not
+    /// re-aligning to a target portfolio.
+    ///
+    /// Because orders are not executed instaneously this method can be the source of significant
+    /// divergences in performance from the underlying in certain cases. For example, if prices are
+    /// volatile, in the case of low-frequency data, then the broker will end up continuously
+    /// re-balancing in a random way under certain price movements.
     pub fn withdraw_cash_with_liquidation<
         Q: Quotable,
-        T: BacktestBroker + GetsQuote<Q> + ReceievesOrders,
+        T: BacktestBroker + GetsQuote<Q> + ReceivesOrders,
     >(
         cash: &f64,
         brkr: &mut T,
     ) -> super::BrokerCashEvent {
-        //TODO:should this execute any trades at all? Would it be better to return a sequence of orders
-        //required to achieve the cash balance, and then leave it up to the calling function to decide
-        //whether to execute?
+        // TODO: is it better to return a sequence of orders to achieve a cash balance? Because
+        // of the linkage with execution, we need seperate methods for sync/async.
         info!("BROKER: Withdrawing {:?} with liquidation", cash);
         let value = brkr.get_liquidation_value();
         if cash > &value {
@@ -105,28 +98,21 @@ impl BrokerCalculations {
         }
     }
 
-    //Withdrawing with liquidation will execute orders in order to generate the target amount of cash
-    //required.
-    //
-    //This function should be used relatively sparingly because it breaks the update cycle between
-    //`Strategy` and `Broker`: the orders are not executed in any particular order so the state within
-    //`Broker` is left in a random state, which may not be immediately clear to clients and can cause
-    //significant unexpected drift in performance if this function is called repeatedly with long
-    //rebalance cycles.
-    //
-    //The primary use-case for this functionality is for clients that implement tax payments: these are
-    //mandatory reductions in cash that have to be paid before the simulation can proceed to the next
-    //valid state.
+    /// Withdrawing with liquidation will queue orders to generate the expected amount of cash. No
+    /// ordering to the assets that are sold, the broker is responsible for managing cash but not
+    /// re-aligning to a target portfolio.
+    ///
+    /// Because orders are not executed instaneously this method can be the source of significant
+    /// divergences in performance from the underlying in certain cases. For example, if prices are
+    /// volatile, in the case of low-frequency data, then the broker will end up continuously
+    /// re-balancing in a random way under certain price movements.
     pub async fn withdraw_cash_with_liquidation_async<
         Q: Quotable,
-        T: BacktestBroker + GetsQuote<Q> + ReceievesOrdersAsync,
+        T: BacktestBroker + GetsQuote<Q> + ReceivesOrdersAsync,
     >(
         cash: &f64,
         brkr: &mut T,
     ) -> super::BrokerCashEvent {
-        //TODO:should this execute any trades at all? Would it be better to return a sequence of orders
-        //required to achieve the cash balance, and then leave it up to the calling function to decide
-        //whether to execute?
         info!("BROKER: Withdrawing {:?} with liquidation", cash);
         let value = brkr.get_liquidation_value();
         if cash > &value {
@@ -196,14 +182,17 @@ impl BrokerCalculations {
         }
     }
 
-    //Calculates the diff between the current state of the portfolio within broker, and the
-    //target_weights passed into the function.
-    //Returns orders so calling function has control over when orders are executed
-    //Requires mutable reference to brkr because it calls get_position_value
+    /// Calculates difference between current broker state and a target allocation, the latter
+    /// typically passed from a strategy.
+    ///
+    /// Brokers do not expect target wights, they merely respond to orders so this structure
+    /// is not required to create backtests.
     pub fn diff_brkr_against_target_weights<Q: Quotable, T: BacktestBroker + GetsQuote<Q>>(
         target_weights: &PortfolioAllocation,
         brkr: &mut T,
     ) -> Vec<super::Order> {
+        //Returns orders so calling function has control over when orders are executed
+        //Requires mutable reference to brkr because it calls get_position_value
         //Need liquidation value so we definitely have enough money to make all transactions after
         //costs
         info!("STRATEGY: Calculating diff of current allocation vs. target");
