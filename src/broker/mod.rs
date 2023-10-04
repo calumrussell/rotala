@@ -1,5 +1,4 @@
-//! Information about backtest state and order execution logic
-
+//! Issues orders to exchange and tracks changes as exchange executes orders.
 mod calculations;
 mod record;
 mod types;
@@ -26,7 +25,7 @@ use std::sync::Arc;
 use crate::input::Quotable;
 use crate::types::{CashValue, PortfolioHoldings, PortfolioQty, PortfolioValues, Price};
 
-/// Essential raits for standard library definition of a broker.
+/// Essential traits for standard library definition of a broker.
 /// 
 /// Functionality for brokers is spread across multiple traits, these traits are the functions
 /// that seem to be necessary for any backtest. 

@@ -1,3 +1,4 @@
+//! Single-threaded broker
 mod builder;
 pub use builder::SingleBrokerBuilder;
 
@@ -15,37 +16,7 @@ use crate::broker::{
     DividendPayment, EventLog, GetsQuote, Order, OrderType, ReceievesOrders, Trade, TransferCash,
 };
 
-/// Library implementation of single-threaded broker. Created through builder to ensure 
-/// dependencies all present.
-/// 
-/// Single-threaded broker holds a reference to an exchange to which orders are passed for
-/// execution. Orders are not executed until the next tick so broker state has to be synchronized
-/// with the exchange on every tick. Clients can trigger this synchronization by calling `check`. 
-/// 
-/// The broker can hold negative cash values due to the non-immediate execution of trades. Once a
-/// broker has received the notification of completed trades and finds a negative value then
-/// re-balancing is triggered automatically. Responsibility for moving the portfolio back to the
-/// correct state is left with owner, broker implementations take responsibility for correcting
-/// invalid internal state (like negative cash values).
-/// 
-/// If a series has high levels of volatility between periods then performance will fail to
-/// replicate the strategy due to continued rebalancing.
-/// 
-/// To minimize the distortions due to rebalancing behaviour, the broker will target a minimum
-/// cash value. This is currently set at an arbitrary level, 1_000, as this is something library
-/// dependent and potentially difficult to explain.
-/// 
-/// If a portfolio has a negative value, the current behaviour is to continue trading potentially
-/// producing unexpected results. Previous versions would exit early when this happened but this
-/// behaviour was removed.
-/// 
-/// Default implementations support multiple [BrokerCost] models: Flat, PerShare, and PctOfValue.
-/// 
-/// Cash balances are held in single currency which is assumed to be the same currency used across
-/// the simulation.
-/// 
-/// Keeps an internal log of trades executed and dividends received/paid. This is distinct from
-/// performance calculations.
+/// Single-threaded broker. Created with [SingleBrokerBuilder].
 #[derive(Debug)]
 pub struct SingleBroker<D, T, Q, P>
 where

@@ -7,14 +7,7 @@ use crate::exchange::implement::single::SingleExchange;
 use crate::input::{CorporateEventsSource, Dividendable, PriceSource, Quotable};
 use crate::types::{CashValue, PortfolioHoldings};
 
-/// Used to build [SingleBroker].
-/// 
-/// Broker should be the only owner of a [CorporateEventsSource] in a backtest.
-/// 
-/// Broker should be the only owner of a [SingleExchange] in a backtest.
-/// 
-/// Trade costs are optional. If no trade costs are passed to the broker then no costs will be
-/// taken when orders execute.
+/// Builds [SingleBroker].
 pub struct SingleBrokerBuilder<D, T, Q, P>
 where
     D: Dividendable,

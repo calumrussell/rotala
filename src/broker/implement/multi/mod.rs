@@ -1,3 +1,4 @@
+//! Multi-threaded broker
 mod builder;
 
 pub use builder::ConcurrentBrokerBuilder;
@@ -20,21 +21,7 @@ use crate::broker::{
     TransferCash,
 };
 
-/// Library implementation of multi-threaded broker. Created through builder to ensure 
-/// dependencies all present.
-/// 
-/// Multi-threaded broker holds a reference to channels for:
-/// * Receiving price updates from an `Exchange`
-/// * Receiving notifications, for example completed trades, from an `Exchange`
-/// * Sending orders to an `Exchange` 
-/// 
-/// Every strategy in a multi-threaded environment has a broker. Every broker is 
-/// assigned a unique id by the `Exchange` when initiailizing channels to the `Exchange`. Strategy-
-/// level metrics, such as position profit which could be an input used to create new trades, are
-/// calculated without sharing between brokers. So all channels are shared but the unique id is
-/// used to denote which broker is sending/receiving. 
-/// 
-/// Refer to [SingleBroker] for common aspects of broker implementation. 
+/// Multi-threaded broker. Created with [ConcurrentBrokerBuilder].
 #[derive(Debug)]
 pub struct ConcurrentBroker<D, T, Q>
 where

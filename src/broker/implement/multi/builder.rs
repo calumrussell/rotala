@@ -8,12 +8,7 @@ use crate::exchange::implement::multi::ConcurrentExchange;
 use crate::input::{CorporateEventsSource, Dividendable, PriceSource, Quotable};
 use crate::types::{CashValue, PortfolioHoldings};
 
-/// Used to build [ConcurrentBroker].
-/// 
-/// Broker should be the only owner of a [CorporateEventsSource] in a backtest.
-/// 
-/// Trade costs are optional. If no trade costs are passed to the broker then no costs will be
-/// taken when orders execute.
+/// Builds [ConcurrentBroker].
 pub struct ConcurrentBrokerBuilder<D, T, Q>
 where
     D: Dividendable,
