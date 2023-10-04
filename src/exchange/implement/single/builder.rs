@@ -4,7 +4,7 @@ use crate::clock::Clock;
 use crate::input::{PriceSource, Quotable};
 use crate::exchange::implement::single::SingleExchange;
 
-/// Used to build [SingleExchange].
+/// Builds [SingleExchange].
 pub struct SingleExchangeBuilder<Q, T>
 where
     Q: Quotable,

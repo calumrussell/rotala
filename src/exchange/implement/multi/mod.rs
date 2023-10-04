@@ -1,3 +1,4 @@
+//! Multi-threaded exchange
 mod builder;
 
 pub use builder::ConcurrentExchangeBuilder;
@@ -9,17 +10,7 @@ use crate::input::{PriceSource, Quotable};
 #[allow(unused)]
 use crate::exchange::implement::single::SingleExchange;
 
-/// Exchange accepts messages containing orders and executes them over time.
-/// 
-/// Generic information about exchanges is included in [SingleExchange].
-/// 
-/// Multi-threaded exchanges operate through three channels that:
-/// * Send updated prices to recievers.
-/// * Send notifications to recievers.
-/// * Recieve orders to be executed.
-/// 
-/// An exchange may interact with multiple brokers so issues a unique id to each one that is used
-/// for communications that are relevant to individual brokers, for example completed trades.
+/// Multi-threaded exchange. Created with [ConcurrentExchangeBuilder].
 #[derive(Debug)]
 pub struct ConcurrentExchange<Q, P>
 where

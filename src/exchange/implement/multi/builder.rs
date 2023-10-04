@@ -4,7 +4,7 @@ use crate::clock::Clock;
 use crate::input::{PriceSource, Quotable};
 use crate::exchange::implement::multi::ConcurrentExchange;
 
-/// Used to build [ConcurrentExchange].
+/// Builds [ConcurrentExchange].
 pub struct ConcurrentExchangeBuilder<Q, P>
 where
     Q: Quotable,
