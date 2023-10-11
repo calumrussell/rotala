@@ -1,11 +1,10 @@
 [package]
 name = "alator"
-version = "0.3.1"
+version = "0.3.2"
 authors = ["Calum Russell <calum.mj.russell@gmail.com>"]
 edition = "2021"
 license-file = "LICENCE"
 description = "Library for backtesting investment strategies"
-documentation = "https://docs.rs/alator" 
 repository = "https://github.com/calumrussell/alator"
 readme = "README.md"
 
