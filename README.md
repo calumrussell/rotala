@@ -1,3 +1,5 @@
+[Docs](https://docs.rs/alator)
+
 # What is Alator?
 
 Components for backtesting a financial portfolio. Built with Rust.
@@ -9,6 +11,8 @@ Components for backtesting a financial portfolio. Built with Rust.
 * Making the code simpler, when type underlying `PriceSource` was made generic that added a lot of weight to component definitions.
 
 # Change Log
+
+v0.3.2 - Sorting docts for docs.rs.
 
 v0.3.1 - Docs organized. Path for implementation `use` had to be lengthened for docs organziation.
 
