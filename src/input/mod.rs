@@ -145,9 +145,9 @@ pub struct PyPriceSource<'a> {
 #[cfg(feature = "python")]
 impl<'a> PriceSource<PyQuote> for PyPriceSource<'a> {
     fn get_quote(&self, symbol: &str) -> Option<Arc<PyQuote>> {
-        if let Some(ticker_pos_any) = self.tickers.get_item(symbol) {
+        if let Ok(Some(ticker_pos_any)) = self.tickers.get_item(symbol) {
             let curr_date = self.clock.now();
-            if let Some(quotes) = self.quotes.get_item(i64::from(curr_date)) {
+            if let Ok(Some(quotes)) = self.quotes.get_item(i64::from(curr_date)) {
                 if let Ok(quotes_list) = quotes.downcast::<PyList>() {
                     if let Ok(ticker_pos) = ticker_pos_any.extract::<usize>() {
                         let quote_any = &quotes_list[ticker_pos];
