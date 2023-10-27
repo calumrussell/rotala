@@ -16,14 +16,15 @@ enum OrderType {
 message Trade {
     double price = 1;
     double quantity = 2;
-    uint64 date = 3;
+    int64 date = 3;
     string symbol = 4;
+    double value = 5;
 }
 
 message Quote {
     double bid = 1; 
     double ask = 2; 
-    uint64 date = 3;
+    int64 date = 3;
     string symbol = 4;
 }
 
@@ -38,16 +39,19 @@ service Exchange {
     rpc RegisterSource(RegisterSourceRequest) returns (RegisterSourceReply);
     rpc SendOrder(SendOrderRequest) returns (SendOrderReply);
     rpc DeleteOrder(DeleteOrderRequest) returns (DeleteOrderReply);
+    rpc FetchTrades(FetchTradesRequest) returns (FetchTradesReply);
+    rpc FetchQuotes(FetchQuotesRequest) returns (FetchQuotesReply);
+    rpc Tick(TickRequest) returns (TickReply);
 }
 
 message RegisterSourceRequest {}
 
 message RegisterSourceReply {
-    uint64 source_id = 1;
+    uint64 subscriber_id = 1;
 }
 
 message SendOrderRequest {
-    uint64 source_id = 1;
+    uint64 subscriber_id = 1;
     Order order = 2;
 }
 
@@ -56,10 +60,28 @@ message SendOrderReply {
 }
 
 message DeleteOrderRequest {
-    uint64 source_id = 1;
+    uint64 subscriber_id = 1;
     uint64 order_id = 2;
 }
 
 message DeleteOrderReply {
     uint64 order_id = 1;
 }
+
+message FetchTradesRequest { }
+
+message FetchTradesReply {
+    repeated Trade trades = 1;
+}
+
+message FetchQuotesRequest { }
+
+message FetchQuotesReply {
+    repeated Quote quotes = 1;
+}
+
+message TickRequest { 
+    uint64 subscriber_id = 1;
+}
+
+message TickReply { }

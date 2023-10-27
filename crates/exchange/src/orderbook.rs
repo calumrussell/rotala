@@ -1,5 +1,6 @@
 use std::collections::HashMap;
 
+#[derive(Clone)]
 pub struct Quote {
     pub bid: f64,
     pub ask: f64,
@@ -7,16 +8,34 @@ pub struct Quote {
     pub symbol: String,
 }
 
+impl From<Quote> for crate::exchange::Quote {
+    fn from(value: Quote) -> Self {
+        Self { 
+            bid: value.bid, 
+            ask: value.ask, 
+            date: value.date, 
+            symbol: value.symbol 
+        }
+    }
+}
+
 pub struct DefaultPriceSource {
     inner: HashMap<i64, HashMap<String, Quote>>
 }
 
 impl DefaultPriceSource {
-    fn get_quote(&self, date: &i64, symbol: &str) -> Option<&Quote> {
+    pub fn get_quote(&self, date: &i64, symbol: &str) -> Option<&Quote> {
         if let Some(date_row) = self.inner.get(date) {
             if let Some(quote) = date_row.get(symbol) {
                 return Some(quote);
             }
+        }
+        return None;
+    }
+
+    pub fn get_quotes(&self, date: &i64) -> Option<Vec<Quote>> {
+        if let Some(date_row) = self.inner.get(date) {
+            return Some(date_row.values().into_iter().cloned().collect());
         }
         return None;
     }
@@ -39,7 +58,7 @@ impl DefaultPriceSource {
         }
     }
 
-    fn new () -> Self {
+    pub fn new () -> Self {
         Self { inner: HashMap::new() }
     }
 }
@@ -176,6 +195,18 @@ pub struct ExchangeTrade {
     pub quantity: f64,
     pub date: i64,
     pub typ: TradeType,
+}
+
+impl From<ExchangeTrade> for crate::exchange::Trade {
+    fn from(value: ExchangeTrade) -> Self {
+        Self {
+            price: value.value / value.quantity,
+            quantity: value.quantity,
+            value: value.value,
+            date: value.date,
+            symbol: value.symbol,
+        }
+    }
 }
 
 #[doc(hidden)]
@@ -340,7 +371,7 @@ mod tests {
 
     #[test]
     fn test_that_multiple_orders_will_execute() {
-        let (clock, source) = setup();
+        let (_clock, source) = setup();
         let mut orderbook = OrderBook::new();
 
         orderbook.insert_order(ExchangeOrder::market_buy(0, "ABC", 25.0));
@@ -354,7 +385,7 @@ mod tests {
 
     #[test]
     fn test_that_buy_market_executes() {
-        let (clock, source) = setup();
+        let (_clock, source) = setup();
         let mut orderbook = OrderBook::new();
 
         orderbook.insert_order(ExchangeOrder::market_buy(0, "ABC", 100.0));
@@ -369,7 +400,7 @@ mod tests {
 
     #[test]
     fn test_that_sell_market_executes() {
-        let (clock, source) = setup();
+        let (_clock, source) = setup();
         let mut orderbook = OrderBook::new();
 
         orderbook.insert_order(ExchangeOrder::market_sell(0, "ABC", 100.0));
@@ -384,7 +415,7 @@ mod tests {
 
     #[test]
     fn test_that_buy_limit_triggers_correctly() {
-        let (clock, source) = setup();
+        let (_clock, source) = setup();
         let mut orderbook = OrderBook::new();
 
         orderbook.insert_order(ExchangeOrder::limit_buy(0, "ABC", 100.0, 95.0));
@@ -401,7 +432,7 @@ mod tests {
 
     #[test]
     fn test_that_sell_limit_triggers_correctly() {
-        let (clock, source) = setup();
+        let (_clock, source) = setup();
         let mut orderbook = OrderBook::new();
 
         orderbook.insert_order(ExchangeOrder::limit_sell(0, "ABC", 100.0, 95.0));
@@ -422,7 +453,7 @@ mod tests {
         //off the position. If we are quoted 101/102 then 95 order
         //should be executed.
 
-        let (clock, source) = setup();
+        let (_clock, source) = setup();
         let mut orderbook = OrderBook::new();
 
         orderbook.insert_order(ExchangeOrder::stop_buy(0, "ABC", 100.0, 95.0));
@@ -442,7 +473,7 @@ mod tests {
         //Long from 110, we place orders to exit at 100 and 105.
         //If we are quoted 101/102 then our 105 StopSell is executed.
 
-        let (clock, source) = setup();
+        let (_clock, source) = setup();
         let mut orderbook = OrderBook::new();
 
         orderbook.insert_order(ExchangeOrder::stop_buy(0, "ABC", 100.0, 99.0));
@@ -459,7 +490,7 @@ mod tests {
 
     #[test]
     fn test_that_order_for_nonexistent_stock_fails_silently() {
-        let (clock, source) = setup();
+        let (_clock, source) = setup();
         let mut orderbook = OrderBook::new();
 
         orderbook.insert_order(ExchangeOrder::market_buy(0, "XYZ", 100.0));
