@@ -1,0 +1,21 @@
+[package]
+name = "exchange"
+version = "0.1.0"
+edition = "2021"
+
+[[bin]]
+name = "exchange-server"
+path = "src/server.rs"
+
+[[bin]]
+name = "exchange-client"
+path = "src/client.rs"
+
+[dependencies]
+tokio = { version = "1.0", features = ["rt-multi-thread", "macros"] }
+prost = "0.12"
+tonic = "0.10.2"
+alator = "0.3.3"
+
+[build-dependencies]
+tonic-build = "0.10"
