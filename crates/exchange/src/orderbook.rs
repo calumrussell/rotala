@@ -8,16 +8,6 @@ pub struct Quote {
     pub symbol: String,
 }
 
-impl From<Quote> for crate::exchange::Quote {
-    fn from(value: Quote) -> Self {
-        Self { 
-            bid: value.bid, 
-            ask: value.ask, 
-            date: value.date, 
-            symbol: value.symbol 
-        }
-    }
-}
 
 pub struct DefaultPriceSource {
     inner: HashMap<i64, HashMap<String, Quote>>
@@ -197,17 +187,6 @@ pub struct ExchangeTrade {
     pub typ: TradeType,
 }
 
-impl From<ExchangeTrade> for crate::exchange::Trade {
-    fn from(value: ExchangeTrade) -> Self {
-        Self {
-            price: value.value / value.quantity,
-            quantity: value.quantity,
-            value: value.value,
-            date: value.date,
-            symbol: value.symbol,
-        }
-    }
-}
 
 #[doc(hidden)]
 #[derive(Debug)]
