@@ -1,5 +1,6 @@
 use std::sync::{atomic::AtomicU64, Mutex};
-use tonic::{Request, Response, Status};
+use proto::{exchange_client::ExchangeClient, RegisterSourceRequest, SendOrderRequest, TickRequest, FetchQuotesRequest, FetchTradesRequest};
+use tonic::{Request, Response, Status, transport::Channel};
 
 use orderbook::{OrderBook, DefaultPriceSource, ExchangeTrade};
 
@@ -16,6 +17,17 @@ impl From<orderbook::Quote> for proto::Quote {
             ask: value.ask, 
             date: value.date, 
             symbol: value.symbol 
+        }
+    }
+}
+
+impl From<orderbook::ExchangeOrder> for proto::Order {
+    fn from(value: orderbook::ExchangeOrder) -> Self {
+        Self {
+            symbol: value.symbol,
+            quantity: value.shares,
+            price: value.price,
+            order_type: value.order_type.into(),
         }
     }
 }
@@ -81,7 +93,7 @@ impl proto::exchange_server::Exchange for DefaultExchange {
                 symbol: order.symbol,
                 shares: order.quantity,
                 price: order.price,
-                order_type: order.r#type.into(),
+                order_type: order.order_type.into(),
                 subscriber_id,
 
             });
@@ -104,7 +116,7 @@ impl proto::exchange_server::Exchange for DefaultExchange {
 
     async fn fetch_trades(
         &self,
-        request: Request<proto::FetchTradesRequest>,
+        _request: Request<proto::FetchTradesRequest>,
     ) -> Result<Response<proto::FetchTradesReply>, Status> {
         let trades = self.trades.lock().unwrap();
         let formatted_trades: Vec<proto::Trade> = trades.iter().map(|v| v.clone().into()).collect();
@@ -113,7 +125,7 @@ impl proto::exchange_server::Exchange for DefaultExchange {
 
     async fn fetch_quotes(
         &self,
-        request: Request<proto::FetchQuotesRequest>,
+        _request: Request<proto::FetchQuotesRequest>,
     ) -> Result<Response<proto::FetchQuotesReply>, Status> {
         let now = self.clock.lock().unwrap().now();
         if let Some(quotes) = self.source.get_quotes(&now) {
@@ -125,10 +137,10 @@ impl proto::exchange_server::Exchange for DefaultExchange {
 
     async fn tick(
         &self,
-        request: Request<proto::TickRequest>,
+        _request: Request<proto::TickRequest>,
     ) -> Result<Response<proto::TickReply>, Status> {
         self.ticked_count.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
-        if let Ok(val) = self.ticked_count.compare_exchange(self.subscriber_count.load(std::sync::atomic::Ordering::Acquire), 0, std::sync::atomic::Ordering::Acquire, std::sync::atomic::Ordering::Relaxed) {
+        if let Ok(_val) = self.ticked_count.compare_exchange(self.subscriber_count.load(std::sync::atomic::Ordering::Acquire), 0, std::sync::atomic::Ordering::Acquire, std::sync::atomic::Ordering::Relaxed) {
             //If all subscribers have ticked then we move forward
             let mut orderbook = self.orderbook.lock().unwrap();
             let mut clock = self.clock.lock().unwrap();
@@ -142,5 +154,43 @@ impl proto::exchange_server::Exchange for DefaultExchange {
             clock.tick();
         }
         Ok(Response::new(proto::TickReply {  }))
+    }
+}
+
+pub struct DefaultClient {
+    subscriber_id: u64
+}
+
+impl DefaultClient {
+    pub async fn init(client: &mut ExchangeClient<Channel>) -> Result<Self, Box<dyn std::error::Error>> {
+        let subscriber_id_resp = client.register_source(Request::new(RegisterSourceRequest {})).await?;
+        let subscriber_id = subscriber_id_resp.into_inner().subscriber_id;
+        Ok(Self {
+            subscriber_id
+        })
+    }
+
+    pub async fn send_order(&self, client: &mut ExchangeClient<Channel>, order_type: orderbook::OrderType, price: Option<f64>, quantity: f64, symbol: &str) -> Result<u64, Box<dyn std::error::Error>> {
+        let order = Some(proto::Order { order_type: order_type.into(), symbol: symbol.to_string(), price, quantity });
+        let send_order_resp = client.send_order(Request::new(SendOrderRequest { subscriber_id: self.subscriber_id, order })).await?;
+        let order_id = send_order_resp.into_inner().order_id;
+        Ok(order_id)
+    }
+
+    pub async fn tick(&self, client: &mut ExchangeClient<Channel>) -> Result<(), Box<dyn std::error::Error>> {
+        client.tick(Request::new(TickRequest { subscriber_id: self.subscriber_id })).await?;
+        Ok(())
+    }
+
+    pub async fn fetch_quotes(&self, client: &mut ExchangeClient<Channel>) -> Result<Vec<proto::Quote>, Box<dyn std::error::Error>> {
+        let quotes_resp = client.fetch_quotes(Request::new(FetchQuotesRequest{})).await?;
+        let quotes = quotes_resp.into_inner().quotes;
+        Ok(quotes)
+    }
+
+    pub async fn fetch_trades(&self, client: &mut ExchangeClient<Channel>) -> Result<Vec<proto::Trade>, Box<dyn std::error::Error>> {
+        let trades_resp = client.fetch_trades(Request::new(FetchTradesRequest {})).await?;
+        let trades = trades_resp.into_inner().trades;
+        Ok(trades)
     }
 }

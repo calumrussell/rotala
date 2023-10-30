@@ -70,8 +70,23 @@ impl From<i32> for OrderType {
             1 => OrderType::MarketBuy,
             2 => OrderType::LimitSell,
             3 => OrderType::LimitBuy,
+            4 => OrderType::StopSell,
+            5 => OrderType::StopBuy,
             _ => unimplemented!("0/1/2/3 are only types supported")
 
+        }
+    }
+}
+
+impl From<OrderType> for i32 {
+    fn from(value: OrderType) -> Self {
+        match value {
+            OrderType::MarketSell => 0,
+            OrderType::MarketBuy => 1,
+            OrderType::LimitSell => 2,
+            OrderType::LimitBuy => 3,
+            OrderType::StopSell => 4,
+            OrderType::StopBuy => 5,
         }
     }
 }
