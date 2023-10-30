@@ -11,6 +11,8 @@ enum OrderType {
     MarketBuy = 1;
     LimitSell = 2;
     LimitBuy = 3;
+    StopSell = 4;
+    StopBuy = 5;
 }
 
 message Trade {
@@ -29,7 +31,7 @@ message Quote {
 }
 
 message Order {
-    OrderType type = 1;
+    OrderType order_type = 1;
     string symbol = 2;
     optional double price = 3;
     double quantity = 4;
