@@ -1,8 +1,8 @@
 use tonic::transport::Server;
 
+use exchange::orderbook::DefaultPriceSource;
 use exchange::proto;
 use proto::exchange_server::ExchangeServer;
-use exchange::orderbook::DefaultPriceSource;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -14,7 +14,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let mut source = DefaultPriceSource::new();
     for date in clock.peek() {
-       source.add_quotes(100.0, 101.0, *date, "ABC".to_string());
+        source.add_quotes(100.0, 101.0, *date, "ABC".to_string());
     }
 
     let exchange = exchange::DefaultExchange::new(clock, source);

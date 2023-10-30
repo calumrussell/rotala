@@ -1,7 +1,7 @@
-use exchange::DefaultClient; 
 use exchange::orderbook::DefaultPriceSource;
+use exchange::DefaultClient;
 use tonic::codegen::tokio_stream;
-use tonic::transport::{Endpoint, Uri, Server};
+use tonic::transport::{Endpoint, Server, Uri};
 use tower::service_fn;
 
 use exchange::proto::{exchange_client::ExchangeClient, exchange_server::ExchangeServer};
@@ -58,8 +58,24 @@ async fn test_system() -> Result<(), Box<dyn std::error::Error>> {
     let broker_2 = DefaultClient::init(&mut client).await?;
 
     for _date in clock.peek() {
-        let oid0 = broker_1.send_order(&mut client, exchange::orderbook::OrderType::MarketBuy, None, 100.0, "ABC").await?;
-        let oid1 = broker_2.send_order(&mut client, exchange::orderbook::OrderType::MarketBuy, None, 100.0, "ABC").await?;
+        let oid0 = broker_1
+            .send_order(
+                &mut client,
+                exchange::orderbook::OrderType::MarketBuy,
+                None,
+                100.0,
+                "ABC",
+            )
+            .await?;
+        let oid1 = broker_2
+            .send_order(
+                &mut client,
+                exchange::orderbook::OrderType::MarketBuy,
+                None,
+                100.0,
+                "ABC",
+            )
+            .await?;
 
         broker_1.tick(&mut client).await?;
         broker_2.tick(&mut client).await?;
@@ -67,8 +83,7 @@ async fn test_system() -> Result<(), Box<dyn std::error::Error>> {
         println!("{:?}", oid0);
         println!("{:?}", oid1);
     }
-    assert!(true==false);
+    assert!(true == false);
 
     Ok(())
-
 }

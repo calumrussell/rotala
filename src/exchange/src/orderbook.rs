@@ -8,9 +8,8 @@ pub struct Quote {
     pub symbol: String,
 }
 
-
 pub struct DefaultPriceSource {
-    inner: HashMap<i64, HashMap<String, Quote>>
+    inner: HashMap<i64, HashMap<String, Quote>>,
 }
 
 impl DefaultPriceSource {
@@ -30,14 +29,13 @@ impl DefaultPriceSource {
         return None;
     }
 
-    pub fn add_quotes(
-        &mut self,
-        bid: f64,
-        ask: f64,
-        date: i64, 
-        symbol: String,
-    ) {
-        let quote = Quote { bid, ask, date, symbol: symbol.clone() };
+    pub fn add_quotes(&mut self, bid: f64, ask: f64, date: i64, symbol: String) {
+        let quote = Quote {
+            bid,
+            ask,
+            date,
+            symbol: symbol.clone(),
+        };
 
         if let Some(date_row) = self.inner.get_mut(&date) {
             date_row.insert(symbol.clone(), quote);
@@ -48,8 +46,10 @@ impl DefaultPriceSource {
         }
     }
 
-    pub fn new () -> Self {
-        Self { inner: HashMap::new() }
+    pub fn new() -> Self {
+        Self {
+            inner: HashMap::new(),
+        }
     }
 }
 
@@ -72,8 +72,7 @@ impl From<i32> for OrderType {
             3 => OrderType::LimitBuy,
             4 => OrderType::StopSell,
             5 => OrderType::StopBuy,
-            _ => unimplemented!("0/1/2/3 are only types supported")
-
+            _ => unimplemented!("0/1/2/3 are only types supported"),
         }
     }
 }
@@ -132,19 +131,11 @@ impl ExchangeOrder {
         }
     }
 
-    pub fn market_buy(
-        subscriber_id: u64,
-        symbol: impl Into<String>,
-        shares: f64,
-    ) -> Self {
+    pub fn market_buy(subscriber_id: u64, symbol: impl Into<String>, shares: f64) -> Self {
         ExchangeOrder::market(subscriber_id, OrderType::MarketBuy, symbol, shares)
     }
 
-    pub fn market_sell(
-        subscriber_id: u64,
-        symbol: impl Into<String>,
-        shares: f64,
-    ) -> Self {
+    pub fn market_sell(subscriber_id: u64, symbol: impl Into<String>, shares: f64) -> Self {
         ExchangeOrder::market(subscriber_id, OrderType::MarketSell, symbol, shares)
     }
 
@@ -185,7 +176,6 @@ impl ExchangeOrder {
     }
 }
 
-
 #[derive(Clone, Copy, Debug)]
 pub enum TradeType {
     Buy,
@@ -202,14 +192,10 @@ pub struct ExchangeTrade {
     pub typ: TradeType,
 }
 
-
 #[doc(hidden)]
 #[derive(Debug)]
 pub struct OrderBook {
-    inner: std::collections::HashMap<
-        u64,
-        ExchangeOrder,
-    >,
+    inner: std::collections::HashMap<u64, ExchangeOrder>,
     last: u64,
 }
 
@@ -249,11 +235,7 @@ impl OrderBook {
         to_remove
     }
 
-    pub fn execute_orders(
-        &mut self,
-        date: i64,
-        source: &DefaultPriceSource,
-    ) -> Vec<ExchangeTrade> {
+    pub fn execute_orders(&mut self, date: i64, source: &DefaultPriceSource) -> Vec<ExchangeTrade> {
         let execute_buy = |quote: &Quote, order: &ExchangeOrder| -> ExchangeTrade {
             let trade_price = quote.ask;
             let value = trade_price * order.shares;
@@ -276,7 +258,7 @@ impl OrderBook {
                 value,
                 quantity: order.shares,
                 date,
-                typ: TradeType::Sell
+                typ: TradeType::Sell,
             }
         };
 
@@ -289,7 +271,7 @@ impl OrderBook {
         //Execute orders in the orderbook
         for (key, order) in self.inner.iter() {
             let security_id = &order.symbol;
-            if let Some(quote) = source.get_quote(&date,&security_id) {
+            if let Some(quote) = source.get_quote(&date, &security_id) {
                 let result = match order.order_type {
                     OrderType::MarketBuy => Some(execute_buy(&quote, order)),
                     OrderType::MarketSell => Some(execute_sell(&quote, order)),
@@ -345,13 +327,12 @@ impl OrderBook {
 
 #[cfg(test)]
 mod tests {
-    use super::OrderBook;
-    use super::ExchangeOrder;
     use super::DefaultPriceSource;
+    use super::ExchangeOrder;
+    use super::OrderBook;
     use alator::clock::{Clock, ClockBuilder};
 
     fn setup() -> (Clock, DefaultPriceSource) {
-
         let clock = ClockBuilder::with_length_in_seconds(100, 3)
             .with_frequency(&alator::types::Frequency::Second)
             .build();
