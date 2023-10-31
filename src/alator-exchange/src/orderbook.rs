@@ -19,14 +19,14 @@ impl DefaultPriceSource {
                 return Some(quote);
             }
         }
-        return None;
+        None
     }
 
     pub fn get_quotes(&self, date: &i64) -> Option<Vec<Quote>> {
         if let Some(date_row) = self.inner.get(date) {
-            return Some(date_row.values().into_iter().cloned().collect());
+            return Some(date_row.values().cloned().collect());
         }
-        return None;
+        None
     }
 
     pub fn add_quotes(&mut self, bid: f64, ask: f64, date: i64, symbol: String) {
@@ -50,6 +50,12 @@ impl DefaultPriceSource {
         Self {
             inner: HashMap::new(),
         }
+    }
+}
+
+impl Default for DefaultPriceSource {
+    fn default() -> Self {
+        Self::new()
     }
 }
 
@@ -199,6 +205,12 @@ pub struct OrderBook {
     last: u64,
 }
 
+impl Default for OrderBook {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl OrderBook {
     pub fn new() -> Self {
         Self {
@@ -271,15 +283,15 @@ impl OrderBook {
         //Execute orders in the orderbook
         for (key, order) in self.inner.iter() {
             let security_id = &order.symbol;
-            if let Some(quote) = source.get_quote(&date, &security_id) {
+            if let Some(quote) = source.get_quote(&date, security_id) {
                 let result = match order.order_type {
-                    OrderType::MarketBuy => Some(execute_buy(&quote, order)),
-                    OrderType::MarketSell => Some(execute_sell(&quote, order)),
+                    OrderType::MarketBuy => Some(execute_buy(quote, order)),
+                    OrderType::MarketSell => Some(execute_sell(quote, order)),
                     OrderType::LimitBuy => {
                         //Unwrap is safe because LimitBuy will always have a price
                         let order_price = order.price;
                         if order_price >= Some(quote.ask) {
-                            Some(execute_buy(&quote, order))
+                            Some(execute_buy(quote, order))
                         } else {
                             None
                         }
@@ -288,7 +300,7 @@ impl OrderBook {
                         //Unwrap is safe because LimitSell will always have a price
                         let order_price = order.price;
                         if order_price <= Some(quote.bid) {
-                            Some(execute_sell(&quote, order))
+                            Some(execute_sell(quote, order))
                         } else {
                             None
                         }
@@ -297,7 +309,7 @@ impl OrderBook {
                         //Unwrap is safe because StopBuy will always have a price
                         let order_price = order.price;
                         if order_price <= Some(quote.ask) {
-                            Some(execute_buy(&quote, order))
+                            Some(execute_buy(quote, order))
                         } else {
                             None
                         }
@@ -306,7 +318,7 @@ impl OrderBook {
                         //Unwrap is safe because StopSell will always have a price
                         let order_price = order.price;
                         if order_price >= Some(quote.bid) {
-                            Some(execute_sell(&quote, order))
+                            Some(execute_sell(quote, order))
                         } else {
                             None
                         }
