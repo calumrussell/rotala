@@ -10,6 +10,9 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v2
 
+      - name: Install Protoc
+        uses: arduino/setup-protoc@v2
+
       - name: Stable toolchain with rustfmt
         uses: actions-rs/toolchain@v1
         with:
