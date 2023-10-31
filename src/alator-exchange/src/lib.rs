@@ -1,3 +1,22 @@
+//! alator-exchange is an implementation of an alator exchange over gRPC using Protobuf for data
+//! serialization.
+//! 
+//! The implementation of multi-threading has added significant overhead to this library. The
+//! purpose of this change was to move towards a more standalone backtesting library. gRPC
+//! implementation provides a potential direction of travel whereby the inner exchange
+//! becomes distinct from other components allowing multi-language backtesting.
+//! 
+//! This adds substantial overhead due to network latency/serialization and some amplification of
+//! message-passing/calls between broker and exchange as full co-ordination requires n extra calls
+//! where n is the number of brokers (due to the need to register that brokers are ready to tick
+//! forward).
+//! 
+//! The inner loop of the gRPC with two brokers runs in 8ms with the inner loop of the single-
+//! threaded implementation running in ~8μs. The plan is to maintain the single-threaded
+//! implementation but leave open the option for a multi-language backtest (or a distributed one).
+//! 
+//! This is experimental and the interface/names used will change in the future.
+
 use proto::{
     exchange_client::ExchangeClient, FetchQuotesRequest, FetchTradesRequest, RegisterSourceRequest,
     SendOrderRequest, TickRequest,
@@ -47,7 +66,6 @@ impl From<orderbook::ExchangeTrade> for proto::Trade {
     }
 }
 
-//Test
 pub struct DefaultExchange {
     orderbook: Mutex<OrderBook>,
     subscriber_id: AtomicU64,
