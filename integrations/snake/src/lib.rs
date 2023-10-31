@@ -1,18 +1,21 @@
 use alator::exchange::implement::single::SingleExchangeBuilder;
 use pyo3::prelude::*;
 
-use alator::clock::ClockBuilder;
-use alator::input::{PyPriceSource, PyCorporateEventsSource};
-use alator::strategy::implement::staticweight::StaticWeightStrategyBuilder;
 use alator::broker::implement::single::{SingleBroker, SingleBrokerBuilder};
-use alator::broker::{BrokerCost, PyQuote, PyDividend};
+use alator::broker::{BrokerCost, PyDividend, PyQuote};
+use alator::clock::ClockBuilder;
+use alator::input::{PyCorporateEventsSource, PyPriceSource};
 use alator::simcontext::SimContextBuilder;
+use alator::strategy::implement::staticweight::StaticWeightStrategyBuilder;
 use alator::types::{CashValue, Frequency, PortfolioAllocation};
 use pyo3::types::PyDict;
 
 #[pyfunction]
-fn staticweight_example(quotes_any: &PyAny, dividends_any: &PyAny, tickers_any: &PyAny) -> PyResult<String> {
-
+fn staticweight_example(
+    quotes_any: &PyAny,
+    dividends_any: &PyAny,
+    tickers_any: &PyAny,
+) -> PyResult<String> {
     let clock = ClockBuilder::with_length_in_seconds(1, 100_000)
         .with_frequency(&Frequency::Second)
         .build();
@@ -38,10 +41,11 @@ fn staticweight_example(quotes_any: &PyAny, dividends_any: &PyAny, tickers_any: 
         .with_clock(clock.clone())
         .build();
 
-    let simbrkr: SingleBroker<PyDividend, PyCorporateEventsSource, PyQuote, PyPriceSource> = SingleBrokerBuilder::new()
-        .with_exchange(exchange)
-        .with_trade_costs(vec![BrokerCost::Flat(1.0.into())])
-        .build();
+    let simbrkr: SingleBroker<PyDividend, PyCorporateEventsSource, PyQuote, PyPriceSource> =
+        SingleBrokerBuilder::new()
+            .with_exchange(exchange)
+            .with_trade_costs(vec![BrokerCost::Flat(1.0.into())])
+            .build();
 
     let strat = StaticWeightStrategyBuilder::new()
         .with_brkr(simbrkr)

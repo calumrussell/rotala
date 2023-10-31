@@ -2,5 +2,6 @@
 resolver = "2"
 members = [
     "src/alator",
-    "src/exchange"
+    "src/alator-exchange",
+    "integrations/snake",
 ]

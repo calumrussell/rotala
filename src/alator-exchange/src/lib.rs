@@ -46,6 +46,8 @@ impl From<orderbook::ExchangeTrade> for proto::Trade {
         }
     }
 }
+
+//Test
 pub struct DefaultExchange {
     orderbook: Mutex<OrderBook>,
     subscriber_id: AtomicU64,

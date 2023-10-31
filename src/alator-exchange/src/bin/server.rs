@@ -1,8 +1,7 @@
 use tonic::transport::Server;
 
-use exchange::orderbook::DefaultPriceSource;
-use exchange::proto;
-use proto::exchange_server::ExchangeServer;
+use alator_exchange::orderbook::DefaultPriceSource;
+use alator_exchange::proto::exchange_server::ExchangeServer;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -17,7 +16,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         source.add_quotes(100.0, 101.0, *date, "ABC".to_string());
     }
 
-    let exchange = exchange::DefaultExchange::new(clock, source);
+    let exchange = alator_exchange::DefaultExchange::new(clock, source);
 
     println!("DefaultExchange listening on {}", addr);
 

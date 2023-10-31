@@ -1,14 +1,14 @@
 [package]
-name = "exchange"
+name = "alator-exchange"
 version = "0.1.0"
 edition = "2021"
 
 [lib]
-name = "exchange"
+name = "alator_exchange"
 path = "src/lib.rs"
 
 [[bin]]
-name = "exchange-server"
+name = "alator_exchange_server"
 path = "src/bin/server.rs"
 
 [dependencies]

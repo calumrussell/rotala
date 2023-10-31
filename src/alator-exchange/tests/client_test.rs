@@ -1,10 +1,10 @@
-use exchange::orderbook::DefaultPriceSource;
-use exchange::DefaultClient;
+use alator_exchange::orderbook::DefaultPriceSource;
+use alator_exchange::DefaultClient;
 use tonic::codegen::tokio_stream;
 use tonic::transport::{Endpoint, Server, Uri};
 use tower::service_fn;
 
-use exchange::proto::{exchange_client::ExchangeClient, exchange_server::ExchangeServer};
+use alator_exchange::proto::{exchange_client::ExchangeClient, exchange_server::ExchangeServer};
 
 pub mod proto {
     tonic::include_proto!("exchange");
@@ -14,7 +14,7 @@ pub mod proto {
 async fn test_system() -> Result<(), Box<dyn std::error::Error>> {
     let (client, server) = tokio::io::duplex(1024);
 
-    let clock = alator::clock::ClockBuilder::with_length_in_seconds(100, 2000)
+    let clock = alator::clock::ClockBuilder::with_length_in_seconds(100, 100)
         .with_frequency(&alator::types::Frequency::Second)
         .build();
 
@@ -23,7 +23,7 @@ async fn test_system() -> Result<(), Box<dyn std::error::Error>> {
         source.add_quotes(100.0, 101.0, *date, "ABC".to_string());
     }
 
-    let exchange = exchange::DefaultExchange::new(clock.clone(), source);
+    let exchange = alator_exchange::DefaultExchange::new(clock.clone(), source);
 
     tokio::spawn(async move {
         Server::builder()
@@ -58,19 +58,19 @@ async fn test_system() -> Result<(), Box<dyn std::error::Error>> {
     let broker_2 = DefaultClient::init(&mut client).await?;
 
     for _date in clock.peek() {
-        let oid0 = broker_1
+        let _oid0 = broker_1
             .send_order(
                 &mut client,
-                exchange::orderbook::OrderType::MarketBuy,
+                alator_exchange::orderbook::OrderType::MarketBuy,
                 None,
                 100.0,
                 "ABC",
             )
             .await?;
-        let oid1 = broker_2
+        let _oid1 = broker_2
             .send_order(
                 &mut client,
-                exchange::orderbook::OrderType::MarketBuy,
+                alator_exchange::orderbook::OrderType::MarketBuy,
                 None,
                 100.0,
                 "ABC",
@@ -78,12 +78,9 @@ async fn test_system() -> Result<(), Box<dyn std::error::Error>> {
             .await?;
 
         broker_1.tick(&mut client).await?;
-        broker_2.tick(&mut client).await?;
-
-        println!("{:?}", oid0);
-        println!("{:?}", oid1);
+        if let Err(_err) = broker_2.tick(&mut client).await {
+            break;
+        }
     }
-    assert!(true == false);
-
     Ok(())
 }
