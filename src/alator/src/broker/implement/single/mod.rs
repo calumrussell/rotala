@@ -17,33 +17,33 @@ use crate::broker::{
 };
 
 /// Once the broker moves into Failed state then all operations that mutate state are rejected.
-/// 
+///
 /// This flag is intended to cover any situation where the broker moves into a state where it is
 /// unclear how to move the state foward. In most cases, and contrary to the intuition with this
 /// kind of error, this will be due to errors with the strategy code and the interaction with
 /// external state (i.e. price source).
-/// 
+///
 /// Once this happens, the broker will stop performing cash transactions and issuing orders. The
 /// broker won't throw an error once this happens and will continue reading from exchange to
-/// reconcile trades/liquidate current position in order to return a correct cash balance to the 
+/// reconcile trades/liquidate current position in order to return a correct cash balance to the
 /// strategy. If the price source is missing data after a liquidation is triggered then it is
 /// possible for incorrect results to be returned.
-/// 
+///
 /// The most common scenario for this state to be triggered is due to bad strategy code triggering
 /// the liquidation process and the broker being unable to find sufficient cash (plus a buffer of
 /// 1000, currently hardcoded).
-/// 
+///
 /// A less common scenario contrived to demonstrate how this can occur due to external data: we
 /// have a portfolio with cash of 100, the strategy issues a market order for 100 shares @ 1,
 /// the market price doubles on the next tick, and so the exchange asks for 200 in cash to settle
 /// the trade. Once this happens, it is unclear what the broker should do so we move into an error
 /// condition and stop mutating more state.
-/// 
+///
 /// Broker should be in Ready state on creation.
 #[derive(Debug)]
 enum BrokerState {
     Ready,
-    Failed
+    Failed,
 }
 
 /// Single-threaded broker. Created with [SingleBrokerBuilder].
@@ -146,8 +146,8 @@ where
                     //further mutations, and run out the current portfolio state to return some
                     //value to strategy
                     self.broker_state = BrokerState::Failed;
-                },
-                _ => ()
+                }
+                _ => (),
             }
         }
     }
@@ -342,7 +342,7 @@ where
                     order.get_symbol()
                 );
                 return BrokerEvent::OrderInvalid(order.clone());
-            },
+            }
             BrokerState::Ready => {
                 info!(
                     "BROKER: Attempting to send {:?} order for {:?} shares of {:?} to the exchange",
@@ -353,11 +353,17 @@ where
 
                 let quote = self.get_quote(order.get_symbol()).unwrap();
                 let price = match order.get_order_type() {
-                    OrderType::MarketBuy | OrderType::LimitBuy | OrderType::StopBuy => quote.get_ask(),
-                    OrderType::MarketSell | OrderType::LimitSell | OrderType::StopSell => quote.get_bid(),
+                    OrderType::MarketBuy | OrderType::LimitBuy | OrderType::StopBuy => {
+                        quote.get_ask()
+                    }
+                    OrderType::MarketSell | OrderType::LimitSell | OrderType::StopSell => {
+                        quote.get_bid()
+                    }
                 };
 
-                if let Err(_err) = BrokerCalculations::client_has_sufficient_cash(&order, price, self) {
+                if let Err(_err) =
+                    BrokerCalculations::client_has_sufficient_cash(&order, price, self)
+                {
                     info!(
                         "BROKER: Unable to send {:?} order for {:?} shares of {:?} to exchange",
                         order.get_order_type(),
@@ -366,7 +372,8 @@ where
                     );
                     return BrokerEvent::OrderInvalid(order.clone());
                 }
-                if let Err(_err) = BrokerCalculations::client_has_sufficient_holdings_for_sale(&order, self)
+                if let Err(_err) =
+                    BrokerCalculations::client_has_sufficient_holdings_for_sale(&order, self)
                 {
                     info!(
                         "BROKER: Unable to send {:?} order for {:?} shares of {:?} to exchange",
@@ -395,7 +402,6 @@ where
                     order.get_symbol()
                 );
                 BrokerEvent::OrderSentToExchange(order)
-
             }
         }
     }
@@ -426,7 +432,7 @@ where
     }
 }
 
-impl<D, T, Q, P> TransferCash for SingleBroker<D, T, Q, P> 
+impl<D, T, Q, P> TransferCash for SingleBroker<D, T, Q, P>
 where
     D: Dividendable,
     T: CorporateEventsSource<D>,
@@ -441,7 +447,7 @@ where
                     cash,
                 );
                 return BrokerCashEvent::OperationFailure(CashValue::from(*cash));
-            },
+            }
             BrokerState::Ready => {
                 if cash > &self.get_cash_balance() {
                     info!(
@@ -470,7 +476,7 @@ where
                     cash,
                 );
                 return BrokerCashEvent::OperationFailure(CashValue::from(*cash));
-            },
+            }
             BrokerState::Ready => {
                 info!(
                     "BROKER: Deposited {:?} cash, current balance of {:?}",
@@ -481,7 +487,7 @@ where
                 BrokerCashEvent::DepositSuccess(CashValue::from(*cash))
             }
         }
-   }
+    }
 }
 
 #[cfg(test)]
@@ -830,14 +836,18 @@ mod tests {
         //very inaccurate
         price_source.add_quotes(200.00, 201.00, 101, "ABC");
         price_source.add_quotes(200.00, 201.00, 101, "ABC");
- 
 
         let exchange = SingleExchangeBuilder::new()
             .with_clock(clock.clone())
             .with_price_source(price_source)
             .build();
 
-        let mut brkr: SingleBroker<Dividend, DefaultCorporateEventsSource, Quote, DefaultPriceSource> = SingleBrokerBuilder::new()
+        let mut brkr: SingleBroker<
+            Dividend,
+            DefaultCorporateEventsSource,
+            Quote,
+            DefaultPriceSource,
+        > = SingleBrokerBuilder::new()
             .with_exchange(exchange)
             .with_trade_costs(vec![BrokerCost::PctOfValue(0.01)])
             .build();
@@ -855,9 +865,15 @@ mod tests {
         assert!(*cash < 0.0);
 
         let res = brkr.send_order(Order::market(OrderType::MarketBuy, "ABC", 100.0));
-        assert!(matches!(res, BrokerEvent::OrderInvalid{..}));
+        assert!(matches!(res, BrokerEvent::OrderInvalid { .. }));
 
-        assert!(matches!(brkr.deposit_cash(&100_000.0), BrokerCashEvent::OperationFailure{..}));
-        assert!(matches!(brkr.withdraw_cash(&100_000.0), BrokerCashEvent::OperationFailure{..}));
+        assert!(matches!(
+            brkr.deposit_cash(&100_000.0),
+            BrokerCashEvent::OperationFailure { .. }
+        ));
+        assert!(matches!(
+            brkr.withdraw_cash(&100_000.0),
+            BrokerCashEvent::OperationFailure { .. }
+        ));
     }
 }
