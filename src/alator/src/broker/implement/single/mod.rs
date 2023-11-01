@@ -140,14 +140,11 @@ where
             let plus_buffer = shortfall + 1000.0;
 
             let res = BrokerCalculations::withdraw_cash_with_liquidation(&plus_buffer, self);
-            match res {
-                BrokerCashEvent::WithdrawFailure(_val) => {
-                    //The broker tried to generate cash required but was unable to do so. Stop all
-                    //further mutations, and run out the current portfolio state to return some
-                    //value to strategy
-                    self.broker_state = BrokerState::Failed;
-                }
-                _ => (),
+            if let BrokerCashEvent::WithdrawFailure(_val) = res {
+                //The broker tried to generate cash required but was unable to do so. Stop all
+                //further mutations, and run out the current portfolio state to return some
+                //value to strategy
+                self.broker_state = BrokerState::Failed;
             }
         }
     }
@@ -341,7 +338,7 @@ where
                     order.get_shares(),
                     order.get_symbol()
                 );
-                return BrokerEvent::OrderInvalid(order.clone());
+                BrokerEvent::OrderInvalid(order.clone())
             }
             BrokerState::Ready => {
                 info!(
@@ -446,7 +443,7 @@ where
                     "BROKER: Attempted cash withdraw of {:?} but broker in Failed State",
                     cash,
                 );
-                return BrokerCashEvent::OperationFailure(CashValue::from(*cash));
+                BrokerCashEvent::OperationFailure(CashValue::from(*cash))
             }
             BrokerState::Ready => {
                 if cash > &self.get_cash_balance() {
@@ -475,7 +472,7 @@ where
                     "BROKER: Attempted cash deposit of {:?} but broker in Failed State",
                     cash,
                 );
-                return BrokerCashEvent::OperationFailure(CashValue::from(*cash));
+                BrokerCashEvent::OperationFailure(CashValue::from(*cash))
             }
             BrokerState::Ready => {
                 info!(
