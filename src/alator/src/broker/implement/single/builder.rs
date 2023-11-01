@@ -60,6 +60,7 @@ where
             trade_costs: self.trade_costs.clone(),
             latest_quotes: first_quotes,
             dividend: PhantomData,
+            broker_state: super::BrokerState::Ready,
         }
     }
 
