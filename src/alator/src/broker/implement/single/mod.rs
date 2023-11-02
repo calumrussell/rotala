@@ -62,6 +62,9 @@ where
     //the number of stocks in the universe. If we have a lot of changes then the HashMap
     //will be constantly resized.
     holdings: PortfolioHoldings,
+    //Kept distinct from holdings because some perf calculations may need to distinguish between
+    //trades that we know are booked vs ones that we think should get booked
+    pending_orders: PortfolioHoldings,
     //Used to mark last trade seen by broker when reconciling completed trades with exchange
     last_seen_trade: usize,
     latest_quotes: HashMap<String, Arc<Q>>,
@@ -80,6 +83,31 @@ where
 {
     pub fn cost_basis(&self, symbol: &str) -> Option<Price> {
         self.log.cost_basis(symbol)
+    }
+
+    pub fn get_holdings_with_pending(&self) -> PortfolioHoldings {
+        let mut merged_holdings = PortfolioHoldings::new();
+        for (key, value) in self.holdings.0.iter() {
+            if merged_holdings.0.contains_key(key)  {
+                let val = merged_holdings.get(key).unwrap();
+                let new_val = PortfolioQty::from(**val + **value);
+                merged_holdings.insert(key, &new_val);
+            } else {
+                merged_holdings.insert(key, value);
+            }
+        }
+
+        for (key, value) in self.pending_orders.0.iter() {
+            if merged_holdings.0.contains_key(key)  {
+                let val = merged_holdings.get(key).unwrap();
+                let new_val = PortfolioQty::from(**val + **value);
+                merged_holdings.insert(key, &new_val);
+            } else {
+                merged_holdings.insert(key, value);
+            }
+        }
+
+        merged_holdings
     }
 
     /// Called on every tick of clock to ensure that state is synchronized with other components.
@@ -116,8 +144,22 @@ where
                 crate::exchange::TradeType::Buy => **curr_position + trade.quantity,
                 crate::exchange::TradeType::Sell => **curr_position - trade.quantity,
             };
-
             self.update_holdings(&trade.symbol, PortfolioQty::from(updated));
+
+            //Because the order has completed, we should be able to unwrap pending_orders safetly
+            //If this fails then there must be an application bug and panic is required.
+            let pending = self.pending_orders.get(&trade.symbol).unwrap();
+
+            let updated_pending = match trade.typ {
+                crate::exchange::TradeType::Buy => **pending - trade.quantity,
+                crate::exchange::TradeType::Sell => **pending + trade.quantity,
+            };
+            if updated_pending == 0.0 {
+                self.pending_orders.remove(&trade.symbol);
+            } else {
+                self.pending_orders.insert(&trade.symbol, &PortfolioQty::from(updated_pending));
+            }
+
             self.last_seen_trade += 1;
         }
         //Previous step can cause negative cash balance so we have to rebalance here, this
@@ -391,7 +433,22 @@ where
                 }
 
                 self.exchange.insert_order(order.into_exchange(0));
+                //From the point of view of strategy, an order pending is the same as an order
+                //executed. If the order is executed, then it is executed. If the order isn't
+                //executed then the strategy must wait but all the strategy's work has been
+                //done. So once we send the order, we need some way for clients to work out
+                //what orders are pending and whether they need to do more work.
+                let order_effect = match order.get_order_type() {
+                    OrderType::MarketBuy | OrderType::LimitBuy | OrderType::StopBuy => **order.get_shares(),
+                    OrderType::MarketSell | OrderType::LimitSell | OrderType::StopSell => -**order.get_shares(),
+                };
 
+                if let Some(position) = self.pending_orders.get(order.get_symbol()) {
+                    let existing = **position + order_effect;
+                    self.pending_orders.insert(order.get_symbol(), &PortfolioQty::from(existing));
+                } else {
+                    self.pending_orders.insert(order.get_symbol(), &PortfolioQty::from(order_effect));
+                }
                 info!(
                     "BROKER: Successfully sent {:?} order for {:?} shares of {:?} to exchange",
                     order.get_order_type(),
@@ -872,5 +929,28 @@ mod tests {
             brkr.withdraw_cash(&100_000.0),
             BrokerCashEvent::OperationFailure { .. }
         ));
+    }
+
+    #[test]
+    fn test_that_holdings_updates_correctly() {
+        let mut brkr = setup();
+        brkr.deposit_cash(&100_000.0);
+        let res = brkr.send_order(Order::market(OrderType::MarketBuy, "ABC", 50.0));
+        assert!(matches!(res, BrokerEvent::OrderSentToExchange(..)));
+        assert_eq!(**brkr.get_holdings_with_pending().get("ABC").unwrap(), 50.0);
+        brkr.check();
+        assert_eq!(**brkr.get_holdings().get("ABC").unwrap(), 50.0);
+
+        let res = brkr.send_order(Order::market(OrderType::MarketSell, "ABC", 10.0));
+        assert!(matches!(res, BrokerEvent::OrderSentToExchange(..)));
+        assert_eq!(**brkr.get_holdings_with_pending().get("ABC").unwrap(), 40.0);
+        brkr.check();
+        assert_eq!(**brkr.get_holdings().get("ABC").unwrap(), 40.0);
+
+        let res = brkr.send_order(Order::market(OrderType::MarketBuy, "ABC", 50.0));
+        assert!(matches!(res, BrokerEvent::OrderSentToExchange(..)));
+        assert_eq!(**brkr.get_holdings_with_pending().get("ABC").unwrap(), 90.0);
+        brkr.check();
+        assert_eq!(**brkr.get_holdings().get("ABC").unwrap(), 90.0);
     }
 }

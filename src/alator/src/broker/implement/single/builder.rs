@@ -43,6 +43,7 @@ where
         }
 
         let holdings = PortfolioHoldings::new();
+        let pending_orders = PortfolioHoldings::new();
         let log = BrokerLog::new();
 
         let exchange = std::mem::take(&mut self.exchange).unwrap();
@@ -53,6 +54,7 @@ where
             corporate_source,
             //Intialised as invalid so errors throw if client tries to run before init
             holdings,
+            pending_orders,
             cash: CashValue::from(0.0),
             log,
             last_seen_trade: 0,
