@@ -202,12 +202,27 @@ impl Strategy for MovingAverageStrategy {
                     //away from positions reqpresented in whole numbers. Strategies should work but
                     //I am not sure if the result is correct.
                     let qty = (f64::from(pct_value) / (*quote.ask)).floor();
-                    let order = Order::market(OrderType::MarketBuy, "BTC", qty);
+                    let current_position_with_pending = self.brkr.get_holdings_with_pending();
+                    let default_qty = alator::types::PortfolioQty::default();
+                    let current_qty = current_position_with_pending.0.get("BTC").or(Some(&default_qty));
+                    let missing = qty - **current_qty.unwrap();
+                    if missing != 0.0 {
+                        let order = Order::market(OrderType::MarketBuy, "BTC", missing);
+                        let _ = self.brkr.send_order(order);
+                    }
+                }
+            } else if let Some(_qty) = self.brkr.get_position_qty("BTC") {
+                //The logic here is a little confusing/wrong. There should be the option here to sell current
+                //holdings and cancel all orders. As of writing, this feature is supported in the exchange
+                //but not in the broker. So we just sell existing holdings and issue an order to offset all
+                //buy orders with sell orders resulting in zero position.
+                let default_qty = alator::types::PortfolioQty::default();
+                let current_position_with_pending = self.brkr.get_holdings_with_pending();
+                let current_qty = current_position_with_pending.0.get("BTC").or(Some(&default_qty)).unwrap();
+                if **current_qty != 0.0 {
+                    let order = Order::market(OrderType::MarketSell, "BTC", **current_qty);
                     let _ = self.brkr.send_order(order);
                 }
-            } else if let Some(qty) = self.brkr.get_position_qty("BTC") {
-                let order = Order::market(OrderType::MarketSell, "BTC", qty.clone());
-                let _ = self.brkr.send_order(order);
             }
         }
 
@@ -283,4 +298,5 @@ fn binance_test() {
 
     sim.run();
     let _perf = sim.perf(Frequency::Daily);
+
 }
