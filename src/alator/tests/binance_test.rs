@@ -204,7 +204,10 @@ impl Strategy for MovingAverageStrategy {
                     let qty = (f64::from(pct_value) / (*quote.ask)).floor();
                     let current_position_with_pending = self.brkr.get_holdings_with_pending();
                     let default_qty = alator::types::PortfolioQty::default();
-                    let current_qty = current_position_with_pending.0.get("BTC").or(Some(&default_qty));
+                    let current_qty = current_position_with_pending
+                        .0
+                        .get("BTC")
+                        .or(Some(&default_qty));
                     let missing = qty - **current_qty.unwrap();
                     if missing != 0.0 {
                         let order = Order::market(OrderType::MarketBuy, "BTC", missing);
@@ -218,7 +221,11 @@ impl Strategy for MovingAverageStrategy {
                 //buy orders with sell orders resulting in zero position.
                 let default_qty = alator::types::PortfolioQty::default();
                 let current_position_with_pending = self.brkr.get_holdings_with_pending();
-                let current_qty = current_position_with_pending.0.get("BTC").or(Some(&default_qty)).unwrap();
+                let current_qty = current_position_with_pending
+                    .0
+                    .get("BTC")
+                    .or(Some(&default_qty))
+                    .unwrap();
                 if **current_qty != 0.0 {
                     let order = Order::market(OrderType::MarketSell, "BTC", **current_qty);
                     let _ = self.brkr.send_order(order);
@@ -298,5 +305,4 @@ fn binance_test() {
 
     sim.run();
     let _perf = sim.perf(Frequency::Daily);
-
 }

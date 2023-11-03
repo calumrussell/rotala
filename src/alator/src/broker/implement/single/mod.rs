@@ -88,7 +88,7 @@ where
     pub fn get_holdings_with_pending(&self) -> PortfolioHoldings {
         let mut merged_holdings = PortfolioHoldings::new();
         for (key, value) in self.holdings.0.iter() {
-            if merged_holdings.0.contains_key(key)  {
+            if merged_holdings.0.contains_key(key) {
                 let val = merged_holdings.get(key).unwrap();
                 let new_val = PortfolioQty::from(**val + **value);
                 merged_holdings.insert(key, &new_val);
@@ -98,7 +98,7 @@ where
         }
 
         for (key, value) in self.pending_orders.0.iter() {
-            if merged_holdings.0.contains_key(key)  {
+            if merged_holdings.0.contains_key(key) {
                 let val = merged_holdings.get(key).unwrap();
                 let new_val = PortfolioQty::from(**val + **value);
                 merged_holdings.insert(key, &new_val);
@@ -157,7 +157,8 @@ where
             if updated_pending == 0.0 {
                 self.pending_orders.remove(&trade.symbol);
             } else {
-                self.pending_orders.insert(&trade.symbol, &PortfolioQty::from(updated_pending));
+                self.pending_orders
+                    .insert(&trade.symbol, &PortfolioQty::from(updated_pending));
             }
 
             self.last_seen_trade += 1;
@@ -439,15 +440,21 @@ where
                 //done. So once we send the order, we need some way for clients to work out
                 //what orders are pending and whether they need to do more work.
                 let order_effect = match order.get_order_type() {
-                    OrderType::MarketBuy | OrderType::LimitBuy | OrderType::StopBuy => **order.get_shares(),
-                    OrderType::MarketSell | OrderType::LimitSell | OrderType::StopSell => -**order.get_shares(),
+                    OrderType::MarketBuy | OrderType::LimitBuy | OrderType::StopBuy => {
+                        **order.get_shares()
+                    }
+                    OrderType::MarketSell | OrderType::LimitSell | OrderType::StopSell => {
+                        -**order.get_shares()
+                    }
                 };
 
                 if let Some(position) = self.pending_orders.get(order.get_symbol()) {
                     let existing = **position + order_effect;
-                    self.pending_orders.insert(order.get_symbol(), &PortfolioQty::from(existing));
+                    self.pending_orders
+                        .insert(order.get_symbol(), &PortfolioQty::from(existing));
                 } else {
-                    self.pending_orders.insert(order.get_symbol(), &PortfolioQty::from(order_effect));
+                    self.pending_orders
+                        .insert(order.get_symbol(), &PortfolioQty::from(order_effect));
                 }
                 info!(
                     "BROKER: Successfully sent {:?} order for {:?} shares of {:?} to exchange",
