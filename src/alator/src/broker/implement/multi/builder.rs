@@ -59,6 +59,7 @@ where
             exchange_subscriber_id: subscriber_id,
             latest_quotes: first_quotes,
             dividend: PhantomData,
+            broker_state: super::BrokerState::Ready,
         }
     }
 

@@ -21,6 +21,36 @@ use crate::broker::{
     TransferCash,
 };
 
+/// Once the broker moves into Failed state then all operations that mutate state are rejected.
+///
+/// This flag is intended to cover any situation where the broker moves into a state where it is
+/// unclear how to move the state foward. In most cases, and contrary to the intuition with this
+/// kind of error, this will be due to errors with the strategy code and the interaction with
+/// external state (i.e. price source).
+///
+/// Once this happens, the broker will stop performing cash transactions and issuing orders. The
+/// broker won't throw an error once this happens and will continue reading from exchange to
+/// reconcile trades/liquidate current position in order to return a correct cash balance to the
+/// strategy. If the price source is missing data after a liquidation is triggered then it is
+/// possible for incorrect results to be returned.
+///
+/// The most common scenario for this state to be triggered is due to bad strategy code triggering
+/// the liquidation process and the broker being unable to find sufficient cash (plus a buffer of
+/// 1000, currently hardcoded).
+///
+/// A less common scenario contrived to demonstrate how this can occur due to external data: we
+/// have a portfolio with cash of 100, the strategy issues a market order for 100 shares @ 1,
+/// the market price doubles on the next tick, and so the exchange asks for 200 in cash to settle
+/// the trade. Once this happens, it is unclear what the broker should do so we move into an error
+/// condition and stop mutating more state.
+///
+/// Broker should be in Ready state on creation.
+#[derive(Debug)]
+enum BrokerState {
+    Ready,
+    Failed,
+}
+
 /// Multi-threaded broker. Created with [ConcurrentBrokerBuilder].
 #[derive(Debug)]
 pub struct ConcurrentBroker<D, T, Q>
@@ -40,6 +70,7 @@ where
     exchange_subscriber_id: DefaultSubscriberId,
     latest_quotes: HashMap<String, Arc<Q>>,
     dividend: PhantomData<D>,
+    broker_state: BrokerState,
 }
 
 impl<D, T, Q> ConcurrentBroker<D, T, Q>
@@ -109,9 +140,15 @@ where
             //rebalancing, this amount is arbitrary atm
             let plus_buffer = shortfall + 1000.0;
 
-            let _res =
+            let res =
                 BrokerCalculations::withdraw_cash_with_liquidation_async(&plus_buffer, self).await;
-            //TODO: handle insufficient cash state
+
+            if let BrokerCashEvent::WithdrawFailure(_val) = res {
+                //The broker tried to generate cash required but was unable to do so. Stop all
+                //further mutations, and run out the current portfolio state to return some
+                //value to strategy
+                self.broker_state = BrokerState::Failed;
+            }
         }
     }
 }
@@ -368,6 +405,55 @@ where
     T: CorporateEventsSource<D>,
     Q: Quotable,
 {
+    fn withdraw_cash(&mut self, cash: &f64) -> BrokerCashEvent {
+        match self.broker_state {
+            BrokerState::Failed => {
+                info!(
+                    "BROKER: Attempted cash withdraw of {:?} but broker in Failed State",
+                    cash,
+                );
+                BrokerCashEvent::OperationFailure(CashValue::from(*cash))
+            }
+            BrokerState::Ready => {
+                if cash > &self.get_cash_balance() {
+                    info!(
+                        "BROKER: Attempted cash withdraw of {:?} but only have {:?}",
+                        cash,
+                        self.get_cash_balance()
+                    );
+                    return BrokerCashEvent::WithdrawFailure(CashValue::from(*cash));
+                }
+                info!(
+                    "BROKER: Successful cash withdraw of {:?}, {:?} left in cash",
+                    cash,
+                    self.get_cash_balance()
+                );
+                self.debit(cash);
+                BrokerCashEvent::WithdrawSuccess(CashValue::from(*cash))
+            }
+        }
+    }
+
+    fn deposit_cash(&mut self, cash: &f64) -> BrokerCashEvent {
+        match self.broker_state {
+            BrokerState::Failed => {
+                info!(
+                    "BROKER: Attempted cash deposit of {:?} but broker in Failed State",
+                    cash,
+                );
+                BrokerCashEvent::OperationFailure(CashValue::from(*cash))
+            }
+            BrokerState::Ready => {
+                info!(
+                    "BROKER: Deposited {:?} cash, current balance of {:?}",
+                    cash,
+                    self.get_cash_balance()
+                );
+                self.credit(cash);
+                BrokerCashEvent::DepositSuccess(CashValue::from(*cash))
+            }
+        }
+    }
 }
 
 impl<D, T, Q> EventLog for ConcurrentBroker<D, T, Q>
@@ -759,5 +845,61 @@ mod tests {
         brkr.check().await;
         let cash1 = brkr.get_cash_balance();
         assert!(*cash1 > 0.0);
+    }
+
+    #[tokio::test]
+    async fn test_that_broker_stops_when_liquidation_fails() {
+        let clock = crate::clock::ClockBuilder::with_length_in_seconds(100, 3)
+            .with_frequency(&crate::types::Frequency::Second)
+            .build();
+
+        let mut price_source = DefaultPriceSource::new(clock.clone());
+
+        price_source.add_quotes(100.00, 101.00, 100, "ABC");
+        //Price doubles over one tick so that the broker is trading on information that has become
+        //very inaccurate
+        price_source.add_quotes(200.00, 201.00, 101, "ABC");
+        price_source.add_quotes(200.00, 201.00, 101, "ABC");
+
+        let mut exchange = ConcurrentExchangeBuilder::new()
+            .with_clock(clock.clone())
+            .with_price_source(price_source)
+            .build();
+
+        let mut brkr: ConcurrentBroker<Dividend, DefaultCorporateEventsSource, Quote> =
+            ConcurrentBrokerBuilder::new()
+                .with_trade_costs(vec![BrokerCost::PctOfValue(0.01)])
+                .build(&mut exchange)
+                .await;
+
+        brkr.deposit_cash(&100_000.0);
+        //This will use all the available cash balance, the market price doubles so the broker ends
+        //up with a shortfall of -100_000.
+        brkr.send_order(Order::market(OrderType::MarketBuy, "ABC", 990.0))
+            .await;
+
+        exchange.check().await;
+        brkr.check().await;
+        exchange.check().await;
+        brkr.check().await;
+        exchange.check().await;
+        brkr.check().await;
+
+        let cash = brkr.get_cash_balance();
+        assert!(*cash < 0.0);
+
+        let res = brkr
+            .send_order(Order::market(OrderType::MarketBuy, "ABC", 100.0))
+            .await;
+        assert!(matches!(res, BrokerEvent::OrderInvalid { .. }));
+
+        assert!(matches!(
+            brkr.deposit_cash(&100_000.0),
+            BrokerCashEvent::OperationFailure { .. }
+        ));
+        assert!(matches!(
+            brkr.withdraw_cash(&100_000.0),
+            BrokerCashEvent::OperationFailure { .. }
+        ));
     }
 }
