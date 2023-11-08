@@ -1,7 +1,7 @@
 [workspace]
 resolver = "2"
 members = [
-    "src/alator",
-    "src/alator-exchange",
+    "crates/alator",
+    "crates/alator-exchange",
     "integrations/snake",
 ]
