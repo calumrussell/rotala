@@ -5,7 +5,7 @@ use crate::{
     types::{CashValue, PortfolioAllocation, PortfolioQty, Price},
 };
 
-use super::{BacktestBroker, GetsQuote, ReceivesOrders, ReceivesOrdersAsync};
+use super::{BacktestBroker, ReceivesOrders, ReceivesOrdersAsync};
 
 /// Groups calculations standard to most brokers. These are not bound into any other implementation
 /// and operate on traits rather than specific implementations.
@@ -20,10 +20,7 @@ impl BrokerCalculations {
     /// divergences in performance from the underlying in certain cases. For example, if prices are
     /// volatile, in the case of low-frequency data, then the broker will end up continuously
     /// re-balancing in a random way under certain price movements.
-    pub fn withdraw_cash_with_liquidation<
-        Q: Quotable,
-        T: BacktestBroker + GetsQuote<Q> + ReceivesOrders,
-    >(
+    pub fn withdraw_cash_with_liquidation<Q: Quotable, T: BacktestBroker<Q> + ReceivesOrders>(
         cash: &f64,
         brkr: &mut T,
     ) -> super::BrokerCashEvent {
@@ -48,7 +45,9 @@ impl BrokerCalculations {
             let positions = brkr.get_positions();
             let mut sell_orders: Vec<super::Order> = Vec::new();
             for ticker in positions {
-                let position_value = brkr.get_position_value(&ticker).unwrap_or_default();
+                let position_value = brkr
+                    .get_position_value(&ticker)
+                    .unwrap_or(CashValue::from(0.0));
                 //Position won't generate enough cash to fulfill total order
                 //Create orders for selling 100% of position, continue
                 //to next position to see if we can generate enough cash
@@ -56,12 +55,13 @@ impl BrokerCalculations {
                 //Sell 100% of position
                 if *position_value <= total_sold {
                     //Cannot be called without qty existing
-                    let qty = brkr.get_position_qty(&ticker).unwrap();
-                    let order =
-                        super::Order::market(super::OrderType::MarketSell, ticker, qty.clone());
-                    info!("BROKER: Withdrawing {:?} with liquidation, queueing sale of {:?} shares of {:?}", cash, order.get_shares(), order.get_symbol());
-                    sell_orders.push(order);
-                    total_sold -= *position_value;
+                    if let Some(qty) = brkr.get_position_qty(&ticker) {
+                        let order =
+                            super::Order::market(super::OrderType::MarketSell, ticker, qty.clone());
+                        info!("BROKER: Withdrawing {:?} with liquidation, queueing sale of {:?} shares of {:?}", cash, order.get_shares(), order.get_symbol());
+                        sell_orders.push(order);
+                        total_sold -= *position_value;
+                    }
                 } else {
                     //Position can generate all the cash we need
                     //Create orders to sell 100% of position, don't continue to next stock
@@ -108,7 +108,7 @@ impl BrokerCalculations {
     /// re-balancing in a random way under certain price movements.
     pub async fn withdraw_cash_with_liquidation_async<
         Q: Quotable,
-        T: BacktestBroker + GetsQuote<Q> + ReceivesOrdersAsync,
+        T: BacktestBroker<Q> + ReceivesOrdersAsync,
     >(
         cash: &f64,
         brkr: &mut T,
@@ -132,7 +132,9 @@ impl BrokerCalculations {
             let positions = brkr.get_positions();
             let mut sell_orders: Vec<super::Order> = Vec::new();
             for ticker in positions {
-                let position_value = brkr.get_position_value(&ticker).unwrap_or_default();
+                let position_value = brkr
+                    .get_position_value(&ticker)
+                    .unwrap_or(CashValue::from(0.0));
                 //Position won't generate enough cash to fulfill total order
                 //Create orders for selling 100% of position, continue
                 //to next position to see if we can generate enough cash
@@ -140,12 +142,13 @@ impl BrokerCalculations {
                 //Sell 100% of position
                 if *position_value <= total_sold {
                     //Cannot be called without qty existing
-                    let qty = brkr.get_position_qty(&ticker).unwrap();
-                    let order =
-                        super::Order::market(super::OrderType::MarketSell, ticker, qty.clone());
-                    info!("BROKER: Withdrawing {:?} with liquidation, queueing sale of {:?} shares of {:?}", cash, order.get_shares(), order.get_symbol());
-                    sell_orders.push(order);
-                    total_sold -= *position_value;
+                    if let Some(qty) = brkr.get_position_qty(&ticker) {
+                        let order =
+                            super::Order::market(super::OrderType::MarketSell, ticker, qty.clone());
+                        info!("BROKER: Withdrawing {:?} with liquidation, queueing sale of {:?} shares of {:?}", cash, order.get_shares(), order.get_symbol());
+                        sell_orders.push(order);
+                        total_sold -= *position_value;
+                    }
                 } else {
                     //Position can generate all the cash we need
                     //Create orders to sell 100% of position, don't continue to next stock
@@ -187,7 +190,7 @@ impl BrokerCalculations {
     ///
     /// Brokers do not expect target wights, they merely respond to orders so this structure
     /// is not required to create backtests.
-    pub fn diff_brkr_against_target_weights<Q: Quotable, T: BacktestBroker + GetsQuote<Q>>(
+    pub fn diff_brkr_against_target_weights<Q: Quotable, T: BacktestBroker<Q>>(
         target_weights: &PortfolioAllocation,
         brkr: &mut T,
     ) -> Vec<super::Order> {
@@ -221,7 +224,9 @@ impl BrokerCalculations {
         };
 
         for symbol in target_weights.keys() {
-            let curr_val = brkr.get_position_value(&symbol).unwrap_or_default();
+            let curr_val = brkr
+                .get_position_value(&symbol)
+                .unwrap_or(CashValue::from(0.0));
             //Iterating over target_weights so will always find value
             let target_val = CashValue::from(*total_value * **target_weights.get(&symbol).unwrap());
             let diff_val = CashValue::from(*target_val - *curr_val);
@@ -261,10 +266,10 @@ impl BrokerCalculations {
         orders
     }
 
-    pub fn client_has_sufficient_cash(
+    pub fn client_has_sufficient_cash<Q: Quotable>(
         order: &super::Order,
         price: &Price,
-        brkr: &impl BacktestBroker,
+        brkr: &impl BacktestBroker<Q>,
     ) -> Result<(), super::InsufficientCashError> {
         let shares = order.get_shares();
         let value = CashValue::from(**shares * **price);
@@ -280,20 +285,20 @@ impl BrokerCalculations {
         }
     }
 
-    pub fn client_has_sufficient_holdings_for_sale(
+    pub fn client_has_sufficient_holdings_for_sale<Q: Quotable>(
         order: &super::Order,
-        brkr: &impl BacktestBroker,
+        brkr: &impl BacktestBroker<Q>,
     ) -> Result<(), super::UnexecutableOrderError> {
         if let super::OrderType::MarketSell = order.get_order_type() {
             if let Some(holding) = brkr.get_position_qty(order.get_symbol()) {
-                if holding >= order.get_shares() {
+                if *holding >= **order.get_shares() {
                     return Ok(());
+                } else {
+                    return Err(super::UnexecutableOrderError);
                 }
             }
-            Err(super::UnexecutableOrderError)
-        } else {
-            Ok(())
         }
+        Ok(())
     }
 
     pub fn client_is_issuing_nonsense_order(

@@ -4,7 +4,7 @@ use std::sync::Arc;
 
 use alator::broker::implement::single::{SingleBroker, SingleBrokerBuilder};
 use alator::broker::{
-    BacktestBroker, Dividend, GetsQuote, Order, OrderType, Quote, ReceivesOrders, TransferCash,
+    BacktestBroker, Dividend, GetsQuote, Order, OrderType, Quote, ReceivesOrders,
 };
 use alator::clock::{Clock, ClockBuilder};
 use alator::exchange::implement::single::SingleExchangeBuilder;
@@ -195,7 +195,7 @@ impl Strategy for MovingAverageStrategy {
             //added in the future but it adds dependencies on the underlying asset which is not
             //ideal currently.
             if self.ten.avg() > self.fifty.avg() {
-                if self.brkr.get_position_qty("BTC").is_none() {
+                if let Some(_qty) = self.brkr.get_position_qty("BTC") {
                     let value = self.brkr.get_liquidation_value();
                     let pct_value = CashValue::from(*value * 0.1);
                     //All this casting is required because, at the moment, we haven't moved fully

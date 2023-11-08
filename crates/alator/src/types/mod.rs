@@ -257,8 +257,8 @@ impl From<f64> for Price {
 pub struct PortfolioHoldings(pub HashMap<String, PortfolioQty>);
 
 impl PortfolioHoldings {
-    pub fn get(&self, ticker: &str) -> Option<&PortfolioQty> {
-        self.0.get(ticker)
+    pub fn get(&self, ticker: &str) -> Option<PortfolioQty> {
+        self.0.get(ticker).cloned()
     }
 
     pub fn remove(&mut self, ticker: &str) {

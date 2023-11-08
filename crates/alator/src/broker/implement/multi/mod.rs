@@ -18,7 +18,6 @@ use crate::types::{CashValue, PortfolioHoldings, PortfolioQty, Price};
 use crate::broker::{
     BacktestBroker, BrokerCalculations, BrokerCashEvent, BrokerCost, BrokerEvent, BrokerLog,
     DividendPayment, EventLog, GetsQuote, Order, OrderType, ReceivesOrdersAsync, Trade,
-    TransferCash,
 };
 
 /// Once the broker moves into Failed state then all operations that mutate state are rejected.
@@ -104,12 +103,11 @@ where
                     };
                     self.log.record::<Trade>(trade.clone().into());
 
-                    let default = PortfolioQty::from(0.0);
-                    let curr_position = self.get_position_qty(&trade.symbol).unwrap_or(&default);
+                    let curr_position = self.get_position_qty(&trade.symbol).unwrap_or_default();
 
                     let updated = match trade.typ {
-                        crate::exchange::TradeType::Buy => **curr_position + trade.quantity,
-                        crate::exchange::TradeType::Sell => **curr_position - trade.quantity,
+                        crate::exchange::TradeType::Buy => *curr_position + trade.quantity,
+                        crate::exchange::TradeType::Sell => *curr_position - trade.quantity,
                     };
 
                     self.update_holdings(&trade.symbol, PortfolioQty::from(updated));
@@ -254,12 +252,31 @@ where
 }
 
 #[async_trait]
-impl<D, T, Q> BacktestBroker for ConcurrentBroker<D, T, Q>
+impl<D, T, Q> BacktestBroker<Q> for ConcurrentBroker<D, T, Q>
 where
     D: Dividendable,
     T: CorporateEventsSource<D>,
     Q: Quotable,
 {
+    fn update_holdings(&mut self, symbol: &str, change: PortfolioQty) {
+        //We have to take ownership for logging but it is easier just to use ref for symbol as that
+        //is used throughout
+        let symbol_own = symbol.to_string();
+        info!(
+            "BROKER: Incrementing holdings in {:?} by {:?}",
+            symbol_own, change
+        );
+        if (*change).eq(&0.0) {
+            self.holdings.remove(symbol.as_ref());
+        } else {
+            self.holdings.insert(symbol.as_ref(), &change);
+        }
+    }
+
+    fn get_position_cost(&self, symbol: &str) -> Option<Price> {
+        self.log.cost_basis(symbol)
+    }
+
     //Identical to deposit_cash but is seperated to distinguish internal cash
     //transactions from external with no value returned to client
     fn credit(&mut self, value: &f64) -> BrokerCashEvent {
@@ -302,58 +319,9 @@ where
         self.cash.clone()
     }
 
-    //This method used to mut because we needed to sort last prices on the broker, this has now
-    //been moved to the exchange. The exchange is responsible for storing last prices for cases
-    //when a quote is missing.
-    fn get_position_value(&self, symbol: &str) -> Option<CashValue> {
-        //TODO: we need to introduce some kind of distinction between short and long
-        //      positions.
-
-        if let Some(quote) = self.get_quote(symbol) {
-            //We only have long positions so we only need to look at the bid
-            let price = quote.get_bid();
-            if let Some(qty) = self.get_position_qty(symbol) {
-                let val = **price * **qty;
-                return Some(CashValue::from(val));
-            }
-        }
-        //This should only occur in cases when the client erroneously asks for a security with no
-        //current or historical prices, which should never happen for a security in the portfolio.
-        //This path likely represent an error in the application code so may panic here in future.
-        None
-    }
-
-    fn get_position_cost(&self, symbol: &str) -> Option<Price> {
-        self.log.cost_basis(symbol)
-    }
-
-    fn get_position_qty(&self, symbol: &str) -> Option<&PortfolioQty> {
-        self.holdings.get(symbol)
-    }
-
-    fn get_positions(&self) -> Vec<String> {
-        self.holdings.keys()
-    }
-
     fn get_holdings(&self) -> PortfolioHoldings {
         self.holdings.clone()
     }
-
-    fn update_holdings(&mut self, symbol: &str, change: PortfolioQty) {
-        //We have to take ownership for logging but it is easier just to use ref for symbol as that
-        //is used throughout
-        let symbol_own = symbol.to_string();
-        info!(
-            "BROKER: Incrementing holdings in {:?} by {:?}",
-            symbol_own, change
-        );
-        if (*change).eq(&0.0) {
-            self.holdings.remove(symbol.as_ref());
-        } else {
-            self.holdings.insert(symbol.as_ref(), &change);
-        }
-    }
-
     fn get_trade_costs(&self, trade: &Trade) -> CashValue {
         let mut cost = CashValue::default();
         for trade_cost in &self.trade_costs {
@@ -397,14 +365,7 @@ where
         }
         self.credit(&dividend_value);
     }
-}
 
-impl<D, T, Q> TransferCash for ConcurrentBroker<D, T, Q>
-where
-    D: Dividendable,
-    T: CorporateEventsSource<D>,
-    Q: Quotable,
-{
     fn withdraw_cash(&mut self, cash: &f64) -> BrokerCashEvent {
         match self.broker_state {
             BrokerState::Failed => {
@@ -493,12 +454,12 @@ mod tests {
     use crate::broker::implement::multi::{ConcurrentBroker, ConcurrentBrokerBuilder};
     use crate::broker::{
         BacktestBroker, BrokerCashEvent, BrokerCost, BrokerEvent, Dividend, Order, OrderType,
-        Quote, ReceivesOrdersAsync, TransferCash,
+        Quote, ReceivesOrdersAsync,
     };
     use crate::clock::ClockBuilder;
     use crate::exchange::implement::multi::{ConcurrentExchange, ConcurrentExchangeBuilder};
     use crate::input::{DefaultCorporateEventsSource, DefaultPriceSource};
-    use crate::types::Frequency;
+    use crate::types::{CashValue, Frequency};
 
     async fn setup() -> (
         ConcurrentBroker<Dividend, DefaultCorporateEventsSource, Quote>,
@@ -587,8 +548,8 @@ mod tests {
         let cash = brkr.get_cash_balance();
         assert!(*cash < 100_000.0);
 
-        let qty = brkr.get_position_qty("ABC").unwrap();
-        assert_eq!(*qty.clone(), 495.00);
+        let qty = brkr.get_position_qty("ABC").unwrap_or_default();
+        assert_eq!(*qty, 495.00);
     }
 
     #[tokio::test]
@@ -627,9 +588,9 @@ mod tests {
         assert!(matches!(res, BrokerEvent::OrderInvalid(..)));
 
         //Checking that
-        let qty = brkr.get_position_qty("ABC").unwrap();
+        let qty = brkr.get_position_qty("ABC").unwrap_or_default();
         println!("{:?}", qty);
-        assert!((*qty.clone()).eq(&100.0));
+        assert_eq!(*qty, 100.0);
     }
 
     #[tokio::test]
@@ -655,8 +616,8 @@ mod tests {
         brkr.check().await;
         let cash0 = brkr.get_cash_balance();
 
-        let qty = brkr.get_position_qty("ABC").unwrap();
-        assert_eq!(**qty, 200.0);
+        let qty = brkr.get_position_qty("ABC").unwrap_or_default();
+        assert_eq!(*qty, 200.0);
         assert!(*cash0 > *cash);
     }
 
@@ -669,11 +630,11 @@ mod tests {
         exchange.check().await;
         brkr.check().await;
 
-        let val = brkr.get_position_value("ABC").unwrap();
+        let val = brkr.get_position_value("ABC");
 
         exchange.check().await;
         brkr.check().await;
-        let val1 = brkr.get_position_value("ABC").unwrap();
+        let val1 = brkr.get_position_value("ABC");
         assert_ne!(val, val1);
     }
 
@@ -784,7 +745,9 @@ mod tests {
         //Missing live quote for BCD
         exchange.check().await;
         brkr.check().await;
-        let value = brkr.get_position_value("BCD").unwrap();
+        let value = brkr
+            .get_position_value("BCD")
+            .unwrap_or(CashValue::from(0.0));
         println!("{:?}", value);
         //We test against the bid price, which gives us the value exclusive of the price paid at ask
         assert!(*value == 10.0 * 100.0);
@@ -793,7 +756,9 @@ mod tests {
         exchange.check().await;
         brkr.check().await;
 
-        let value1 = brkr.get_position_value("BCD").unwrap();
+        let value1 = brkr
+            .get_position_value("BCD")
+            .unwrap_or(CashValue::from(0.0));
         println!("{:?}", value1);
         assert!(*value1 == 12.0 * 100.0);
     }

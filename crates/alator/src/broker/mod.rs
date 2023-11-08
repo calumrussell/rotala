@@ -16,7 +16,6 @@ pub use types::{
 pub use types::{PyDividend, PyQuote};
 
 use async_trait::async_trait;
-use log::info;
 use std::error::Error;
 use std::fmt::Display;
 use std::fmt::Formatter;
@@ -29,15 +28,11 @@ use crate::types::{CashValue, PortfolioHoldings, PortfolioQty, PortfolioValues, 
 ///
 /// Functionality for brokers is spread across multiple traits, these traits are the functions
 /// that seem to be necessary for any backtest.
-///
-/// [GetsQuote] isn't included because having the broker as a source and user of data is
-/// implementation-dependent.
-#[async_trait]
-pub trait BacktestBroker {
+pub trait BacktestBroker<Q: Quotable>: GetsQuote<Q> {
     fn get_position_profit(&self, symbol: &str) -> Option<CashValue> {
         if let Some(cost) = self.get_position_cost(symbol) {
-            if let Some(position_value) = self.get_position_value(symbol) {
-                if let Some(qty) = self.get_position_qty(symbol) {
+            if let Some(qty) = self.get_position_qty(symbol) {
+                if let Some(position_value) = self.get_position_value(symbol) {
                     let price = *position_value / *qty.clone();
                     let value = CashValue::from(*qty.clone() * (price - *cost));
                     return Some(value);
@@ -48,11 +43,9 @@ pub trait BacktestBroker {
     }
 
     fn get_position_liquidation_value(&self, symbol: &str) -> Option<CashValue> {
-        //TODO: we need to introduce some kind of distinction between short and long
-        //      positions.
         if let Some(position_value) = self.get_position_value(symbol) {
             if let Some(qty) = self.get_position_qty(symbol) {
-                let price = Price::from(*position_value / **qty);
+                let price = Price::from(*position_value / *qty);
                 let (value_after_costs, _price_after_costs) =
                     self.calc_trade_impact(&position_value, &price, false);
                 return Some(value_after_costs);
@@ -60,6 +53,7 @@ pub trait BacktestBroker {
         }
         None
     }
+
     fn get_total_value(&self) -> CashValue {
         let assets = self.get_positions();
         let mut value = self.get_cash_balance();
@@ -85,62 +79,53 @@ pub trait BacktestBroker {
         let mut holdings = PortfolioValues::new();
         let assets = self.get_positions();
         for a in assets {
-            let value = self.get_position_value(&a);
-            if let Some(v) = value {
-                holdings.insert(&a, &v);
+            if let Some(_qty) = self.get_position_qty(&a) {
+                if let Some(value) = self.get_position_value(&a) {
+                    holdings.insert(&a, &value);
+                }
             }
         }
         holdings
     }
 
+    fn get_position_qty(&self, symbol: &str) -> Option<PortfolioQty> {
+        self.get_holdings().get(symbol).to_owned()
+    }
+
+    fn get_position_value(&self, symbol: &str) -> Option<CashValue> {
+        if let Some(quote) = self.get_quote(symbol) {
+            //We only have long positions so we only need to look at the bid
+            let price = quote.get_bid();
+            if let Some(qty) = self.get_position_qty(symbol) {
+                let val = **price * *qty;
+                return Some(CashValue::from(val));
+            }
+        }
+        //This should only occur in cases when the client erroneously asks for a security with no
+        //current or historical prices
+        //Likely represents an error in client code but we don't panic here in case data for this
+        //symbol appears later
+        None
+    }
+
+    fn get_positions(&self) -> Vec<String> {
+        self.get_holdings().keys()
+    }
+
+    fn update_holdings(&mut self, symbol: &str, change: PortfolioQty);
+    fn withdraw_cash(&mut self, cash: &f64) -> types::BrokerCashEvent;
+    fn deposit_cash(&mut self, cash: &f64) -> types::BrokerCashEvent;
     fn get_cash_balance(&self) -> CashValue;
-    //TODO: Position qty can always return a value, if we don't have the position then qty is 0
-    fn get_position_qty(&self, symbol: &str) -> Option<&PortfolioQty>;
-    //TODO: Position value can always return a value, if we don't have a position then value is 0
-    fn get_position_value(&self, symbol: &str) -> Option<CashValue>;
-    fn get_position_cost(&self, symbol: &str) -> Option<Price>;
-    fn get_positions(&self) -> Vec<String>;
     fn get_holdings(&self) -> PortfolioHoldings;
+    fn get_position_cost(&self, symbol: &str) -> Option<Price>;
     //This should only be called internally
     fn get_trade_costs(&self, trade: &types::Trade) -> CashValue;
     fn calc_trade_impact(&self, budget: &f64, price: &f64, is_buy: bool) -> (CashValue, Price);
-    fn update_holdings(&mut self, symbol: &str, change: PortfolioQty);
     fn pay_dividends(&mut self);
     fn debit(&mut self, value: &f64) -> types::BrokerCashEvent;
     fn credit(&mut self, value: &f64) -> types::BrokerCashEvent;
     //Can leave the client with a negative cash balance
     fn debit_force(&mut self, value: &f64) -> types::BrokerCashEvent;
-}
-
-/// Cash balance can be modified once the backtest has started.
-pub trait TransferCash: BacktestBroker {
-    fn withdraw_cash(&mut self, cash: &f64) -> types::BrokerCashEvent {
-        if cash > &self.get_cash_balance() {
-            info!(
-                "BROKER: Attempted cash withdraw of {:?} but only have {:?}",
-                cash,
-                self.get_cash_balance()
-            );
-            return types::BrokerCashEvent::WithdrawFailure(CashValue::from(*cash));
-        }
-        info!(
-            "BROKER: Successful cash withdraw of {:?}, {:?} left in cash",
-            cash,
-            self.get_cash_balance()
-        );
-        self.debit(cash);
-        types::BrokerCashEvent::WithdrawSuccess(CashValue::from(*cash))
-    }
-
-    fn deposit_cash(&mut self, cash: &f64) -> types::BrokerCashEvent {
-        info!(
-            "BROKER: Deposited {:?} cash, current balance of {:?}",
-            cash,
-            self.get_cash_balance()
-        );
-        self.credit(cash);
-        types::BrokerCashEvent::DepositSuccess(CashValue::from(*cash))
-    }
 }
 
 /// Broker can receive (and fulfill) orders once the backtest has started.
@@ -220,7 +205,7 @@ impl Display for UnexecutableOrderError {
 #[cfg(test)]
 mod tests {
 
-    use super::{BacktestBroker, BrokerCalculations, BrokerCost, OrderType, Quote, TransferCash};
+    use super::{BacktestBroker, BrokerCalculations, BrokerCost, OrderType, Quote};
     use crate::broker::implement::multi::{ConcurrentBroker, ConcurrentBrokerBuilder};
     use crate::broker::{Dividend, ReceivesOrdersAsync};
     use crate::exchange::implement::multi::ConcurrentExchangeBuilder;
@@ -453,7 +438,7 @@ mod tests {
 
         dbg!(brkr.get_position_qty("ABC"));
         //If the logic isn't correct the orders will have doubled up to 1800
-        assert_eq!(*(*brkr.get_position_qty("ABC").unwrap()), 900.0);
+        assert_eq!(*brkr.get_position_qty("ABC").unwrap(), 900.0);
     }
 
     #[tokio::test]
@@ -510,6 +495,6 @@ mod tests {
         println!("{:?}", brkr.get_holdings());
         //If the logic isn't correct then the order will be for less shares than is actually
         //required by the newest price
-        assert_eq!(*(*brkr.get_position_qty("ABC").unwrap()), 1200.0);
+        assert_eq!(*brkr.get_position_qty("ABC").unwrap(), 1200.0);
     }
 }
