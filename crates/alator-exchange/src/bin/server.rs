@@ -1,7 +1,7 @@
+use alator_exchange::rpc::RPCExchange;
 use tonic::transport::Server;
 
 use alator_exchange::orderbook::DefaultPriceSource;
-use alator_exchange::proto::exchange_server::ExchangeServer;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -16,12 +16,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         source.add_quotes(100.0, 101.0, *date, "ABC".to_string());
     }
 
-    let exchange = alator_exchange::DefaultExchange::new(clock, source);
+    let exchange_server = RPCExchange::build_exchange_server(clock, source);
 
     println!("DefaultExchange listening on {}", addr);
 
     Server::builder()
-        .add_service(ExchangeServer::new(exchange))
+        .add_service(exchange_server)
         .serve(addr)
         .await?;
 

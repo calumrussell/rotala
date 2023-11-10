@@ -1,14 +1,11 @@
 use alator_exchange::orderbook::DefaultPriceSource;
-use alator_exchange::DefaultClient;
+use alator_exchange::ExchangeAsync;
+use alator_exchange::rpc::RPCExchange;
 use tonic::codegen::tokio_stream;
 use tonic::transport::{Endpoint, Server, Uri};
 use tower::service_fn;
 
-use alator_exchange::proto::{exchange_client::ExchangeClient, exchange_server::ExchangeServer};
-
-pub mod proto {
-    tonic::include_proto!("exchange");
-}
+use alator_exchange::types::proto::exchange_client::ExchangeClient;
 
 #[tokio::test]
 async fn test_system() -> Result<(), Box<dyn std::error::Error>> {
@@ -18,16 +15,18 @@ async fn test_system() -> Result<(), Box<dyn std::error::Error>> {
         .with_frequency(&alator::types::Frequency::Second)
         .build();
 
+    let mut copy_clock = clock.clone();
+
     let mut source = DefaultPriceSource::new();
     for date in clock.peek() {
         source.add_quotes(100.0, 101.0, *date, "ABC".to_string());
     }
 
-    let exchange = alator_exchange::DefaultExchange::new(clock.clone(), source);
+    let exchange_server = RPCExchange::build_exchange_server(clock, source);
 
     tokio::spawn(async move {
         Server::builder()
-            .add_service(ExchangeServer::new(exchange))
+            .add_service(exchange_server)
             .serve_with_incoming(tokio_stream::iter(vec![Ok::<_, std::io::Error>(server)]))
             .await
     });
@@ -52,35 +51,24 @@ async fn test_system() -> Result<(), Box<dyn std::error::Error>> {
         }))
         .await?;
 
-    let mut client = ExchangeClient::new(channel);
+    let client = ExchangeClient::new(channel);
+    let mut rpc_exchange = RPCExchange::new(client);
 
-    let broker_1 = DefaultClient::init(&mut client).await?;
-    let broker_2 = DefaultClient::init(&mut client).await?;
+    let subscriber_id = rpc_exchange.register_source().await.unwrap();
 
-    for _date in clock.peek() {
-        let _oid0 = broker_1
-            .send_order(
-                &mut client,
-                alator_exchange::orderbook::OrderType::MarketBuy,
-                None,
-                100.0,
-                "ABC",
-            )
-            .await?;
-        let _oid1 = broker_2
-            .send_order(
-                &mut client,
-                alator_exchange::orderbook::OrderType::MarketBuy,
-                None,
-                100.0,
-                "ABC",
-            )
-            .await?;
-
-        broker_1.tick(&mut client).await?;
-        if let Err(_err) = broker_2.tick(&mut client).await {
-            break;
-        }
+    while copy_clock.has_next() {
+        let order = alator_exchange::ExchangeOrder {
+            subscriber_id,
+            order_type: alator_exchange::OrderType::MarketBuy,
+            price: None,
+            shares: 100.0,
+            symbol: "ABC".to_string(),
+        };
+        rpc_exchange.send_order(subscriber_id, order).await?;
+        rpc_exchange.tick(subscriber_id).await?;
+        //This looks synchronized but isn't actually, real clients would use the exchange to
+        //co-ordinate their own tick
+        copy_clock.tick();
     }
     Ok(())
 }

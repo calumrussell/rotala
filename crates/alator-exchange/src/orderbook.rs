@@ -1,19 +1,11 @@
 use std::collections::HashMap;
 
-#[derive(Clone)]
-pub struct Quote {
-    pub bid: f64,
-    pub ask: f64,
-    pub date: i64,
-    pub symbol: String,
-}
-
 pub struct DefaultPriceSource {
-    inner: HashMap<i64, HashMap<String, Quote>>,
+    inner: HashMap<i64, HashMap<String, crate::types::Quote>>,
 }
 
 impl DefaultPriceSource {
-    pub fn get_quote(&self, date: &i64, symbol: &str) -> Option<&Quote> {
+    pub fn get_quote(&self, date: &i64, symbol: &str) -> Option<&crate::types::Quote> {
         if let Some(date_row) = self.inner.get(date) {
             if let Some(quote) = date_row.get(symbol) {
                 return Some(quote);
@@ -22,7 +14,7 @@ impl DefaultPriceSource {
         None
     }
 
-    pub fn get_quotes(&self, date: &i64) -> Option<Vec<Quote>> {
+    pub fn get_quotes(&self, date: &i64) -> Option<Vec<crate::types::Quote>> {
         if let Some(date_row) = self.inner.get(date) {
             return Some(date_row.values().cloned().collect());
         }
@@ -30,7 +22,7 @@ impl DefaultPriceSource {
     }
 
     pub fn add_quotes(&mut self, bid: f64, ask: f64, date: i64, symbol: String) {
-        let quote = Quote {
+        let quote = crate::types::Quote {
             bid,
             ask,
             date,
@@ -59,149 +51,10 @@ impl Default for DefaultPriceSource {
     }
 }
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum OrderType {
-    MarketSell,
-    MarketBuy,
-    LimitSell,
-    LimitBuy,
-    StopSell,
-    StopBuy,
-}
-
-impl From<i32> for OrderType {
-    fn from(value: i32) -> Self {
-        match value {
-            0 => OrderType::MarketSell,
-            1 => OrderType::MarketBuy,
-            2 => OrderType::LimitSell,
-            3 => OrderType::LimitBuy,
-            4 => OrderType::StopSell,
-            5 => OrderType::StopBuy,
-            _ => unimplemented!("0/1/2/3 are only types supported"),
-        }
-    }
-}
-
-impl From<OrderType> for i32 {
-    fn from(value: OrderType) -> Self {
-        match value {
-            OrderType::MarketSell => 0,
-            OrderType::MarketBuy => 1,
-            OrderType::LimitSell => 2,
-            OrderType::LimitBuy => 3,
-            OrderType::StopSell => 4,
-            OrderType::StopBuy => 5,
-        }
-    }
-}
-
-#[derive(Clone, Debug)]
-pub struct ExchangeOrder {
-    pub subscriber_id: u64,
-    pub order_type: OrderType,
-    pub symbol: String,
-    pub shares: f64,
-    pub price: Option<f64>,
-}
-
-impl ExchangeOrder {
-    fn market(
-        subscriber_id: u64,
-        order_type: OrderType,
-        symbol: impl Into<String>,
-        shares: f64,
-    ) -> Self {
-        Self {
-            subscriber_id,
-            order_type,
-            symbol: symbol.into(),
-            shares,
-            price: None,
-        }
-    }
-
-    fn delayed(
-        subscriber_id: u64,
-        order_type: OrderType,
-        symbol: impl Into<String>,
-        shares: f64,
-        price: f64,
-    ) -> Self {
-        Self {
-            subscriber_id,
-            order_type,
-            symbol: symbol.into(),
-            shares,
-            price: Some(price),
-        }
-    }
-
-    pub fn market_buy(subscriber_id: u64, symbol: impl Into<String>, shares: f64) -> Self {
-        ExchangeOrder::market(subscriber_id, OrderType::MarketBuy, symbol, shares)
-    }
-
-    pub fn market_sell(subscriber_id: u64, symbol: impl Into<String>, shares: f64) -> Self {
-        ExchangeOrder::market(subscriber_id, OrderType::MarketSell, symbol, shares)
-    }
-
-    pub fn stop_buy(
-        subscriber_id: u64,
-        symbol: impl Into<String>,
-        shares: f64,
-        price: f64,
-    ) -> Self {
-        ExchangeOrder::delayed(subscriber_id, OrderType::StopBuy, symbol, shares, price)
-    }
-
-    pub fn stop_sell(
-        subscriber_id: u64,
-        symbol: impl Into<String>,
-        shares: f64,
-        price: f64,
-    ) -> Self {
-        ExchangeOrder::delayed(subscriber_id, OrderType::StopSell, symbol, shares, price)
-    }
-
-    pub fn limit_buy(
-        subscriber_id: u64,
-        symbol: impl Into<String>,
-        shares: f64,
-        price: f64,
-    ) -> Self {
-        ExchangeOrder::delayed(subscriber_id, OrderType::LimitBuy, symbol, shares, price)
-    }
-
-    pub fn limit_sell(
-        subscriber_id: u64,
-        symbol: impl Into<String>,
-        shares: f64,
-        price: f64,
-    ) -> Self {
-        ExchangeOrder::delayed(subscriber_id, OrderType::LimitSell, symbol, shares, price)
-    }
-}
-
-#[derive(Clone, Copy, Debug)]
-pub enum TradeType {
-    Buy,
-    Sell,
-}
-
-#[derive(Clone, Debug)]
-pub struct ExchangeTrade {
-    pub subscriber_id: u64,
-    pub symbol: String,
-    pub value: f64,
-    pub quantity: f64,
-    pub date: i64,
-    pub typ: TradeType,
-}
-
 #[doc(hidden)]
 #[derive(Debug)]
-pub struct OrderBook {
-    inner: std::collections::HashMap<u64, ExchangeOrder>,
+pub (crate) struct OrderBook {
+    inner: std::collections::HashMap<u64, crate::types::ExchangeOrder>,
     last: u64,
 }
 
@@ -223,7 +76,7 @@ impl OrderBook {
         self.inner.remove(&order_id);
     }
 
-    pub fn insert_order(&mut self, order: ExchangeOrder) -> u64 {
+    pub fn insert_order(&mut self, order: crate::types::ExchangeOrder) -> u64 {
         let last = self.last;
         self.last = last + 1;
         self.inner.insert(last, order);
@@ -247,30 +100,30 @@ impl OrderBook {
         to_remove
     }
 
-    pub fn execute_orders(&mut self, date: i64, source: &DefaultPriceSource) -> Vec<ExchangeTrade> {
-        let execute_buy = |quote: &Quote, order: &ExchangeOrder| -> ExchangeTrade {
+    pub fn execute_orders(&mut self, date: i64, source: &DefaultPriceSource) -> Vec<crate::types::ExchangeTrade> {
+        let execute_buy = |quote: &crate::types::Quote, order: &crate::types::ExchangeOrder| -> crate::types::ExchangeTrade {
             let trade_price = quote.ask;
             let value = trade_price * order.shares;
-            ExchangeTrade {
+            crate::types::ExchangeTrade {
                 subscriber_id: order.subscriber_id,
                 symbol: order.symbol.to_string(),
                 value,
                 quantity: order.shares,
-                date,
-                typ: TradeType::Buy,
+                date: date.into(),
+                typ: crate::types::TradeType::Buy,
             }
         };
 
-        let execute_sell = |quote: &Quote, order: &ExchangeOrder| -> ExchangeTrade {
+        let execute_sell = |quote: &crate::types::Quote, order: &crate::types::ExchangeOrder| -> crate::types::ExchangeTrade {
             let trade_price = quote.bid;
             let value = trade_price * order.shares;
-            ExchangeTrade {
+            crate::types::ExchangeTrade {
                 subscriber_id: order.subscriber_id,
                 symbol: order.symbol.to_string(),
                 value,
                 quantity: order.shares,
-                date,
-                typ: TradeType::Sell,
+                date: date.into(),
+                typ: crate::types::TradeType::Sell,
             }
         };
 
@@ -285,9 +138,9 @@ impl OrderBook {
             let security_id = &order.symbol;
             if let Some(quote) = source.get_quote(&date, security_id) {
                 let result = match order.order_type {
-                    OrderType::MarketBuy => Some(execute_buy(quote, order)),
-                    OrderType::MarketSell => Some(execute_sell(quote, order)),
-                    OrderType::LimitBuy => {
+                    crate::types::OrderType::MarketBuy => Some(execute_buy(quote, order)),
+                    crate::types::OrderType::MarketSell => Some(execute_sell(quote, order)),
+                    crate::types::OrderType::LimitBuy => {
                         //Unwrap is safe because LimitBuy will always have a price
                         let order_price = order.price;
                         if order_price >= Some(quote.ask) {
@@ -296,7 +149,7 @@ impl OrderBook {
                             None
                         }
                     }
-                    OrderType::LimitSell => {
+                    crate::types::OrderType::LimitSell => {
                         //Unwrap is safe because LimitSell will always have a price
                         let order_price = order.price;
                         if order_price <= Some(quote.bid) {
@@ -305,7 +158,7 @@ impl OrderBook {
                             None
                         }
                     }
-                    OrderType::StopBuy => {
+                    crate::types::OrderType::StopBuy => {
                         //Unwrap is safe because StopBuy will always have a price
                         let order_price = order.price;
                         if order_price <= Some(quote.ask) {
@@ -314,7 +167,7 @@ impl OrderBook {
                             None
                         }
                     }
-                    OrderType::StopSell => {
+                    crate::types::OrderType::StopSell => {
                         //Unwrap is safe because StopSell will always have a price
                         let order_price = order.price;
                         if order_price >= Some(quote.bid) {
@@ -340,7 +193,7 @@ impl OrderBook {
 #[cfg(test)]
 mod tests {
     use super::DefaultPriceSource;
-    use super::ExchangeOrder;
+    use crate::types::ExchangeOrder;
     use super::OrderBook;
     use alator::clock::{Clock, ClockBuilder};
 
@@ -382,7 +235,7 @@ mod tests {
         let trade = executed.pop().unwrap();
         //Trade executes at 100 so trade price should be 102
         assert_eq!(trade.value / trade.quantity, 102.00);
-        assert_eq!(trade.date, 100);
+        assert_eq!(*trade.date, 100);
     }
 
     #[test]
@@ -397,7 +250,7 @@ mod tests {
         let trade = executed.pop().unwrap();
         //Trade executes at 100 so trade price should be 101
         assert_eq!(trade.value / trade.quantity, 101.00);
-        assert_eq!(trade.date, 100);
+        assert_eq!(*trade.date, 100);
     }
 
     #[test]
@@ -414,7 +267,7 @@ mod tests {
         let trade = executed.pop().unwrap();
         //Limit order has price of 105 but should execute at the ask, which is 102
         assert_eq!(trade.value / trade.quantity, 102.00);
-        assert_eq!(trade.date, 100);
+        assert_eq!(*trade.date, 100);
     }
 
     #[test]
@@ -431,7 +284,7 @@ mod tests {
         let trade = executed.pop().unwrap();
         //Limit order has price of 95 but should execute at the ask, which is 101
         assert_eq!(trade.value / trade.quantity, 101.00);
-        assert_eq!(trade.date, 100);
+        assert_eq!(*trade.date, 100);
     }
 
     #[test]
@@ -452,7 +305,7 @@ mod tests {
         let trade = executed.pop().unwrap();
         //Stop order has price of 103 but should execute at the ask, which is 102
         assert_eq!(trade.value / trade.quantity, 102.00);
-        assert_eq!(trade.date, 100);
+        assert_eq!(*trade.date, 100);
     }
 
     #[test]
@@ -472,7 +325,7 @@ mod tests {
         let trade = executed.pop().unwrap();
         //Stop order has price of 105 but should execute at the ask, which is 102
         assert_eq!(trade.value / trade.quantity, 102.00);
-        assert_eq!(trade.date, 100);
+        assert_eq!(*trade.date, 100);
     }
 
     #[test]
@@ -524,6 +377,6 @@ mod tests {
 
         let trade = orders.pop().unwrap();
         assert_eq!(trade.value / trade.quantity, 106.00);
-        assert_eq!(trade.date, 102);
+        assert_eq!(*trade.date, 102);
     }
 }

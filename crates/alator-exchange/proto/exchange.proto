@@ -15,12 +15,18 @@ enum OrderType {
     StopBuy = 5;
 }
 
+enum TradeType {
+    Buy = 0;
+    Sell = 1;
+}
+
 message Trade {
-    double price = 1;
-    double quantity = 2;
-    int64 date = 3;
-    string symbol = 4;
-    double value = 5;
+    double quantity = 1;
+    int64 date = 2;
+    string symbol = 3;
+    double value = 4;
+    uint64 subscriber_id = 5;
+    TradeType typ = 6;
 }
 
 message Quote {
