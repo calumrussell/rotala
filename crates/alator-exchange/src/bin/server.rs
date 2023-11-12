@@ -1,7 +1,6 @@
-use alator_exchange::rpc::RPCExchange;
 use tonic::transport::Server;
 
-use alator_exchange::orderbook::DefaultPriceSource;
+use alator_exchange::{input::DefaultPriceSource, RPCExchange};
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {

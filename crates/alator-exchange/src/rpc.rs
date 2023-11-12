@@ -2,7 +2,8 @@ use std::sync::{atomic::AtomicU64, Mutex};
 use tonic::{Request, Response, Status, transport::Channel};
 
 use crate::ExchangeAsync;
-use crate::orderbook::{DefaultPriceSource, OrderBook};
+use crate::input::DefaultPriceSource;
+use crate::orderbook::OrderBook;
 use crate::types::proto::exchange_client::ExchangeClient;
 
 pub struct DefaultExchange {

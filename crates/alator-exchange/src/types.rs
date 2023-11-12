@@ -6,7 +6,7 @@ pub mod proto {
     tonic::include_proto!("exchange");
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct Quote {
     pub bid: f64,
     pub ask: f64,

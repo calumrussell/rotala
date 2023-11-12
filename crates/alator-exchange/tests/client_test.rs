@@ -1,11 +1,8 @@
-use alator_exchange::orderbook::DefaultPriceSource;
-use alator_exchange::ExchangeAsync;
-use alator_exchange::rpc::RPCExchange;
+use alator_exchange::input::DefaultPriceSource;
+use alator_exchange::{ExchangeAsync, ExchangeClient, RPCExchange};
 use tonic::codegen::tokio_stream;
 use tonic::transport::{Endpoint, Server, Uri};
 use tower::service_fn;
-
-use alator_exchange::types::proto::exchange_client::ExchangeClient;
 
 #[tokio::test]
 async fn test_system() -> Result<(), Box<dyn std::error::Error>> {

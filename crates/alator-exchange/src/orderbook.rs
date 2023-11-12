@@ -1,60 +1,12 @@
 use std::collections::HashMap;
 
-pub struct DefaultPriceSource {
-    inner: HashMap<i64, HashMap<String, crate::types::Quote>>,
-}
-
-impl DefaultPriceSource {
-    pub fn get_quote(&self, date: &i64, symbol: &str) -> Option<&crate::types::Quote> {
-        if let Some(date_row) = self.inner.get(date) {
-            if let Some(quote) = date_row.get(symbol) {
-                return Some(quote);
-            }
-        }
-        None
-    }
-
-    pub fn get_quotes(&self, date: &i64) -> Option<Vec<crate::types::Quote>> {
-        if let Some(date_row) = self.inner.get(date) {
-            return Some(date_row.values().cloned().collect());
-        }
-        None
-    }
-
-    pub fn add_quotes(&mut self, bid: f64, ask: f64, date: i64, symbol: String) {
-        let quote = crate::types::Quote {
-            bid,
-            ask,
-            date,
-            symbol: symbol.clone(),
-        };
-
-        if let Some(date_row) = self.inner.get_mut(&date) {
-            date_row.insert(symbol.clone(), quote);
-        } else {
-            let mut date_row = HashMap::new();
-            date_row.insert(symbol, quote);
-            self.inner.insert(date, date_row);
-        }
-    }
-
-    pub fn new() -> Self {
-        Self {
-            inner: HashMap::new(),
-        }
-    }
-}
-
-impl Default for DefaultPriceSource {
-    fn default() -> Self {
-        Self::new()
-    }
-}
+use crate::input::DefaultPriceSource;
+use crate::{ ExchangeOrder, ExchangeTrade, OrderType, TradeType, Quote};
 
 #[doc(hidden)]
 #[derive(Debug)]
 pub (crate) struct OrderBook {
-    inner: std::collections::HashMap<u64, crate::types::ExchangeOrder>,
+    inner: HashMap<u64, ExchangeOrder>,
     last: u64,
 }
 
@@ -76,7 +28,7 @@ impl OrderBook {
         self.inner.remove(&order_id);
     }
 
-    pub fn insert_order(&mut self, order: crate::types::ExchangeOrder) -> u64 {
+    pub fn insert_order(&mut self, order: ExchangeOrder) -> u64 {
         let last = self.last;
         self.last = last + 1;
         self.inner.insert(last, order);
@@ -100,30 +52,30 @@ impl OrderBook {
         to_remove
     }
 
-    pub fn execute_orders(&mut self, date: i64, source: &DefaultPriceSource) -> Vec<crate::types::ExchangeTrade> {
-        let execute_buy = |quote: &crate::types::Quote, order: &crate::types::ExchangeOrder| -> crate::types::ExchangeTrade {
+    pub fn execute_orders(&mut self, date: i64, source: &DefaultPriceSource) -> Vec<ExchangeTrade> {
+        let execute_buy = |quote: &Quote, order: &ExchangeOrder| -> ExchangeTrade {
             let trade_price = quote.ask;
             let value = trade_price * order.shares;
-            crate::types::ExchangeTrade {
+            ExchangeTrade {
                 subscriber_id: order.subscriber_id,
                 symbol: order.symbol.to_string(),
                 value,
                 quantity: order.shares,
                 date: date.into(),
-                typ: crate::types::TradeType::Buy,
+                typ: TradeType::Buy,
             }
         };
 
-        let execute_sell = |quote: &crate::types::Quote, order: &crate::types::ExchangeOrder| -> crate::types::ExchangeTrade {
+        let execute_sell = |quote: &Quote, order: &ExchangeOrder| -> ExchangeTrade {
             let trade_price = quote.bid;
             let value = trade_price * order.shares;
-            crate::types::ExchangeTrade {
+            ExchangeTrade {
                 subscriber_id: order.subscriber_id,
                 symbol: order.symbol.to_string(),
                 value,
                 quantity: order.shares,
                 date: date.into(),
-                typ: crate::types::TradeType::Sell,
+                typ: TradeType::Sell,
             }
         };
 
@@ -138,9 +90,9 @@ impl OrderBook {
             let security_id = &order.symbol;
             if let Some(quote) = source.get_quote(&date, security_id) {
                 let result = match order.order_type {
-                    crate::types::OrderType::MarketBuy => Some(execute_buy(quote, order)),
-                    crate::types::OrderType::MarketSell => Some(execute_sell(quote, order)),
-                    crate::types::OrderType::LimitBuy => {
+                    OrderType::MarketBuy => Some(execute_buy(quote, order)),
+                    OrderType::MarketSell => Some(execute_sell(quote, order)),
+                    OrderType::LimitBuy => {
                         //Unwrap is safe because LimitBuy will always have a price
                         let order_price = order.price;
                         if order_price >= Some(quote.ask) {
@@ -149,7 +101,7 @@ impl OrderBook {
                             None
                         }
                     }
-                    crate::types::OrderType::LimitSell => {
+                    OrderType::LimitSell => {
                         //Unwrap is safe because LimitSell will always have a price
                         let order_price = order.price;
                         if order_price <= Some(quote.bid) {
@@ -158,7 +110,7 @@ impl OrderBook {
                             None
                         }
                     }
-                    crate::types::OrderType::StopBuy => {
+                    OrderType::StopBuy => {
                         //Unwrap is safe because StopBuy will always have a price
                         let order_price = order.price;
                         if order_price <= Some(quote.ask) {
@@ -167,7 +119,7 @@ impl OrderBook {
                             None
                         }
                     }
-                    crate::types::OrderType::StopSell => {
+                    OrderType::StopSell => {
                         //Unwrap is safe because StopSell will always have a price
                         let order_price = order.price;
                         if order_price >= Some(quote.bid) {
@@ -192,7 +144,7 @@ impl OrderBook {
 
 #[cfg(test)]
 mod tests {
-    use super::DefaultPriceSource;
+    use crate::input::DefaultPriceSource;
     use crate::types::ExchangeOrder;
     use super::OrderBook;
     use alator::clock::{Clock, ClockBuilder};

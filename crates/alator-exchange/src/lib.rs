@@ -17,18 +17,21 @@
 //!
 //! This is experimental and the interface/names used will change in the future.
 //! use std::sync::{atomic::AtomicU64, Mutex};
-pub mod types;
+mod types;
+mod orderbook;
+mod rpc;
+
+pub mod input;
+mod single;
 pub use crate::types::proto::{
     exchange_client::ExchangeClient, FetchQuotesRequest, FetchTradesRequest, RegisterSourceRequest,
     SendOrderRequest, TickRequest
 };
-pub use types::{OrderType, ExchangeTrade, ExchangeOrder};
-
-pub mod orderbook;
-pub mod rpc;
+pub use types::{DefaultExchangeOrderId, ExchangeTrade, ExchangeOrder, TradeType, OrderType, Quote};
+pub use rpc::RPCExchange; 
 
 pub trait ExchangeSync {
-    fn fetch_quotes(&self) -> Vec<std::sync::Arc<types::Quote>>;
+    fn fetch_quotes(&self) -> Vec<types::Quote>;
     fn fetch_trades(&self, from: usize) -> &[types::ExchangeTrade];
     fn insert_order(&mut self, order: types::ExchangeOrder);
     fn delete_order(&mut self, order_i: types::DefaultExchangeOrderId);
