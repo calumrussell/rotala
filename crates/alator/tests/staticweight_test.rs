@@ -1,14 +1,14 @@
-use alator::clock::{Clock, ClockBuilder};
-use alator::exchange::implement::single::SingleExchangeBuilder;
-use alator::input::{DefaultCorporateEventsSource, DefaultPriceSource};
-use alator::strategy::implement::staticweight::StaticWeightStrategyBuilder;
+use alator_clock::{Clock, ClockBuilder, Frequency};
 use rand::distributions::{Distribution, Uniform};
 use rand::thread_rng;
 
+use alator::exchange::implement::single::SingleExchangeBuilder;
+use alator::input::{DefaultCorporateEventsSource, DefaultPriceSource};
+use alator::strategy::implement::staticweight::StaticWeightStrategyBuilder;
 use alator::broker::implement::single::{SingleBroker, SingleBrokerBuilder};
 use alator::broker::{BrokerCost, Dividend, Quote};
 use alator::simcontext::SimContextBuilder;
-use alator::types::{CashValue, Frequency, PortfolioAllocation};
+use alator::types::{CashValue, PortfolioAllocation};
 
 fn build_data(clock: Clock) -> DefaultPriceSource {
     let price_dist = Uniform::new(90.0, 100.0);

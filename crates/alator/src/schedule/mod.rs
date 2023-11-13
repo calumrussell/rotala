@@ -1,6 +1,6 @@
 //! Schedules for running backtests
 
-use crate::types::{DateTime, Weekday};
+use alator_clock::{DateTime, Weekday};
 
 /// Returns [bool] when it is time to trade.
 ///

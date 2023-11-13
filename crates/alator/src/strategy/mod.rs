@@ -81,11 +81,11 @@ pub trait History {
 mod tests {
     use crate::broker::implement::multi::{ConcurrentBroker, ConcurrentBrokerBuilder};
     use crate::broker::{BrokerCost, Dividend, Quote};
-    use crate::clock::{Clock, ClockBuilder};
     use crate::exchange::implement::multi::ConcurrentExchangeBuilder;
     use crate::input::{DefaultCorporateEventsSource, DefaultPriceSource};
     use crate::strategy::implement::staticweight::AsyncStaticWeightStrategyBuilder;
-    use crate::types::{Frequency, PortfolioAllocation};
+    use crate::types::PortfolioAllocation;
+    use alator_clock::{Clock, ClockBuilder, Frequency};
 
     async fn setup() -> (
         ConcurrentBroker<Dividend, DefaultCorporateEventsSource, Quote>,

@@ -6,7 +6,7 @@ pub use builder::SingleExchangeBuilder;
 use std::marker::PhantomData;
 use std::sync::Arc;
 
-use crate::clock::Clock;
+use alator_clock::Clock;
 use crate::input::{PriceSource, Quotable};
 
 /// Single-threaded exchange. Created with [SingleExchangeBuilder].
@@ -96,8 +96,8 @@ mod tests {
     use super::{SingleExchange, SingleExchangeBuilder};
 
     fn setup() -> SingleExchange<Quote, DefaultPriceSource> {
-        let clock = crate::clock::ClockBuilder::with_length_in_seconds(100, 3)
-            .with_frequency(&crate::types::Frequency::Second)
+        let clock = alator_clock::ClockBuilder::with_length_in_seconds(100, 3)
+            .with_frequency(&alator_clock::Frequency::Second)
             .build();
         let mut price_source = DefaultPriceSource::new(clock.clone());
         price_source.add_quotes(101.00, 102.00, 100, "ABC");
@@ -203,8 +203,8 @@ mod tests {
 
     #[test]
     fn test_that_order_with_missing_price_executes_later() {
-        let clock = crate::clock::ClockBuilder::with_length_in_seconds(100, 3)
-            .with_frequency(&crate::types::Frequency::Second)
+        let clock = alator_clock::ClockBuilder::with_length_in_seconds(100, 3)
+            .with_frequency(&alator_clock::Frequency::Second)
             .build();
         let mut price_source = DefaultPriceSource::new(clock.clone());
         price_source.add_quotes(101.00, 102.00, 100, "ABC");

@@ -1,10 +1,177 @@
 //! Synchronizes time across components
 
+use std::ops::Deref;
 use std::sync::Arc;
 use std::sync::Mutex;
 use std::vec::IntoIter;
+use time::{format_description, Date, OffsetDateTime};
 
-use crate::types::{DateTime, Frequency};
+///The frequency of a process.
+#[derive(Clone, Debug)]
+pub enum Frequency {
+    Second,
+    Daily,
+    Monthly,
+    Yearly,
+}
+
+impl Frequency {
+    pub fn to_str(&self) -> String {
+        match self {
+            Self::Second => String::from("Second"),
+            Self::Daily => String::from("Daily"),
+            Self::Monthly => String::from("Monthly"),
+            Self::Yearly => String::from("Yearly"),
+        }
+    }
+}
+
+pub enum Weekday {
+    Monday,
+    Tuesday,
+    Wednesday,
+    Thursday,
+    Friday,
+    Saturday,
+    Sunday,
+}
+
+impl From<time::Weekday> for Weekday {
+    fn from(v: time::Weekday) -> Self {
+        match v {
+            time::Weekday::Monday => Weekday::Monday,
+            time::Weekday::Tuesday => Weekday::Tuesday,
+            time::Weekday::Wednesday => Weekday::Wednesday,
+            time::Weekday::Thursday => Weekday::Thursday,
+            time::Weekday::Friday => Weekday::Friday,
+            time::Weekday::Saturday => Weekday::Saturday,
+            time::Weekday::Sunday => Weekday::Sunday,
+        }
+    }
+}
+
+pub enum Month {
+    January,
+    February,
+    March,
+    April,
+    May,
+    June,
+    July,
+    August,
+    September,
+    October,
+    November,
+    December,
+}
+
+impl From<time::Month> for Month {
+    fn from(v: time::Month) -> Self {
+        match v {
+            time::Month::January => Month::January,
+            time::Month::February => Month::February,
+            time::Month::March => Month::March,
+            time::Month::April => Month::April,
+            time::Month::May => Month::May,
+            time::Month::June => Month::June,
+            time::Month::July => Month::July,
+            time::Month::August => Month::August,
+            time::Month::September => Month::September,
+            time::Month::October => Month::October,
+            time::Month::November => Month::November,
+            time::Month::December => Month::December,
+        }
+    }
+}
+
+impl From<Month> for u8 {
+    fn from(v: Month) -> Self {
+        match v {
+            Month::January => 1,
+            Month::February => 2,
+            Month::March => 3,
+            Month::April => 4,
+            Month::May => 5,
+            Month::June => 6,
+            Month::July => 7,
+            Month::August => 8,
+            Month::September => 9,
+            Month::October => 10,
+            Month::November => 11,
+            Month::December => 12,
+        }
+    }
+}
+
+
+///[DateTime] is a wrapper around the epoch time as i64. This type also functions as a wrapper
+///around the time package which offers some of the more useful datetime functionality that is
+///required in the schedule module.
+//The internal representation with the time package should remain hidden from clients. Whilst this
+//results in some duplication of the API, this retains the option to get rid of the dependency on
+//time or change individual functions later.
+#[derive(Clone, Debug, Hash, Eq, PartialEq, PartialOrd, Copy)]
+pub struct DateTime(i64);
+
+impl DateTime {
+    pub fn day(&self) -> u8 {
+        let date: OffsetDateTime = (*self).into();
+        date.day()
+    }
+
+    pub fn weekday(&self) -> Weekday {
+        let date: OffsetDateTime = (*self).into();
+        date.weekday().into()
+    }
+
+    pub fn month(&self) -> Month {
+        let date: OffsetDateTime = (*self).into();
+        date.month().into()
+    }
+
+    pub fn from_date_string(val: &str, date_fmt: &str) -> Self {
+        let format = format_description::parse(date_fmt).unwrap();
+        let parsed_date = Date::parse(val, &format).unwrap();
+        let parsed_time = parsed_date.with_time(time::macros::time!(09:00));
+        Self::from(parsed_time.assume_utc().unix_timestamp())
+    }
+}
+
+impl Deref for DateTime {
+    type Target = i64;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+impl From<OffsetDateTime> for DateTime {
+    fn from(value: OffsetDateTime) -> Self {
+        value.unix_timestamp().into()
+    }
+}
+
+impl From<DateTime> for OffsetDateTime {
+    fn from(v: DateTime) -> Self {
+        if let Ok(date) = OffsetDateTime::from_unix_timestamp(i64::from(v)) {
+            date
+        } else {
+            panic!("Tried to convert non-date value");
+        }
+    }
+}
+
+impl From<DateTime> for i64 {
+    fn from(v: DateTime) -> Self {
+        v.0
+    }
+}
+
+impl From<i64> for DateTime {
+    fn from(v: i64) -> Self {
+        DateTime(v)
+    }
+}
 
 #[doc(hidden)]
 #[derive(Debug)]
@@ -159,9 +326,7 @@ impl ClockBuilder {
 
 #[cfg(test)]
 mod tests {
-    use crate::types::Frequency;
-
-    use super::ClockBuilder;
+    use super::{ ClockBuilder, Frequency };
 
     #[test]
     #[should_panic]

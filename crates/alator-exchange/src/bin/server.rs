@@ -6,8 +6,8 @@ use alator_exchange::{input::DefaultPriceSource, RPCExchange};
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let addr = "[::1]:50051".parse().unwrap();
 
-    let clock = alator::clock::ClockBuilder::with_length_in_seconds(100, 1000)
-        .with_frequency(&alator::types::Frequency::Second)
+    let clock = alator_clock::ClockBuilder::with_length_in_seconds(100, 1000)
+        .with_frequency(&alator_clock::Frequency::Second)
         .build();
 
     let mut source = DefaultPriceSource::new();

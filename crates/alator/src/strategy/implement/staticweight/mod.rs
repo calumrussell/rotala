@@ -11,7 +11,7 @@ use crate::broker::{
     BacktestBroker, BrokerCalculations, BrokerCashEvent, DividendPayment, EventLog, ReceivesOrders,
     ReceivesOrdersAsync, Trade,
 };
-use crate::clock::Clock;
+use alator_clock::Clock;
 use crate::input::{CorporateEventsSource, Dividendable, PriceSource, Quotable};
 use crate::schedule::{DefaultTradingSchedule, TradingSchedule};
 use crate::strategy::{

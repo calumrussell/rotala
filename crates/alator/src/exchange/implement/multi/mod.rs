@@ -5,7 +5,7 @@ pub use builder::ConcurrentExchangeBuilder;
 
 use std::sync::Arc;
 
-use crate::clock::Clock;
+use alator_clock::Clock;
 #[allow(unused)]
 use crate::exchange::implement::single::SingleExchange;
 use crate::input::{PriceSource, Quotable};
@@ -217,8 +217,8 @@ mod tests {
         OrderSender,
         NotifyReceiver,
     ) {
-        let clock = crate::clock::ClockBuilder::with_length_in_seconds(100, 3)
-            .with_frequency(&crate::types::Frequency::Second)
+        let clock = alator_clock::ClockBuilder::with_length_in_seconds(100, 3)
+            .with_frequency(&alator_clock::Frequency::Second)
             .build();
         let mut price_source = DefaultPriceSource::new(clock.clone());
         price_source.add_quotes(101.00, 102.00, 100, "ABC");
@@ -398,8 +398,8 @@ mod tests {
 
     #[tokio::test]
     async fn test_that_order_with_missing_price_executes_later() {
-        let clock = crate::clock::ClockBuilder::with_length_in_seconds(100, 3)
-            .with_frequency(&crate::types::Frequency::Second)
+        let clock = alator_clock::ClockBuilder::with_length_in_seconds(100, 3)
+            .with_frequency(&alator_clock::Frequency::Second)
             .build();
         let mut price_source = DefaultPriceSource::new(clock.clone());
         price_source.add_quotes(101.00, 102.00, 100, "ABC");

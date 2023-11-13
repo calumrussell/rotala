@@ -1,6 +1,6 @@
 use std::cmp::Ordering;
 
-use alator::types::DateTime;
+use alator_clock::DateTime;
 
 pub mod proto {
     tonic::include_proto!("exchange");

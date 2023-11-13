@@ -1,6 +1,6 @@
 use std::{cmp::Ordering, sync::Arc};
 
-use crate::types::DateTime;
+use alator_clock::DateTime;
 
 pub type PriceSender<Q> = tokio::sync::mpsc::Sender<Vec<Arc<Q>>>;
 pub type PriceReceiver<Q> = tokio::sync::mpsc::Receiver<Vec<Arc<Q>>>;

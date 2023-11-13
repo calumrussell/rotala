@@ -1,17 +1,18 @@
-use alator::clock::{Clock, ClockBuilder};
+use alator_clock::{Clock, ClockBuilder, Frequency};
 use alator::exchange::implement::multi::ConcurrentExchangeBuilder;
+use rand::distributions::{Distribution, Uniform};
+use rand::thread_rng;
+use tokio::runtime::Runtime;
+
 use alator::input::{DefaultCorporateEventsSource, DefaultPriceSource};
 use alator::strategy::implement::staticweight::{
     AsyncStaticWeightStrategy, AsyncStaticWeightStrategyBuilder,
 };
-use rand::distributions::{Distribution, Uniform};
-use rand::thread_rng;
 
 use alator::broker::implement::multi::{ConcurrentBroker, ConcurrentBrokerBuilder};
 use alator::broker::{BrokerCost, Dividend, Quote};
 use alator::simcontext::{SimContextMulti, SimContextMultiBuilder};
-use alator::types::{CashValue, Frequency, PortfolioAllocation};
-use tokio::runtime::Runtime;
+use alator::types::{CashValue, PortfolioAllocation};
 
 fn build_data(clock: Clock) -> DefaultPriceSource {
     let price_dist = Uniform::new(90.0, 100.0);

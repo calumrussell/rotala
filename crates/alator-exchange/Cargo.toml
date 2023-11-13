@@ -16,6 +16,7 @@ tokio = { version = "1.0", features = ["rt-multi-thread", "macros"] }
 prost = "0.12"
 tonic = "0.10.2"
 alator = { path = "../alator" }
+alator-clock = { path = "../alator-clock" }
 tower = { version = "0.4" }
 
 [build-dependencies]

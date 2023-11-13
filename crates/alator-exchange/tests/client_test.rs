@@ -8,8 +8,8 @@ use tower::service_fn;
 async fn test_system() -> Result<(), Box<dyn std::error::Error>> {
     let (client, server) = tokio::io::duplex(1024);
 
-    let clock = alator::clock::ClockBuilder::with_length_in_seconds(100, 100)
-        .with_frequency(&alator::types::Frequency::Second)
+    let clock = alator_clock::ClockBuilder::with_length_in_seconds(100, 100)
+        .with_frequency(&alator_clock::Frequency::Second)
         .build();
 
     let mut copy_clock = clock.clone();

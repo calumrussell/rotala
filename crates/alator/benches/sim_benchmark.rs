@@ -2,13 +2,13 @@ use alator::broker::implement::single::{SingleBroker, SingleBrokerBuilder};
 use alator::broker::{
     BacktestBroker, BrokerCost, Dividend, Order, OrderType, Quote, ReceivesOrders,
 };
-use alator::clock::ClockBuilder;
 use alator::exchange::implement::single::SingleExchangeBuilder;
 use alator::input::{DefaultCorporateEventsSource, DefaultPriceSource};
 use alator::simcontext::SimContextBuilder;
 use alator::strategy::implement::staticweight::StaticWeightStrategyBuilder;
-use alator::types::{CashValue, Frequency, PortfolioAllocation};
+use alator::types::{CashValue, PortfolioAllocation};
 
+use alator_clock::{ClockBuilder, Frequency};
 use criterion::{criterion_group, criterion_main, Criterion};
 use rand::thread_rng;
 use rand_distr::{Distribution, Uniform};

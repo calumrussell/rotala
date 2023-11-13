@@ -1,14 +1,14 @@
-use alator::exchange::implement::single::SingleExchangeBuilder;
 use pyo3::prelude::*;
+use pyo3::types::PyDict;
+use alator_clock::{ClockBuilder, Frequency};
 
+use alator::exchange::implement::single::SingleExchangeBuilder;
 use alator::broker::implement::single::{SingleBroker, SingleBrokerBuilder};
 use alator::broker::{BrokerCost, PyDividend, PyQuote};
-use alator::clock::ClockBuilder;
 use alator::input::{PyCorporateEventsSource, PyPriceSource};
 use alator::simcontext::SimContextBuilder;
 use alator::strategy::implement::staticweight::StaticWeightStrategyBuilder;
-use alator::types::{CashValue, Frequency, PortfolioAllocation};
-use pyo3::types::PyDict;
+use alator::types::{CashValue, PortfolioAllocation};
 
 #[pyfunction]
 fn staticweight_example(

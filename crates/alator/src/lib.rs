@@ -54,15 +54,16 @@
 //! An example backtest (with data creation excluded):
 //!
 //! ```
+//!     use alator_clock::{ClockBuilder, Frequency};
+//! 
 //!     use alator::broker::{ Dividend, Quote };
 //!     use alator::broker::implement::single::{ SingleBroker, SingleBrokerBuilder };
 //!     use alator::broker::BrokerCost;
-//!     use alator::clock::ClockBuilder;
 //!     use alator::exchange::implement::single::SingleExchangeBuilder;
 //!     use alator::input::{ fake_price_source_generator, DefaultCorporateEventsSource, DefaultPriceSource };
 //!     use alator::strategy::implement::staticweight::StaticWeightStrategyBuilder;
 //!     use alator::simcontext::SimContextBuilder;
-//!     use alator::types::{ CashValue, Frequency, PortfolioAllocation };
+//!     use alator::types::{ CashValue, PortfolioAllocation };
 //!
 //!     let initial_cash: CashValue = 100_000.0.into();
 //!     let length_in_days: i64 = 1000;
@@ -139,7 +140,6 @@ use crate::broker::{ReceivesOrders, ReceivesOrdersAsync};
 use crate::input::{PriceSource, Quotable};
 
 pub mod broker;
-pub mod clock;
 pub mod exchange;
 pub mod input;
 pub mod perf;

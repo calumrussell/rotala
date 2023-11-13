@@ -456,17 +456,17 @@ mod tests {
         BacktestBroker, BrokerCashEvent, BrokerCost, BrokerEvent, Dividend, Order, OrderType,
         Quote, ReceivesOrdersAsync,
     };
-    use crate::clock::ClockBuilder;
+    use alator_clock::{ ClockBuilder, Frequency };
     use crate::exchange::implement::multi::{ConcurrentExchange, ConcurrentExchangeBuilder};
     use crate::input::{DefaultCorporateEventsSource, DefaultPriceSource};
-    use crate::types::{CashValue, Frequency};
+    use crate::types::CashValue;
 
     async fn setup() -> (
         ConcurrentBroker<Dividend, DefaultCorporateEventsSource, Quote>,
         ConcurrentExchange<Quote, DefaultPriceSource>,
     ) {
-        let clock = crate::clock::ClockBuilder::with_length_in_seconds(100, 5)
-            .with_frequency(&crate::types::Frequency::Second)
+        let clock = ClockBuilder::with_length_in_seconds(100, 5)
+            .with_frequency(&Frequency::Second)
             .build();
         let mut price_source = DefaultPriceSource::new(clock.clone());
         price_source.add_quotes(100.00, 101.00, 100, "ABC");
@@ -814,8 +814,8 @@ mod tests {
 
     #[tokio::test]
     async fn test_that_broker_stops_when_liquidation_fails() {
-        let clock = crate::clock::ClockBuilder::with_length_in_seconds(100, 3)
-            .with_frequency(&crate::types::Frequency::Second)
+        let clock = ClockBuilder::with_length_in_seconds(100, 3)
+            .with_frequency(&Frequency::Second)
             .build();
 
         let mut price_source = DefaultPriceSource::new(clock.clone());

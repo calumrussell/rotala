@@ -1,4 +1,5 @@
 use std::sync::{atomic::AtomicU64, Mutex};
+use alator_clock::Clock;
 use tonic::{Request, Response, Status, transport::Channel};
 
 use crate::ExchangeAsync;
@@ -10,14 +11,14 @@ pub struct DefaultExchange {
     orderbook: Mutex<OrderBook>,
     subscriber_id: AtomicU64,
     source: DefaultPriceSource,
-    clock: Mutex<alator::clock::Clock>,
+    clock: Mutex<Clock>,
     trades: Mutex<Vec<crate::ExchangeTrade>>,
     subscriber_count: AtomicU64,
     ticked_count: AtomicU64,
 }
 
 impl DefaultExchange {
-    pub fn new(clock: alator::clock::Clock, source: DefaultPriceSource) -> Self {
+    pub fn new(clock: Clock, source: DefaultPriceSource) -> Self {
         Self {
             orderbook: Mutex::new(OrderBook::new()),
             subscriber_id: AtomicU64::new(0),
@@ -141,7 +142,7 @@ pub struct RPCExchange  {
 }
 
 impl RPCExchange {
-    pub fn build_exchange_server(clock: alator::clock::Clock, source: DefaultPriceSource) -> crate::types::proto::exchange_server::ExchangeServer<DefaultExchange> {
+    pub fn build_exchange_server(clock: Clock, source: DefaultPriceSource) -> crate::types::proto::exchange_server::ExchangeServer<DefaultExchange> {
         crate::types::proto::exchange_server::ExchangeServer::new(DefaultExchange::new(clock, source))
     }
 

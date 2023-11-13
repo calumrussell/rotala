@@ -49,7 +49,7 @@ impl OrderBook {
 
     pub fn execute_orders<Q, P>(
         &mut self,
-        date: crate::types::DateTime,
+        date: alator_clock::DateTime,
         source: &P,
     ) -> Vec<super::ExchangeTrade>
     where
@@ -152,8 +152,8 @@ mod tests {
     use crate::input::DefaultPriceSource;
 
     fn setup() -> DefaultPriceSource {
-        let clock = crate::clock::ClockBuilder::with_length_in_seconds(100, 3)
-            .with_frequency(&crate::types::Frequency::Second)
+        let clock = alator_clock::ClockBuilder::with_length_in_seconds(100, 3)
+            .with_frequency(&alator_clock::Frequency::Second)
             .build();
         let mut price_source = DefaultPriceSource::new(clock.clone());
         price_source.add_quotes(101.0, 102.00, 100, "ABC");
@@ -306,8 +306,8 @@ mod tests {
 
     #[test]
     fn test_that_order_with_missing_price_executes_later() {
-        let mut clock = crate::clock::ClockBuilder::with_length_in_seconds(100, 3)
-            .with_frequency(&crate::types::Frequency::Second)
+        let mut clock = alator_clock::ClockBuilder::with_length_in_seconds(100, 3)
+            .with_frequency(&alator_clock::Frequency::Second)
             .build();
 
         let mut price_source = DefaultPriceSource::new(clock.clone());

@@ -213,7 +213,7 @@ mod tests {
         fake_price_source_generator, DefaultCorporateEventsSource, DefaultPriceSource,
     };
     use crate::types::PortfolioAllocation;
-    use crate::{clock::ClockBuilder, types::Frequency};
+    use alator_clock::{ClockBuilder, Frequency};
 
     #[tokio::test]
     async fn diff_direction_correct_if_need_to_buy() {

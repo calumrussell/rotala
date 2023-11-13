@@ -4,8 +4,9 @@ use pyo3::{pyclass, pymethods};
 use crate::{
     exchange::{DefaultSubscriberId, ExchangeOrder, ExchangeOrderMessage, ExchangeTrade},
     input::{Dividendable, Quotable},
-    types::{CashValue, DateTime, PortfolioQty, Price},
+    types::{CashValue, PortfolioQty, Price},
 };
+use alator_clock::DateTime;
 
 #[allow(unused)]
 use crate::types::PortfolioAllocation;

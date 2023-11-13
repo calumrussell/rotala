@@ -1,5 +1,5 @@
 //! Single-threaded exchange
-use alator::clock::Clock;
+use alator_clock::Clock;
 use crate::input::DefaultPriceSource;
 use crate::orderbook::OrderBook;
 use crate::{DefaultExchangeOrderId, ExchangeSync, ExchangeTrade, ExchangeOrder, Quote};
@@ -74,8 +74,8 @@ mod tests {
     use super::SingleExchange;
 
     fn setup() -> SingleExchange {
-        let clock = alator::clock::ClockBuilder::with_length_in_seconds(100, 3)
-            .with_frequency(&alator::types::Frequency::Second)
+        let clock = alator_clock::ClockBuilder::with_length_in_seconds(100, 3)
+            .with_frequency(&alator_clock::Frequency::Second)
             .build();
 
         let mut price_source = DefaultPriceSource::new();
@@ -178,8 +178,8 @@ mod tests {
 
     #[test]
     fn test_that_order_with_missing_price_executes_later() {
-        let clock = alator::clock::ClockBuilder::with_length_in_seconds(100, 3)
-            .with_frequency(&alator::types::Frequency::Second)
+        let clock = alator_clock::ClockBuilder::with_length_in_seconds(100, 3)
+            .with_frequency(&alator_clock::Frequency::Second)
             .build();
 
         let mut price_source = DefaultPriceSource::new();

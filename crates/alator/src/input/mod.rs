@@ -6,8 +6,8 @@ use std::collections::HashMap;
 use std::sync::Arc;
 
 use crate::broker::{Dividend, Quote};
-use crate::clock::Clock;
-use crate::types::{DateTime, Price};
+use alator_clock::{ Clock, DateTime};
+use crate::types::Price;
 
 #[cfg(feature = "python")]
 use crate::broker::{PyDividend, PyQuote};

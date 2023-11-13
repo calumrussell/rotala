@@ -147,11 +147,11 @@ mod tests {
     use crate::input::DefaultPriceSource;
     use crate::types::ExchangeOrder;
     use super::OrderBook;
-    use alator::clock::{Clock, ClockBuilder};
+    use alator_clock::{Clock, ClockBuilder, Frequency};
 
     fn setup() -> (Clock, DefaultPriceSource) {
         let clock = ClockBuilder::with_length_in_seconds(100, 3)
-            .with_frequency(&alator::types::Frequency::Second)
+            .with_frequency(&Frequency::Second)
             .build();
 
         let mut price_source = DefaultPriceSource::new();
@@ -305,8 +305,8 @@ mod tests {
 
     #[test]
     fn test_that_order_with_missing_price_executes_later() {
-        let mut clock = alator::clock::ClockBuilder::with_length_in_seconds(100, 3)
-            .with_frequency(&alator::types::Frequency::Second)
+        let mut clock = ClockBuilder::with_length_in_seconds(100, 3)
+            .with_frequency(&Frequency::Second)
             .build();
 
         let mut price_source = DefaultPriceSource::new();

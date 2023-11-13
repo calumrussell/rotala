@@ -1,6 +1,6 @@
 use std::marker::PhantomData;
 
-use crate::clock::Clock;
+use alator_clock::Clock;
 use crate::exchange::implement::multi::ConcurrentExchange;
 use crate::input::{Dividendable, PriceSource, Quotable};
 use crate::strategy::{AsyncStrategy, History, Strategy};

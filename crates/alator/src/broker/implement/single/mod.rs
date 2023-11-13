@@ -525,12 +525,13 @@ mod tests {
     use crate::exchange::implement::single::SingleExchangeBuilder;
     use crate::input::{DefaultCorporateEventsSource, DefaultPriceSource};
     use crate::types::{CashValue, PortfolioQty};
+    use alator_clock::{ClockBuilder, Frequency};
 
     use super::{SingleBroker, SingleBrokerBuilder};
 
     fn setup() -> SingleBroker<Dividend, DefaultCorporateEventsSource, Quote, DefaultPriceSource> {
-        let clock = crate::clock::ClockBuilder::with_length_in_seconds(100, 5)
-            .with_frequency(&crate::types::Frequency::Second)
+        let clock = ClockBuilder::with_length_in_seconds(100, 5)
+            .with_frequency(&Frequency::Second)
             .build();
 
         let mut price_source = DefaultPriceSource::new(clock.clone());
@@ -718,8 +719,8 @@ mod tests {
 
     #[test]
     fn test_that_broker_build_passes_without_trade_costs() {
-        let clock = crate::clock::ClockBuilder::with_length_in_dates(100, 102)
-            .with_frequency(&crate::types::Frequency::Second)
+        let clock = ClockBuilder::with_length_in_dates(100, 102)
+            .with_frequency(&Frequency::Second)
             .build();
 
         let mut price_source = DefaultPriceSource::new(clock.clone());
@@ -746,8 +747,8 @@ mod tests {
         //bank holiday, and if the broker is attempting to value the portfolio on that day
         //they will ask for a quote, not find one, and then use a value of zero which is
         //incorrect.
-        let clock = crate::clock::ClockBuilder::with_length_in_seconds(100, 5)
-            .with_frequency(&crate::types::Frequency::Second)
+        let clock = ClockBuilder::with_length_in_seconds(100, 5)
+            .with_frequency(&Frequency::Second)
             .build();
 
         let mut price_source = DefaultPriceSource::new(clock.clone());
@@ -814,8 +815,8 @@ mod tests {
         //For example, if orders are issued for 100% of the portfolio then if prices rises then we
         //can end up with negative balances.
 
-        let clock = crate::clock::ClockBuilder::with_length_in_seconds(100, 5)
-            .with_frequency(&crate::types::Frequency::Second)
+        let clock = ClockBuilder::with_length_in_seconds(100, 5)
+            .with_frequency(&Frequency::Second)
             .build();
 
         let mut price_source = DefaultPriceSource::new(clock.clone());
@@ -857,8 +858,8 @@ mod tests {
 
     #[test]
     fn test_that_broker_stops_when_liquidation_fails() {
-        let clock = crate::clock::ClockBuilder::with_length_in_seconds(100, 3)
-            .with_frequency(&crate::types::Frequency::Second)
+        let clock = ClockBuilder::with_length_in_seconds(100, 3)
+            .with_frequency(&Frequency::Second)
             .build();
 
         let mut price_source = DefaultPriceSource::new(clock.clone());
