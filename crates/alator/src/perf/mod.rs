@@ -1,8 +1,8 @@
 //! Generates performance stats for backtest
 
 use crate::types::StrategySnapshot;
-use itertools::Itertools;
 use alator_clock::Frequency;
+use itertools::Itertools;
 
 /// Output for single backtest run.
 #[derive(Clone, Debug)]
@@ -257,13 +257,13 @@ impl PerformanceCalculator {
 mod tests {
     use crate::broker::implement::single::{SingleBroker, SingleBrokerBuilder};
     use crate::broker::{BrokerCost, Dividend, Quote};
-    use alator_clock::{Clock, ClockBuilder};
     use crate::exchange::implement::single::SingleExchangeBuilder;
     use crate::input::{DefaultCorporateEventsSource, DefaultPriceSource};
     use crate::perf::StrategySnapshot;
     use crate::strategy::implement::staticweight::StaticWeightStrategyBuilder;
     use crate::strategy::{History, Strategy};
     use crate::types::PortfolioAllocation;
+    use alator_clock::{Clock, ClockBuilder};
 
     use super::Frequency;
     use super::PerformanceCalculator;

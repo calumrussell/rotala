@@ -456,10 +456,10 @@ mod tests {
         BacktestBroker, BrokerCashEvent, BrokerCost, BrokerEvent, Dividend, Order, OrderType,
         Quote, ReceivesOrdersAsync,
     };
-    use alator_clock::{ ClockBuilder, Frequency };
     use crate::exchange::implement::multi::{ConcurrentExchange, ConcurrentExchangeBuilder};
     use crate::input::{DefaultCorporateEventsSource, DefaultPriceSource};
     use crate::types::CashValue;
+    use alator_clock::{ClockBuilder, Frequency};
 
     async fn setup() -> (
         ConcurrentBroker<Dividend, DefaultCorporateEventsSource, Quote>,

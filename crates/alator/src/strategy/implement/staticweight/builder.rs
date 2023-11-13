@@ -1,8 +1,8 @@
 use crate::broker::implement::multi::ConcurrentBroker;
 use crate::broker::implement::single::SingleBroker;
-use alator_clock::Clock;
 use crate::input::{CorporateEventsSource, Dividendable, PriceSource, Quotable};
 use crate::types::PortfolioAllocation;
+use alator_clock::Clock;
 
 use super::{AsyncStaticWeightStrategy, StaticWeightStrategy};
 

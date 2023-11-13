@@ -1,8 +1,8 @@
 use std::marker::PhantomData;
 
-use alator_clock::Clock;
 use crate::exchange::implement::multi::ConcurrentExchange;
 use crate::input::{PriceSource, Quotable};
+use alator_clock::Clock;
 
 /// Builds [ConcurrentExchange].
 pub struct ConcurrentExchangeBuilder<Q, P>

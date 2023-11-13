@@ -278,12 +278,12 @@ impl ExchangeTrade {
 
 impl From<proto::Trade> for ExchangeTrade {
     fn from(value: proto::Trade) -> Self {
-        Self { 
-            subscriber_id: value.subscriber_id, 
-            symbol: value.symbol, 
-            value: value.value, 
-            quantity: value.quantity, 
-            date: value.date.into(), 
+        Self {
+            subscriber_id: value.subscriber_id,
+            symbol: value.symbol,
+            value: value.value,
+            quantity: value.quantity,
+            date: value.date.into(),
             typ: value.typ.into(),
         }
     }

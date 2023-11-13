@@ -55,7 +55,7 @@
 //!
 //! ```
 //!     use alator_clock::{ClockBuilder, Frequency};
-//! 
+//!
 //!     use alator::broker::{ Dividend, Quote };
 //!     use alator::broker::implement::single::{ SingleBroker, SingleBrokerBuilder };
 //!     use alator::broker::BrokerCost;

@@ -103,7 +103,6 @@ impl From<Month> for u8 {
     }
 }
 
-
 ///[DateTime] is a wrapper around the epoch time as i64. This type also functions as a wrapper
 ///around the time package which offers some of the more useful datetime functionality that is
 ///required in the schedule module.
@@ -326,7 +325,7 @@ impl ClockBuilder {
 
 #[cfg(test)]
 mod tests {
-    use super::{ ClockBuilder, Frequency };
+    use super::{ClockBuilder, Frequency};
 
     #[test]
     #[should_panic]

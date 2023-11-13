@@ -47,9 +47,9 @@
 //! for communications that are relevant to individual brokers, for example completed trades.
 
 #[allow(unused)]
-use alator_clock::Clock;
-#[allow(unused)]
 use crate::input::PriceSource;
+#[allow(unused)]
+use alator_clock::Clock;
 #[allow(unused)]
 use single::SingleExchange;
 

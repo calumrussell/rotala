@@ -1,11 +1,11 @@
 use std::collections::HashMap;
 
 use crate::input::DefaultPriceSource;
-use crate::{ ExchangeOrder, ExchangeTrade, OrderType, TradeType, Quote};
+use crate::{ExchangeOrder, ExchangeTrade, OrderType, Quote, TradeType};
 
 #[doc(hidden)]
 #[derive(Debug)]
-pub (crate) struct OrderBook {
+pub(crate) struct OrderBook {
     inner: HashMap<u64, ExchangeOrder>,
     last: u64,
 }
@@ -144,9 +144,9 @@ impl OrderBook {
 
 #[cfg(test)]
 mod tests {
+    use super::OrderBook;
     use crate::input::DefaultPriceSource;
     use crate::types::ExchangeOrder;
-    use super::OrderBook;
     use alator_clock::{Clock, ClockBuilder, Frequency};
 
     fn setup() -> (Clock, DefaultPriceSource) {

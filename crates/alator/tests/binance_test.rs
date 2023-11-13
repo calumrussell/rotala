@@ -6,12 +6,12 @@ use alator::broker::implement::single::{SingleBroker, SingleBrokerBuilder};
 use alator::broker::{
     BacktestBroker, Dividend, GetsQuote, Order, OrderType, Quote, ReceivesOrders,
 };
-use alator_clock::{Clock, ClockBuilder, DateTime, Frequency};
 use alator::exchange::implement::single::SingleExchangeBuilder;
 use alator::input::{DefaultCorporateEventsSource, DefaultPriceSource};
 use alator::simcontext::SimContextBuilder;
 use alator::strategy::{History, Strategy, StrategyEvent, TransferTo};
 use alator::types::{CashValue, StrategySnapshot};
+use alator_clock::{Clock, ClockBuilder, DateTime, Frequency};
 
 /* Get the data from Binance, build quote from open and close of candle, insert the quotes into
  * QuotesHashMap using those dates.

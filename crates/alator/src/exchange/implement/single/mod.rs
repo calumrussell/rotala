@@ -6,8 +6,8 @@ pub use builder::SingleExchangeBuilder;
 use std::marker::PhantomData;
 use std::sync::Arc;
 
-use alator_clock::Clock;
 use crate::input::{PriceSource, Quotable};
+use alator_clock::Clock;
 
 /// Single-threaded exchange. Created with [SingleExchangeBuilder].
 #[derive(Debug)]

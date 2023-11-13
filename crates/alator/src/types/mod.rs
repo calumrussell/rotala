@@ -217,7 +217,6 @@ impl Default for PortfolioAllocation {
     }
 }
 
-
 /// A point=in-time representation of the current state of a strategy. These statistics are currently
 /// recorded for use within performance calculations after the simulation has concluded. They are
 /// distinct from the transaction logging performed by brokers.

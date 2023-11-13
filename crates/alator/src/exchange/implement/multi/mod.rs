@@ -5,10 +5,10 @@ pub use builder::ConcurrentExchangeBuilder;
 
 use std::sync::Arc;
 
-use alator_clock::Clock;
 #[allow(unused)]
 use crate::exchange::implement::single::SingleExchange;
 use crate::input::{PriceSource, Quotable};
+use alator_clock::Clock;
 
 /// Multi-threaded exchange. Created with [ConcurrentExchangeBuilder].
 #[derive(Debug)]

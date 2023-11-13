@@ -8,12 +8,12 @@ pub use builder::{SimContextBuilder, SimContextMultiBuilder};
 
 use futures::future::join_all;
 
-use alator_clock::{ Clock, Frequency };
 use crate::exchange::implement::multi::ConcurrentExchange;
 use crate::input::{Dividendable, PriceSource, Quotable};
 use crate::perf::{BacktestOutput, PerformanceCalculator};
 use crate::strategy::{AsyncStrategy, History, Strategy};
 use crate::types::CashValue;
+use alator_clock::{Clock, Frequency};
 
 /// Context for single-threaded simulation run.
 ///

@@ -11,7 +11,6 @@ use crate::broker::{
     BacktestBroker, BrokerCalculations, BrokerCashEvent, DividendPayment, EventLog, ReceivesOrders,
     ReceivesOrdersAsync, Trade,
 };
-use alator_clock::Clock;
 use crate::input::{CorporateEventsSource, Dividendable, PriceSource, Quotable};
 use crate::schedule::{DefaultTradingSchedule, TradingSchedule};
 use crate::strategy::{
@@ -19,6 +18,7 @@ use crate::strategy::{
     TransferTo,
 };
 use crate::types::{CashValue, PortfolioAllocation, StrategySnapshot};
+use alator_clock::Clock;
 
 /// Fixed-weight allocations over the full simulation.
 ///

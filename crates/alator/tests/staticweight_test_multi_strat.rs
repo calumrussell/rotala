@@ -1,5 +1,5 @@
-use alator_clock::{Clock, ClockBuilder, Frequency};
 use alator::exchange::implement::multi::ConcurrentExchangeBuilder;
+use alator_clock::{Clock, ClockBuilder, Frequency};
 use rand::distributions::{Distribution, Uniform};
 use rand::thread_rng;
 use tokio::runtime::Runtime;

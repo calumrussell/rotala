@@ -17,18 +17,20 @@
 //!
 //! This is experimental and the interface/names used will change in the future.
 //! use std::sync::{atomic::AtomicU64, Mutex};
-mod types;
 mod orderbook;
 mod rpc;
+mod types;
 
 pub mod input;
 mod single;
 pub use crate::types::proto::{
     exchange_client::ExchangeClient, FetchQuotesRequest, FetchTradesRequest, RegisterSourceRequest,
-    SendOrderRequest, TickRequest
+    SendOrderRequest, TickRequest,
 };
-pub use types::{DefaultExchangeOrderId, ExchangeTrade, ExchangeOrder, TradeType, OrderType, Quote};
-pub use rpc::RPCExchange; 
+pub use rpc::RPCExchange;
+pub use types::{
+    DefaultExchangeOrderId, ExchangeOrder, ExchangeTrade, OrderType, Quote, TradeType,
+};
 
 pub trait ExchangeSync {
     fn fetch_quotes(&self) -> Vec<types::Quote>;
@@ -42,9 +44,19 @@ pub trait ExchangeSync {
 #[tonic::async_trait]
 pub trait ExchangeAsync {
     async fn register_source(&mut self) -> Result<u64, Box<dyn std::error::Error>>;
-    async fn send_order(&mut self, subscriber_id: u64, order: ExchangeOrder) -> Result<u64, Box<dyn std::error::Error>>;
-    async fn delete_order(&mut self, subscriber_id: u64, order_id: u64) -> Result<u64, Box<dyn std::error::Error>>;
-    async fn fetch_trades(&mut self) -> Result<Vec<types::ExchangeTrade>, Box<dyn std::error::Error>>;
+    async fn send_order(
+        &mut self,
+        subscriber_id: u64,
+        order: ExchangeOrder,
+    ) -> Result<u64, Box<dyn std::error::Error>>;
+    async fn delete_order(
+        &mut self,
+        subscriber_id: u64,
+        order_id: u64,
+    ) -> Result<u64, Box<dyn std::error::Error>>;
+    async fn fetch_trades(
+        &mut self,
+    ) -> Result<Vec<types::ExchangeTrade>, Box<dyn std::error::Error>>;
     async fn fetch_quotes(&mut self) -> Result<Vec<types::Quote>, Box<dyn std::error::Error>>;
     async fn tick(&mut self, subscriber_id: u64) -> Result<(), Box<dyn std::error::Error>>;
 }

@@ -1,8 +1,8 @@
 //! Single-threaded exchange
-use alator_clock::Clock;
 use crate::input::DefaultPriceSource;
 use crate::orderbook::OrderBook;
-use crate::{DefaultExchangeOrderId, ExchangeSync, ExchangeTrade, ExchangeOrder, Quote};
+use crate::{DefaultExchangeOrderId, ExchangeOrder, ExchangeSync, ExchangeTrade, Quote};
+use alator_clock::Clock;
 
 #[derive(Debug)]
 pub struct SingleExchange {

@@ -1,10 +1,10 @@
+use alator_clock::{ClockBuilder, Frequency};
 use pyo3::prelude::*;
 use pyo3::types::PyDict;
-use alator_clock::{ClockBuilder, Frequency};
 
-use alator::exchange::implement::single::SingleExchangeBuilder;
 use alator::broker::implement::single::{SingleBroker, SingleBrokerBuilder};
 use alator::broker::{BrokerCost, PyDividend, PyQuote};
+use alator::exchange::implement::single::SingleExchangeBuilder;
 use alator::input::{PyCorporateEventsSource, PyPriceSource};
 use alator::simcontext::SimContextBuilder;
 use alator::strategy::implement::staticweight::StaticWeightStrategyBuilder;

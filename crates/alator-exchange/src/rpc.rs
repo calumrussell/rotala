@@ -1,11 +1,11 @@
-use std::sync::{atomic::AtomicU64, Mutex};
 use alator_clock::Clock;
-use tonic::{Request, Response, Status, transport::Channel};
+use std::sync::{atomic::AtomicU64, Mutex};
+use tonic::{transport::Channel, Request, Response, Status};
 
-use crate::ExchangeAsync;
 use crate::input::DefaultPriceSource;
 use crate::orderbook::OrderBook;
 use crate::types::proto::exchange_client::ExchangeClient;
+use crate::ExchangeAsync;
 
 pub struct DefaultExchange {
     orderbook: Mutex<OrderBook>,
@@ -63,9 +63,13 @@ impl crate::types::proto::exchange_server::Exchange for DefaultExchange {
                 order_type: order.order_type.into(),
                 subscriber_id,
             });
-            return Ok(Response::new(crate::types::proto::SendOrderReply { order_id }));
+            return Ok(Response::new(crate::types::proto::SendOrderReply {
+                order_id,
+            }));
         }
-        Ok(Response::new(crate::types::proto::SendOrderReply { order_id: 0 }))
+        Ok(Response::new(crate::types::proto::SendOrderReply {
+            order_id: 0,
+        }))
     }
 
     async fn delete_order(
@@ -77,7 +81,9 @@ impl crate::types::proto::exchange_server::Exchange for DefaultExchange {
 
         let mut orderbook = self.orderbook.lock().unwrap();
         orderbook.delete_order(order_id);
-        Ok(Response::new(crate::types::proto::DeleteOrderReply { order_id }))
+        Ok(Response::new(crate::types::proto::DeleteOrderReply {
+            order_id,
+        }))
     }
 
     async fn fetch_trades(
@@ -85,7 +91,8 @@ impl crate::types::proto::exchange_server::Exchange for DefaultExchange {
         _request: Request<crate::types::proto::FetchTradesRequest>,
     ) -> Result<Response<crate::types::proto::FetchTradesReply>, Status> {
         let trades = self.trades.lock().unwrap();
-        let formatted_trades: Vec<crate::types::proto::Trade> = trades.iter().map(|v| v.clone().into()).collect();
+        let formatted_trades: Vec<crate::types::proto::Trade> =
+            trades.iter().map(|v| v.clone().into()).collect();
         Ok(Response::new(crate::types::proto::FetchTradesReply {
             trades: formatted_trades,
         }))
@@ -137,34 +144,41 @@ impl crate::types::proto::exchange_server::Exchange for DefaultExchange {
     }
 }
 
-pub struct RPCExchange  {
+pub struct RPCExchange {
     client: ExchangeClient<Channel>,
 }
 
 impl RPCExchange {
-    pub fn build_exchange_server(clock: Clock, source: DefaultPriceSource) -> crate::types::proto::exchange_server::ExchangeServer<DefaultExchange> {
-        crate::types::proto::exchange_server::ExchangeServer::new(DefaultExchange::new(clock, source))
+    pub fn build_exchange_server(
+        clock: Clock,
+        source: DefaultPriceSource,
+    ) -> crate::types::proto::exchange_server::ExchangeServer<DefaultExchange> {
+        crate::types::proto::exchange_server::ExchangeServer::new(DefaultExchange::new(
+            clock, source,
+        ))
     }
 
     pub fn new(client: ExchangeClient<Channel>) -> Self {
-        Self {
-            client,
-        }
+        Self { client }
     }
 }
 
 #[tonic::async_trait]
 impl ExchangeAsync for RPCExchange {
     async fn register_source(&mut self) -> Result<u64, Box<dyn std::error::Error>> {
-        let subscriber_id_resp = self.client
+        let subscriber_id_resp = self
+            .client
             .register_source(Request::new(crate::types::proto::RegisterSourceRequest {}))
             .await?;
         let subscriber_id = subscriber_id_resp.into_inner().subscriber_id;
         Ok(subscriber_id)
     }
 
-    async fn send_order(&mut self, subscriber_id: u64, order: crate::ExchangeOrder) -> Result<u64, Box<dyn std::error::Error>> {
-
+    async fn send_order(
+        &mut self,
+        subscriber_id: u64,
+        order: crate::ExchangeOrder,
+    ) -> Result<u64, Box<dyn std::error::Error>> {
         let proto_order = crate::types::proto::Order {
             symbol: order.symbol,
             order_type: order.order_type.into(),
@@ -172,7 +186,8 @@ impl ExchangeAsync for RPCExchange {
             price: order.price,
         };
 
-        let send_order_resp = self.client
+        let send_order_resp = self
+            .client
             .send_order(Request::new(crate::types::proto::SendOrderRequest {
                 subscriber_id,
                 order: Some(proto_order),
@@ -182,8 +197,13 @@ impl ExchangeAsync for RPCExchange {
         Ok(order_id)
     }
 
-    async fn delete_order(&mut self, subscriber_id: u64, order_id: u64) -> Result<u64, Box<dyn std::error::Error>> {
-        let delete_order_resp = self.client
+    async fn delete_order(
+        &mut self,
+        subscriber_id: u64,
+        order_id: u64,
+    ) -> Result<u64, Box<dyn std::error::Error>> {
+        let delete_order_resp = self
+            .client
             .delete_order(Request::new(crate::types::proto::DeleteOrderRequest {
                 subscriber_id,
                 order_id,
@@ -202,19 +222,35 @@ impl ExchangeAsync for RPCExchange {
         Ok(())
     }
 
-    async fn fetch_quotes(&mut self) -> Result<Vec<crate::types::Quote>, Box<dyn std::error::Error>> {
-        let quotes_resp = self.client
+    async fn fetch_quotes(
+        &mut self,
+    ) -> Result<Vec<crate::types::Quote>, Box<dyn std::error::Error>> {
+        let quotes_resp = self
+            .client
             .fetch_quotes(Request::new(crate::types::proto::FetchQuotesRequest {}))
             .await?;
-        let quotes: Vec<crate::types::Quote> = quotes_resp.into_inner().quotes.into_iter().map(|v| v.into()).collect();
+        let quotes: Vec<crate::types::Quote> = quotes_resp
+            .into_inner()
+            .quotes
+            .into_iter()
+            .map(|v| v.into())
+            .collect();
         Ok(quotes)
     }
 
-    async fn fetch_trades(&mut self) -> Result<Vec<crate::types::ExchangeTrade>, Box<dyn std::error::Error>> {
-        let trades_resp = self.client
+    async fn fetch_trades(
+        &mut self,
+    ) -> Result<Vec<crate::types::ExchangeTrade>, Box<dyn std::error::Error>> {
+        let trades_resp = self
+            .client
             .fetch_trades(Request::new(crate::types::proto::FetchTradesRequest {}))
             .await?;
-        let trades: Vec<crate::types::ExchangeTrade> = trades_resp.into_inner().trades.into_iter().map(|v| v.into()).collect();
+        let trades: Vec<crate::types::ExchangeTrade> = trades_resp
+            .into_inner()
+            .trades
+            .into_iter()
+            .map(|v| v.into())
+            .collect();
         Ok(trades)
     }
 }
