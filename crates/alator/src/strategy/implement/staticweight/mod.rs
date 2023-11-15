@@ -11,9 +11,7 @@ use crate::broker::{
 };
 use crate::input::{CorporateEventsSource, Dividendable};
 use crate::schedule::{DefaultTradingSchedule, TradingSchedule};
-use crate::strategy::{
-    Audit, History, Strategy, StrategyEvent, TransferFrom, TransferTo,
-};
+use crate::strategy::{Audit, History, Strategy, StrategyEvent, TransferFrom, TransferTo};
 use crate::types::{CashValue, PortfolioAllocation, StrategySnapshot};
 use alator_clock::Clock;
 

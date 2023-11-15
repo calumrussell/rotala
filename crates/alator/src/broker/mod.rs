@@ -390,9 +390,7 @@ mod tests {
         let mut exchange = SyncExchangeImpl::new(clock.clone(), price_source);
 
         let mut brkr: SingleBroker<Dividend, DefaultCorporateEventsSource> =
-            SingleBrokerBuilder::new()
-                .with_exchange(exchange)
-                .build();
+            SingleBrokerBuilder::new().with_exchange(exchange).build();
 
         brkr.deposit_cash(&100_000.0);
 
@@ -439,9 +437,7 @@ mod tests {
         let mut exchange = SyncExchangeImpl::new(clock.clone(), price_source);
 
         let mut brkr: SingleBroker<Dividend, DefaultCorporateEventsSource> =
-            SingleBrokerBuilder::new()
-                .with_exchange(exchange)
-                .build();
+            SingleBrokerBuilder::new().with_exchange(exchange).build();
 
         brkr.deposit_cash(&100_000.0);
 
