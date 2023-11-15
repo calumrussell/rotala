@@ -1,4 +1,4 @@
-use crate::strategy::{AsyncStrategy, History, Strategy};
+use crate::strategy::{History, Strategy};
 use crate::types::CashValue;
 use alator_clock::Clock;
 

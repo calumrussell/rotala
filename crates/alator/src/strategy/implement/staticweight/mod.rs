@@ -7,12 +7,12 @@ use log::info;
 use crate::broker::implement::single::SingleBroker;
 use crate::broker::{
     BacktestBroker, BrokerCalculations, BrokerCashEvent, DividendPayment, EventLog, ReceivesOrders,
-    ReceivesOrdersAsync, Trade,
+    Trade,
 };
 use crate::input::{CorporateEventsSource, Dividendable};
 use crate::schedule::{DefaultTradingSchedule, TradingSchedule};
 use crate::strategy::{
-    AsyncTransferFrom, Audit, History, Strategy, StrategyEvent, TransferFrom, TransferTo,
+    Audit, History, Strategy, StrategyEvent, TransferFrom, TransferTo,
 };
 use crate::types::{CashValue, PortfolioAllocation, StrategySnapshot};
 use alator_clock::Clock;

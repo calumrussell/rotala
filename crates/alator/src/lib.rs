@@ -55,12 +55,13 @@
 //!
 //! ```
 //!     use alator_clock::{ClockBuilder, Frequency};
+//!     use alator_exchange::{ExchangeSync, SyncExchangeImpl};
+//!     use alator_exchange::input::DefaultPriceSource;
 //!
-//!     use alator::broker::{ Dividend, Quote };
+//!     use alator::broker::Dividend;
 //!     use alator::broker::implement::single::{ SingleBroker, SingleBrokerBuilder };
 //!     use alator::broker::BrokerCost;
-//!     use alator::exchange::implement::single::SingleExchangeBuilder;
-//!     use alator::input::{ fake_price_source_generator, DefaultCorporateEventsSource, DefaultPriceSource };
+//!     use alator::input::{ fake_price_source_generator, DefaultCorporateEventsSource };
 //!     use alator::strategy::implement::staticweight::StaticWeightStrategyBuilder;
 //!     use alator::simcontext::SimContextBuilder;
 //!     use alator::types::{ CashValue, PortfolioAllocation };
@@ -78,12 +79,9 @@
 //!     weights.insert("ABC", 0.5);
 //!     weights.insert("BCD", 0.5);
 //!
-//!     let exchange = SingleExchangeBuilder::new()
-//!         .with_price_source(price_source)
-//!         .with_clock(clock.clone())
-//!         .build();
+//!     let exchange = SyncExchangeImpl::new(clock.clone(), price_source);
 //!
-//!     let simbrkr: SingleBroker<Dividend, DefaultCorporateEventsSource, Quote, DefaultPriceSource> =
+//!     let simbrkr: SingleBroker<Dividend, DefaultCorporateEventsSource> =
 //!         SingleBrokerBuilder::new()
 //!             .with_trade_costs(vec![BrokerCost::Flat(1.0.into())])
 //!             .with_exchange(exchange)

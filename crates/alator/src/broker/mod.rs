@@ -391,7 +391,6 @@ mod tests {
 
         let mut brkr: SingleBroker<Dividend, DefaultCorporateEventsSource> =
             SingleBrokerBuilder::new()
-                .with_trade_costs(vec![BrokerCost::flat(1.0)])
                 .with_exchange(exchange)
                 .build();
 
@@ -441,7 +440,6 @@ mod tests {
 
         let mut brkr: SingleBroker<Dividend, DefaultCorporateEventsSource> =
             SingleBrokerBuilder::new()
-                .with_trade_costs(vec![BrokerCost::flat(1.0)])
                 .with_exchange(exchange)
                 .build();
 
