@@ -27,9 +27,6 @@ zip = "0.6.2"
 csv = "1.1.6"
 criterion = { version="0.5.1", features= ["async_tokio"] }
 
-[features]
-python = ["dep:pyo3"] 
-
 [lib]
 bench = false
 

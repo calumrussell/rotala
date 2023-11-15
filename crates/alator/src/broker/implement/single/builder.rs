@@ -1,11 +1,11 @@
 use std::collections::HashMap;
 use std::marker::PhantomData;
 
-use alator_exchange::SyncExchangeImpl;
+use alator_exchange::{ ExchangeSync, SyncExchangeImpl};
 
 use crate::broker::implement::single::SingleBroker;
 use crate::broker::{BrokerCost, BrokerLog};
-use crate::input::{CorporateEventsSource, Dividendable, Quotable};
+use crate::input::{CorporateEventsSource, Dividendable};
 use crate::types::{CashValue, PortfolioHoldings};
 
 /// Builds [SingleBroker].
@@ -26,7 +26,7 @@ where
     D: Dividendable,
     T: CorporateEventsSource<D>,
 {
-    pub fn build<Q: Quotable>(&mut self) -> SingleBroker<D, T, Q> {
+    pub fn build(&mut self) -> SingleBroker<D, T> {
         if self.exchange.is_none() {
             panic!("Cannot build broker without exchange");
         }
@@ -36,7 +36,7 @@ where
         let mut first_quotes = HashMap::new();
         let quotes = self.exchange.as_ref().unwrap().fetch_quotes();
         for quote in &quotes {
-            first_quotes.insert(quote.get_symbol().to_string(), std::sync::Arc::clone(quote));
+            first_quotes.insert(quote.get_symbol().to_string(), quote.clone());
         }
 
         let holdings = PortfolioHoldings::new();

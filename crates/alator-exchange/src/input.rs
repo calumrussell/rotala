@@ -22,19 +22,19 @@ impl DefaultPriceSource {
         None
     }
 
-    pub fn add_quotes(&mut self, bid: f64, ask: f64, date: i64, symbol: String) {
+    pub fn add_quotes(&mut self, bid: f64, ask: f64, date: i64, symbol: impl Into<String> + Clone) {
         let quote = crate::Quote {
             bid,
             ask,
             date,
-            symbol: symbol.clone(),
+            symbol: symbol.clone().into(),
         };
 
         if let Some(date_row) = self.inner.get_mut(&date) {
-            date_row.insert(symbol.clone(), quote);
+            date_row.insert(symbol.into(), quote);
         } else {
             let mut date_row = HashMap::new();
-            date_row.insert(symbol, quote);
+            date_row.insert(symbol.into(), quote);
             self.inner.insert(date, date_row);
         }
     }
@@ -44,6 +44,13 @@ impl DefaultPriceSource {
             inner: HashMap::new(),
         }
     }
+
+    pub fn from_hashmap(inner: HashMap<i64, HashMap<String, crate::Quote>>) -> Self {
+        Self {
+            inner
+        }
+    }
+
 }
 
 impl Default for DefaultPriceSource {

@@ -4,5 +4,4 @@ members = [
     "crates/alator",
     "crates/alator-clock",
     "crates/alator-exchange",
-    "integrations/snake",
 ]

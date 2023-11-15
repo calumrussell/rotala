@@ -6,9 +6,9 @@ use log::info;
 use std::collections::HashMap;
 use std::marker::PhantomData;
 use std::sync::Arc;
-use alator_exchange::SyncExchangeImpl;
+use alator_exchange::{ExchangeSync, SyncExchangeImpl, Quote};
 
-use crate::input::{CorporateEventsSource, Dividendable, PriceSource, Quotable};
+use crate::input::{CorporateEventsSource, Dividendable};
 use crate::types::{CashValue, PortfolioHoldings, PortfolioQty, Price};
 
 use crate::broker::{
@@ -48,11 +48,10 @@ enum BrokerState {
 
 /// Single-threaded broker. Created with [SingleBrokerBuilder].
 #[derive(Debug)]
-pub struct SingleBroker<D, T, Q>
+pub struct SingleBroker<D, T>
 where
     D: Dividendable,
     T: CorporateEventsSource<D>,
-    Q: Quotable,
 {
     cash: CashValue,
     corporate_source: Option<T>,
@@ -66,18 +65,17 @@ where
     pending_orders: PortfolioHoldings,
     //Used to mark last trade seen by broker when reconciling completed trades with exchange
     last_seen_trade: usize,
-    latest_quotes: HashMap<String, Arc<Q>>,
+    latest_quotes: HashMap<String, Quote>,
     log: BrokerLog,
     trade_costs: Vec<BrokerCost>,
     dividend: PhantomData<D>,
     broker_state: BrokerState,
 }
 
-impl<D, T, Q> SingleBroker<D, T, Q>
+impl<D, T> SingleBroker<D, T>
 where
     D: Dividendable,
     T: CorporateEventsSource<D>,
-    Q: Quotable,
 {
     pub fn cost_basis(&self, symbol: &str) -> Option<Price> {
         self.log.cost_basis(symbol)
@@ -124,7 +122,7 @@ where
         //Update prices, these prices are not tradable
         for quote in &self.exchange.fetch_quotes() {
             self.latest_quotes
-                .insert(quote.get_symbol().to_string(), Arc::clone(quote));
+                .insert(quote.get_symbol().to_string(),quote.clone());
         }
 
         //Reconcile broker against executed trades
@@ -192,34 +190,32 @@ where
     }
 }
 
-impl<D, T, Q> GetsQuote<Q> for SingleBroker<D, T, Q>
+impl<D, T> GetsQuote for SingleBroker<D, T>
 where
     D: Dividendable,
     T: CorporateEventsSource<D>,
-    Q: Quotable,
 {
-    fn get_quote(&self, symbol: &str) -> Option<Arc<Q>> {
+    fn get_quote(&self, symbol: &str) -> Option<Quote> {
         self.latest_quotes.get(symbol).cloned()
     }
 
-    fn get_quotes(&self) -> Option<Vec<Arc<Q>>> {
+    fn get_quotes(&self) -> Option<Vec<Quote>> {
         if self.latest_quotes.is_empty() {
             return None;
         }
 
         let mut tmp = Vec::new();
         for quote in self.latest_quotes.values() {
-            tmp.push(Arc::clone(quote));
+            tmp.push(quote.clone());
         }
         Some(tmp)
     }
 }
 
-impl<D, T, Q> BacktestBroker<Q> for SingleBroker<D, T, Q>
+impl<D, T> BacktestBroker for SingleBroker<D, T>
 where
     D: Dividendable,
     T: CorporateEventsSource<D>,
-    Q: Quotable,
 {
     fn update_holdings(&mut self, symbol: &str, change: PortfolioQty) {
         //We have to take ownership for logging but it is easier just to use ref for symbol as that
@@ -381,11 +377,10 @@ where
     }
 }
 
-impl<D, T, Q> ReceivesOrders for SingleBroker<D, T, Q>
+impl<D, T> ReceivesOrders for SingleBroker<D, T>
 where
     D: Dividendable,
     T: CorporateEventsSource<D>,
-    Q: Quotable,
 {
     fn send_order(&mut self, order: Order) -> BrokerEvent {
         //This is an estimate of the cost based on the current price, can still end with negative
@@ -419,7 +414,7 @@ where
                 };
 
                 if let Err(_err) =
-                    BrokerCalculations::client_has_sufficient_cash(&order, price, self)
+                    BrokerCalculations::client_has_sufficient_cash(&order, &Price::from(price), self)
                 {
                     info!(
                         "BROKER: Unable to send {:?} order for {:?} shares of {:?} to exchange",
@@ -494,11 +489,10 @@ where
     }
 }
 
-impl<D, T, Q> EventLog for SingleBroker<D, T, Q>
+impl<D, T> EventLog for SingleBroker<D, T>
 where
     D: Dividendable,
     T: CorporateEventsSource<D>,
-    Q: Quotable,
 {
     fn trades_between(&self, start: &i64, end: &i64) -> Vec<Trade> {
         self.log.trades_between(start, end)
@@ -516,19 +510,20 @@ mod tests {
         Quote, ReceivesOrders,
     };
 
-    use crate::input::{DefaultCorporateEventsSource, DefaultPriceSource};
+    use crate::input::DefaultCorporateEventsSource;
     use crate::types::{CashValue, PortfolioQty};
     use alator_clock::{ClockBuilder, Frequency};
     use alator_exchange::SyncExchangeImpl;
+    use alator_exchange::input::DefaultPriceSource;
 
     use super::{SingleBroker, SingleBrokerBuilder};
 
-    fn setup() -> SingleBroker<Dividend, DefaultCorporateEventsSource, Quote> {
+    fn setup() -> SingleBroker<Dividend, DefaultCorporateEventsSource> {
         let clock = ClockBuilder::with_length_in_seconds(100, 5)
             .with_frequency(&Frequency::Second)
             .build();
 
-        let mut price_source = DefaultPriceSource::new(clock.clone());
+        let mut price_source = DefaultPriceSource::new();
 
         price_source.add_quotes(100.00, 101.00, 100, "ABC");
         price_source.add_quotes(10.00, 11.00, 100, "BCD");
@@ -714,14 +709,14 @@ mod tests {
             .with_frequency(&Frequency::Second)
             .build();
 
-        let mut price_source = DefaultPriceSource::new(clock.clone());
+        let mut price_source = DefaultPriceSource::new();
         price_source.add_quotes(100.00, 101.00, 100, "ABC");
         price_source.add_quotes(104.00, 105.00, 101, "ABC");
         price_source.add_quotes(95.00, 96.00, 102, "ABC");
 
         let exchange = SyncExchangeImpl::new(clock.clone(), price_source);
 
-        let _brkr: SingleBroker<Dividend, DefaultCorporateEventsSource, Quote, DefaultPriceSource> =
+        let _brkr: SingleBroker<Dividend, DefaultCorporateEventsSource> =
             SingleBrokerBuilder::new()
                 .with_exchange(exchange)
                 .with_trade_costs(vec![BrokerCost::PctOfValue(0.01)])
@@ -739,7 +734,7 @@ mod tests {
             .with_frequency(&Frequency::Second)
             .build();
 
-        let mut price_source = DefaultPriceSource::new(clock.clone());
+        let mut price_source = DefaultPriceSource::new();
         price_source.add_quotes(100.00, 101.00, 100, "ABC");
         price_source.add_quotes(10.00, 11.00, 100, "BCD");
 
@@ -759,8 +754,6 @@ mod tests {
         let mut brkr: SingleBroker<
             Dividend,
             DefaultCorporateEventsSource,
-            Quote,
-            DefaultPriceSource,
         > = SingleBrokerBuilder::new()
             .with_exchange(exchange)
             .with_trade_costs(vec![BrokerCost::PctOfValue(0.01)])
@@ -804,7 +797,7 @@ mod tests {
             .with_frequency(&Frequency::Second)
             .build();
 
-        let mut price_source = DefaultPriceSource::new(clock.clone());
+        let mut price_source = DefaultPriceSource::new();
         price_source.add_quotes(100.00, 101.00, 100, "ABC");
         price_source.add_quotes(150.00, 151.00, 101, "ABC");
         price_source.add_quotes(150.00, 151.00, 102, "ABC");
@@ -814,8 +807,6 @@ mod tests {
         let mut brkr: SingleBroker<
             Dividend,
             DefaultCorporateEventsSource,
-            Quote,
-            DefaultPriceSource,
         > = SingleBrokerBuilder::new()
             .with_exchange(exchange)
             .with_trade_costs(vec![BrokerCost::PctOfValue(0.01)])
@@ -844,7 +835,7 @@ mod tests {
             .with_frequency(&Frequency::Second)
             .build();
 
-        let mut price_source = DefaultPriceSource::new(clock.clone());
+        let mut price_source = DefaultPriceSource::new();
 
         price_source.add_quotes(100.00, 101.00, 100, "ABC");
         //Price doubles over one tick so that the broker is trading on information that has become
@@ -857,8 +848,6 @@ mod tests {
         let mut brkr: SingleBroker<
             Dividend,
             DefaultCorporateEventsSource,
-            Quote,
-            DefaultPriceSource,
         > = SingleBrokerBuilder::new()
             .with_exchange(exchange)
             .with_trade_costs(vec![BrokerCost::PctOfValue(0.01)])

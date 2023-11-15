@@ -1,9 +1,7 @@
+use alator_exchange::Quote;
 use log::info;
 
-use crate::{
-    input::Quotable,
-    types::{CashValue, PortfolioAllocation, PortfolioQty, Price},
-};
+use crate::types::{CashValue, PortfolioAllocation, PortfolioQty, Price};
 
 use super::{BacktestBroker, ReceivesOrders, ReceivesOrdersAsync};
 
@@ -20,7 +18,7 @@ impl BrokerCalculations {
     /// divergences in performance from the underlying in certain cases. For example, if prices are
     /// volatile, in the case of low-frequency data, then the broker will end up continuously
     /// re-balancing in a random way under certain price movements.
-    pub fn withdraw_cash_with_liquidation<Q: Quotable, T: BacktestBroker<Q> + ReceivesOrders>(
+    pub fn withdraw_cash_with_liquidation<T: BacktestBroker + ReceivesOrders>(
         cash: &f64,
         brkr: &mut T,
     ) -> super::BrokerCashEvent {
@@ -69,7 +67,7 @@ impl BrokerCalculations {
                     //Cannot be called without quote existing so unwrap
                     let quote = brkr.get_quote(&ticker).unwrap();
                     let price = quote.get_bid();
-                    let shares_req = PortfolioQty::from((total_sold / **price).ceil());
+                    let shares_req = PortfolioQty::from((total_sold / price).ceil());
                     let order =
                         super::Order::market(super::OrderType::MarketSell, ticker, shares_req);
                     info!("BROKER: Withdrawing {:?} with liquidation, queueing sale of {:?} shares of {:?}", cash, order.get_shares(), order.get_symbol());
@@ -107,8 +105,7 @@ impl BrokerCalculations {
     /// volatile, in the case of low-frequency data, then the broker will end up continuously
     /// re-balancing in a random way under certain price movements.
     pub async fn withdraw_cash_with_liquidation_async<
-        Q: Quotable,
-        T: BacktestBroker<Q> + ReceivesOrdersAsync,
+        T: BacktestBroker + ReceivesOrdersAsync,
     >(
         cash: &f64,
         brkr: &mut T,
@@ -156,7 +153,7 @@ impl BrokerCalculations {
                     //Cannot be called without quote existing so unwrap
                     let quote = brkr.get_quote(&ticker).unwrap();
                     let price = quote.get_bid();
-                    let shares_req = PortfolioQty::from((total_sold / **price).ceil());
+                    let shares_req = PortfolioQty::from((total_sold / price).ceil());
                     let order =
                         super::Order::market(super::OrderType::MarketSell, ticker, shares_req);
                     info!("BROKER: Withdrawing {:?} with liquidation, queueing sale of {:?} shares of {:?}", cash, order.get_shares(), order.get_symbol());
@@ -190,7 +187,7 @@ impl BrokerCalculations {
     ///
     /// Brokers do not expect target wights, they merely respond to orders so this structure
     /// is not required to create backtests.
-    pub fn diff_brkr_against_target_weights<Q: Quotable, T: BacktestBroker<Q>>(
+    pub fn diff_brkr_against_target_weights<T: BacktestBroker>(
         target_weights: &PortfolioAllocation,
         brkr: &mut T,
     ) -> Vec<super::Order> {
@@ -210,14 +207,14 @@ impl BrokerCalculations {
 
         //This returns a positive number for buy and negative for sell, this is necessary because
         //of calculations made later to find the net position of orders on the exchange.
-        let calc_required_shares_with_costs = |diff_val: &f64, quote: &Q, brkr: &T| -> f64 {
+        let calc_required_shares_with_costs = |diff_val: &f64, quote: &Quote, brkr: &T| -> f64 {
             if diff_val.lt(&0.0) {
-                let price = **quote.get_bid();
+                let price = quote.get_bid();
                 let costs = brkr.calc_trade_impact(&diff_val.abs(), &price, false);
                 let total = (*costs.0 / *costs.1).floor();
                 -total
             } else {
-                let price = **quote.get_ask();
+                let price = quote.get_ask();
                 let costs = brkr.calc_trade_impact(&diff_val.abs(), &price, true);
                 (*costs.0 / *costs.1).floor()
             }
@@ -266,10 +263,10 @@ impl BrokerCalculations {
         orders
     }
 
-    pub fn client_has_sufficient_cash<Q: Quotable>(
+    pub fn client_has_sufficient_cash(
         order: &super::Order,
         price: &Price,
-        brkr: &impl BacktestBroker<Q>,
+        brkr: &impl BacktestBroker,
     ) -> Result<(), super::InsufficientCashError> {
         let shares = order.get_shares();
         let value = CashValue::from(**shares * **price);
@@ -285,9 +282,9 @@ impl BrokerCalculations {
         }
     }
 
-    pub fn client_has_sufficient_holdings_for_sale<Q: Quotable>(
+    pub fn client_has_sufficient_holdings_for_sale(
         order: &super::Order,
-        brkr: &impl BacktestBroker<Q>,
+        brkr: &impl BacktestBroker,
     ) -> Result<(), super::UnexecutableOrderError> {
         if let super::OrderType::MarketSell = order.get_order_type() {
             if let Some(holding) = brkr.get_position_qty(order.get_symbol()) {

@@ -1,26 +1,26 @@
 use std::collections::HashMap;
 use std::io::{Cursor, Write};
-use std::sync::Arc;
+use alator_clock::{Clock, ClockBuilder, Frequency};
+use alator_exchange::input::DefaultPriceSource;
+use alator_exchange::{Quote, SyncExchangeImpl};
 
 use alator::broker::implement::single::{SingleBroker, SingleBrokerBuilder};
 use alator::broker::{
-    BacktestBroker, Dividend, GetsQuote, Order, OrderType, Quote, ReceivesOrders,
+    BacktestBroker, Dividend, GetsQuote, Order, OrderType, ReceivesOrders,
 };
-use alator::exchange::implement::single::SingleExchangeBuilder;
-use alator::input::{DefaultCorporateEventsSource, DefaultPriceSource};
+use alator::input::DefaultCorporateEventsSource;
 use alator::simcontext::SimContextBuilder;
 use alator::strategy::{History, Strategy, StrategyEvent, TransferTo};
 use alator::types::{CashValue, StrategySnapshot};
-use alator_clock::{Clock, ClockBuilder, DateTime, Frequency};
 
 /* Get the data from Binance, build quote from open and close of candle, insert the quotes into
  * QuotesHashMap using those dates.
  * We also need to work out the start and end of the simulation to initialise the clock with
  */
-fn build_data() -> (HashMap<DateTime, Vec<Arc<Quote>>>, (i64, i64)) {
+fn build_data() -> (HashMap<i64, HashMap<String, Quote>>, (i64, i64)) {
     let url =
         "https://data.binance.vision/data/spot/daily/klines/BTCUSDT/1m/BTCUSDT-1m-2022-08-03.zip";
-    let mut quotes: HashMap<DateTime, Vec<Arc<Quote>>> = HashMap::new();
+    let mut quotes: HashMap<i64, HashMap<String, Quote>> = HashMap::new();
     let mut min_date = i64::MAX;
     let mut max_date = i64::MIN;
     if let Ok(resp) = reqwest::blocking::get(url) {
@@ -58,7 +58,10 @@ fn build_data() -> (HashMap<DateTime, Vec<Arc<Quote>>>, (i64, i64)) {
                                 date: open_date.into(),
                                 symbol: "BTC".into(),
                             };
-                            quotes.insert(open_date.into(), vec![Arc::new(quote)]);
+                            let mut quote_map = HashMap::new();
+                            quote_map.insert("BTC".to_string(), quote);
+                            quotes.insert(open_date.into(), quote_map);
+
                             let close_date = (row[6].parse::<i64>().unwrap()) / 1000;
                             if close_date > max_date {
                                 max_date = close_date;
@@ -69,7 +72,9 @@ fn build_data() -> (HashMap<DateTime, Vec<Arc<Quote>>>, (i64, i64)) {
                                 date: close_date.into(),
                                 symbol: "BTC".into(),
                             };
-                            quotes.insert(close_date.into(), vec![Arc::new(quote1)]);
+                            let mut quote1_map = HashMap::new();
+                            quote1_map.insert("BTC".to_string(), quote1);
+                            quotes.insert(close_date.into(), quote1_map);
                         }
                     }
                 }
@@ -131,7 +136,7 @@ impl MovingAverage {
 //tracking into the simulation lifecycle.
 struct MovingAverageStrategy {
     clock: Clock,
-    brkr: SingleBroker<Dividend, DefaultCorporateEventsSource, Quote, DefaultPriceSource>,
+    brkr: SingleBroker<Dividend, DefaultCorporateEventsSource>,
     ten: MovingAverage,
     fifty: MovingAverage,
     history: Vec<StrategySnapshot>,
@@ -201,7 +206,7 @@ impl Strategy for MovingAverageStrategy {
                     //All this casting is required because, at the moment, we haven't moved fully
                     //away from positions reqpresented in whole numbers. Strategies should work but
                     //I am not sure if the result is correct.
-                    let qty = (f64::from(pct_value) / (*quote.ask)).floor();
+                    let qty = (f64::from(pct_value) / (quote.ask)).floor();
                     let current_position_with_pending = self.brkr.get_holdings_with_pending();
                     let default_qty = alator::types::PortfolioQty::default();
                     let current_qty = current_position_with_pending
@@ -248,7 +253,7 @@ impl Strategy for MovingAverageStrategy {
 
 impl MovingAverageStrategy {
     fn new(
-        brkr: SingleBroker<Dividend, DefaultCorporateEventsSource, Quote, DefaultPriceSource>,
+        brkr: SingleBroker<Dividend, DefaultCorporateEventsSource>,
         clock: Clock,
     ) -> Self {
         let ten = MovingAverage::new(10);
@@ -286,14 +291,11 @@ fn binance_test() {
         .with_frequency(&Frequency::Second)
         .build();
 
-    let price_source = DefaultPriceSource::from_hashmap(quotes, clock.clone());
+    let price_source = DefaultPriceSource::from_hashmap(quotes);
 
-    let exchange = SingleExchangeBuilder::new()
-        .with_clock(clock.clone())
-        .with_price_source(price_source)
-        .build();
+    let exchange = SyncExchangeImpl::new(clock.clone(), price_source);
 
-    let simbrkr: SingleBroker<Dividend, DefaultCorporateEventsSource, Quote, DefaultPriceSource> =
+    let simbrkr: SingleBroker<Dividend, DefaultCorporateEventsSource> =
         SingleBrokerBuilder::new().with_exchange(exchange).build();
 
     let strat = MovingAverageStrategy::new(simbrkr, clock.clone());

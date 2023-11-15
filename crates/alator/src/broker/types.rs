@@ -2,7 +2,7 @@
 use pyo3::{pyclass, pymethods};
 
 use crate::{
-    input::{Dividendable, Quotable},
+    input::Dividendable,
     types::{CashValue, PortfolioQty, Price},
 };
 use alator_clock::DateTime;
@@ -13,126 +13,6 @@ use crate::types::PortfolioAllocation;
 
 //Contains data structures and traits that refer solely to the data held and operations required
 //for broker implementations.
-
-/// Represents a point-in-time quote of both sides of the market (bid+offer) from an exchange.
-///
-/// Equality checked against ticker and date. Ordering against date only.
-///
-/// let q = Quote::new(
-///   10.0,
-///   11.0,
-///   100,
-///   "ABC"
-/// );
-///
-#[derive(Clone, Debug)]
-pub struct Quote {
-    //TODO: more indirection is needed for this type, possibly implemented as trait
-    pub bid: Price,
-    pub ask: Price,
-    pub date: DateTime,
-    pub symbol: String,
-}
-
-impl Quote {
-    pub fn new(
-        bid: impl Into<Price>,
-        ask: impl Into<Price>,
-        date: impl Into<DateTime>,
-        symbol: impl Into<String>,
-    ) -> Self {
-        Self {
-            bid: bid.into(),
-            ask: ask.into(),
-            date: date.into(),
-            symbol: symbol.into(),
-        }
-    }
-}
-
-impl Ord for Quote {
-    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
-        self.date.cmp(&other.date)
-    }
-}
-
-impl PartialOrd for Quote {
-    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
-        Some(self.cmp(other))
-    }
-}
-
-impl Eq for Quote {}
-
-impl PartialEq for Quote {
-    fn eq(&self, other: &Self) -> bool {
-        self.date == other.date && self.symbol == other.symbol
-    }
-}
-
-impl Quotable for Quote {
-    fn get_ask(&self) -> &Price {
-        &self.ask
-    }
-
-    fn get_bid(&self) -> &Price {
-        &self.bid
-    }
-
-    fn get_date(&self) -> &DateTime {
-        &self.date
-    }
-
-    fn get_symbol(&self) -> &String {
-        &self.symbol
-    }
-}
-
-#[cfg(feature = "python")]
-#[derive(Clone, Debug)]
-#[pyclass(frozen)]
-pub struct PyQuote {
-    pub bid: Price,
-    pub ask: Price,
-    pub date: DateTime,
-    pub symbol: String,
-}
-
-#[cfg(feature = "python")]
-#[pymethods]
-impl PyQuote {
-    #[new]
-    fn new(bid: f64, ask: f64, date: i64, symbol: &str) -> Self {
-        Self {
-            bid: bid.into(),
-            ask: ask.into(),
-            date: date.into(),
-            symbol: symbol.to_string(),
-        }
-    }
-}
-
-#[cfg(feature = "python")]
-impl Quotable for PyQuote {
-    fn get_ask(&self) -> &Price {
-        &self.ask
-    }
-
-    fn get_bid(&self) -> &Price {
-        &self.bid
-    }
-
-    fn get_date(&self) -> &DateTime {
-        &self.date
-    }
-
-    fn get_symbol(&self) -> &String {
-        &self.symbol
-    }
-}
-
-#[cfg(feature = "python")]
-unsafe impl Send for PyQuote {}
 
 ///Represents a single dividend payment in per-share terms.
 ///
@@ -186,44 +66,6 @@ impl PartialEq for Dividend {
 }
 
 impl Dividendable for Dividend {
-    fn get_date(&self) -> &DateTime {
-        &self.date
-    }
-
-    fn get_symbol(&self) -> &String {
-        &self.symbol
-    }
-
-    fn get_value(&self) -> &Price {
-        &self.value
-    }
-}
-
-#[cfg(feature = "python")]
-#[derive(Clone, Debug)]
-#[pyclass(frozen)]
-pub struct PyDividend {
-    //Dividend value is expressed in terms of per share values
-    pub value: Price,
-    pub symbol: String,
-    pub date: DateTime,
-}
-
-#[cfg(feature = "python")]
-#[pymethods]
-impl PyDividend {
-    #[new]
-    fn new(value: f64, symbol: &str, date: i64) -> Self {
-        Self {
-            value: value.into(),
-            symbol: symbol.to_string(),
-            date: date.into(),
-        }
-    }
-}
-
-#[cfg(feature = "python")]
-impl Dividendable for PyDividend {
     fn get_date(&self) -> &DateTime {
         &self.date
     }

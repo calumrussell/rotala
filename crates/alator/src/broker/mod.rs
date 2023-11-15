@@ -4,16 +4,14 @@ pub mod implement;
 mod record;
 mod types;
 
+use alator_exchange::{ ExchangeSync, Quote};
 pub use calculations::BrokerCalculations;
 #[doc(hidden)]
 pub use record::BrokerLog;
 pub use types::{
     BrokerCashEvent, BrokerCost, BrokerEvent, BrokerRecordedEvent, Dividend, DividendPayment,
-    Order, OrderType, Quote, Trade, TradeType,
+    Order, OrderType, Trade, TradeType,
 };
-
-#[cfg(feature = "python")]
-pub use types::{PyDividend, PyQuote};
 
 use async_trait::async_trait;
 use std::error::Error;
@@ -21,14 +19,13 @@ use std::fmt::Display;
 use std::fmt::Formatter;
 use std::sync::Arc;
 
-use crate::input::Quotable;
 use crate::types::{CashValue, PortfolioHoldings, PortfolioQty, PortfolioValues, Price};
 
 /// Essential traits for standard library definition of a broker.
 ///
 /// Functionality for brokers is spread across multiple traits, these traits are the functions
 /// that seem to be necessary for any backtest.
-pub trait BacktestBroker<Q: Quotable>: GetsQuote<Q> {
+pub trait BacktestBroker: GetsQuote {
     fn get_position_profit(&self, symbol: &str) -> Option<CashValue> {
         if let Some(cost) = self.get_position_cost(symbol) {
             if let Some(qty) = self.get_position_qty(symbol) {
@@ -97,7 +94,7 @@ pub trait BacktestBroker<Q: Quotable>: GetsQuote<Q> {
             //We only have long positions so we only need to look at the bid
             let price = quote.get_bid();
             if let Some(qty) = self.get_position_qty(symbol) {
-                let val = **price * *qty;
+                let val = price * *qty;
                 return Some(CashValue::from(val));
             }
         }
@@ -162,9 +159,9 @@ pub trait ReceivesOrdersAsync {
 /// In the case of missing data, library implementations store the last-seen price. Strategies
 /// would, therefore, be operating with stale data. This is a consequence of protecting against
 /// lookahead bias.
-pub trait GetsQuote<Q: Quotable> {
-    fn get_quote(&self, symbol: &str) -> Option<Arc<Q>>;
-    fn get_quotes(&self) -> Option<Vec<Arc<Q>>>;
+pub trait GetsQuote {
+    fn get_quote(&self, symbol: &str) -> Option<Quote>;
+    fn get_quotes(&self) -> Option<Vec<Quote>>;
 }
 
 /// Broker stores completed trades and paid dividends.
@@ -206,14 +203,15 @@ impl Display for UnexecutableOrderError {
 mod tests {
 
     use super::{BacktestBroker, BrokerCalculations, BrokerCost, OrderType};
-    use crate::broker::implement::single::SingleBrokerBuilder;
-    use crate::broker::ReceivesOrdersAsync;
-    use crate::input::{
-        fake_price_source_generator, DefaultPriceSource,
-    };
+    use crate::broker::implement::single::{SingleBrokerBuilder, SingleBroker};
+    use crate::broker::{ReceivesOrders, ReceivesOrdersAsync, Dividend};
+
+    use crate::input::{fake_price_source_generator, DefaultCorporateEventsSource, CorporateEventsSource};
     use crate::types::PortfolioAllocation;
+
     use alator_clock::{ClockBuilder, Frequency};
-    use alator_exchange::SyncExchangeImpl;
+    use alator_exchange::{ ExchangeSync, SyncExchangeImpl};
+    use alator_exchange::input::DefaultPriceSource;
 
     #[test]
     fn diff_direction_correct_if_need_to_buy() {
@@ -222,9 +220,9 @@ mod tests {
             .build();
         let price_source = fake_price_source_generator(clock.clone());
 
-        let exchange = SyncExchangeImpl::new(clock.clone(), price_source);
+        let mut exchange = SyncExchangeImpl::new(clock.clone(), price_source);
 
-        let mut brkr = SingleBrokerBuilder::new()
+        let mut brkr: SingleBroker<Dividend, DefaultCorporateEventsSource> = SingleBrokerBuilder::new()
             .with_trade_costs(vec![BrokerCost::flat(1.0)])
             .with_exchange(exchange)
             .build();
@@ -233,7 +231,6 @@ mod tests {
         weights.insert("ABC", 1.0);
 
         brkr.deposit_cash(&100_000.0);
-        exchange.check();
         brkr.check();
 
         let orders = BrokerCalculations::diff_brkr_against_target_weights(&weights, &mut brkr);
@@ -255,9 +252,9 @@ mod tests {
 
         let price_source = fake_price_source_generator(clock.clone());
 
-        let exchange = SyncExchangeImpl::new(clock.clone(), price_source);
+        let mut exchange = SyncExchangeImpl::new(clock.clone(), price_source);
 
-        let mut brkr = SingleBrokerBuilder::new()
+        let mut brkr: SingleBroker<Dividend, DefaultCorporateEventsSource> = SingleBrokerBuilder::new()
             .with_trade_costs(vec![BrokerCost::flat(1.0)])
             .with_exchange(exchange)
             .build();
@@ -269,10 +266,8 @@ mod tests {
         let orders = BrokerCalculations::diff_brkr_against_target_weights(&weights, &mut brkr);
         brkr.send_orders(&orders);
 
-        exchange.check();
         brkr.check();
 
-        exchange.check();
         brkr.check();
 
         let mut weights1 = PortfolioAllocation::new();
@@ -300,9 +295,9 @@ mod tests {
             .build();
 
         let price_source = fake_price_source_generator(clock.clone());
-        let exchange = SyncExchangeImpl::new(clock.clone(), price_source);
+        let mut exchange = SyncExchangeImpl::new(clock.clone(), price_source);
 
-        let mut brkr = SingleBrokerBuilder::new()
+        let mut brkr: SingleBroker<Dividend, DefaultCorporateEventsSource> = SingleBrokerBuilder::new()
             .with_trade_costs(vec![BrokerCost::flat(1.0)])
             .with_exchange(exchange)
             .build();
@@ -315,7 +310,6 @@ mod tests {
         weights.insert("XYZ", 0.5);
 
         brkr.deposit_cash(&100_000.0);
-        exchange.check();
         brkr.check();
         let orders = BrokerCalculations::diff_brkr_against_target_weights(&weights, &mut brkr);
         assert!(orders.len() == 1);
@@ -331,9 +325,9 @@ mod tests {
             .build();
 
         let price_source = fake_price_source_generator(clock.clone());
-        let exchange = SyncExchangeImpl::new(clock.clone(), price_source);
+        let mut exchange = SyncExchangeImpl::new(clock.clone(), price_source);
 
-        let mut brkr = SingleBrokerBuilder::new()
+        let mut brkr: SingleBroker<Dividend, DefaultCorporateEventsSource> = SingleBrokerBuilder::new()
             .with_trade_costs(vec![BrokerCost::flat(1.0)])
             .with_exchange(exchange)
             .build();
@@ -341,7 +335,6 @@ mod tests {
         let mut weights = PortfolioAllocation::new();
         weights.insert("ABC", 1.0);
 
-        exchange.check();
         brkr.check();
         BrokerCalculations::diff_brkr_against_target_weights(&weights, &mut brkr);
     }
@@ -383,14 +376,14 @@ mod tests {
         let clock = ClockBuilder::with_length_in_seconds(100, 5)
             .with_frequency(&Frequency::Second)
             .build();
-        let mut price_source = DefaultPriceSource::new(clock.clone());
+        let mut price_source = DefaultPriceSource::new();
         price_source.add_quotes(100.00, 100.00, 100, "ABC");
         price_source.add_quotes(100.00, 100.00, 101, "ABC");
         price_source.add_quotes(100.00, 100.00, 103, "ABC");
 
-        let exchange = SyncExchangeImpl::new(clock.clone(), price_source);
+        let mut exchange = SyncExchangeImpl::new(clock.clone(), price_source);
 
-        let mut brkr = SingleBrokerBuilder::new()
+        let mut brkr: SingleBroker<Dividend, DefaultCorporateEventsSource> = SingleBrokerBuilder::new()
             .with_trade_costs(vec![BrokerCost::flat(1.0)])
             .with_exchange(exchange)
             .build();
@@ -398,10 +391,8 @@ mod tests {
         brkr.deposit_cash(&100_000.0);
 
         //No price for security so we haven't diffed correctly
-        exchange.check();
         brkr.check();
 
-        exchange.check();
         brkr.check();
 
         let mut target_weights = PortfolioAllocation::new();
@@ -411,14 +402,12 @@ mod tests {
             BrokerCalculations::diff_brkr_against_target_weights(&target_weights, &mut brkr);
         brkr.send_orders(&orders);
 
-        exchange.check();
         brkr.check();
 
         let orders1 =
             BrokerCalculations::diff_brkr_against_target_weights(&target_weights, &mut brkr);
 
         brkr.send_orders(&orders1);
-        exchange.check();
         brkr.check();
 
         dbg!(brkr.get_position_qty("ABC"));
@@ -436,14 +425,14 @@ mod tests {
             .with_frequency(&Frequency::Second)
             .build();
 
-        let mut price_source = DefaultPriceSource::new(clock.clone());
+        let mut price_source = DefaultPriceSource::new();
         price_source.add_quotes(100.00, 100.00, 100, "ABC");
         price_source.add_quotes(75.00, 75.00, 103, "ABC");
         price_source.add_quotes(75.00, 75.00, 104, "ABC");
 
-        let exchange = SyncExchangeImpl::new(clock.clone(), price_source);
+        let mut exchange = SyncExchangeImpl::new(clock.clone(), price_source);
 
-        let mut brkr = SingleBrokerBuilder::new()
+        let mut brkr: SingleBroker<Dividend, DefaultCorporateEventsSource> = SingleBrokerBuilder::new()
             .with_trade_costs(vec![BrokerCost::flat(1.0)])
             .with_exchange(exchange)
             .build();
@@ -459,13 +448,10 @@ mod tests {
         brkr.send_orders(&orders);
 
         //No price for security so we haven't diffed correctly
-        exchange.check();
         brkr.check();
 
-        exchange.check();
         brkr.check();
 
-        exchange.check();
         brkr.check();
 
         let orders1 =
@@ -474,7 +460,6 @@ mod tests {
 
         brkr.send_orders(&orders1);
 
-        exchange.check();
         brkr.check();
 
         println!("{:?}", brkr.get_holdings());

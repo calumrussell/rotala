@@ -1,11 +1,12 @@
 use alator_clock::{Clock, ClockBuilder, Frequency};
 use rand::distributions::{Distribution, Uniform};
 use rand::thread_rng;
+use alator_exchange::input::DefaultPriceSource;
+use alator_exchange::SyncExchangeImpl;
 
 use alator::broker::implement::single::{SingleBroker, SingleBrokerBuilder};
-use alator::broker::{BrokerCost, Dividend, Quote};
-use alator::exchange::implement::single::SingleExchangeBuilder;
-use alator::input::{DefaultCorporateEventsSource, DefaultPriceSource};
+use alator::broker::{BrokerCost, Dividend};
+use alator::input::DefaultCorporateEventsSource;
 use alator::simcontext::SimContextBuilder;
 use alator::strategy::implement::staticweight::StaticWeightStrategyBuilder;
 use alator::types::{CashValue, PortfolioAllocation};
@@ -14,18 +15,18 @@ fn build_data(clock: Clock) -> DefaultPriceSource {
     let price_dist = Uniform::new(90.0, 100.0);
     let mut rng = thread_rng();
 
-    let mut price_source = DefaultPriceSource::new(clock.clone());
+    let mut price_source = DefaultPriceSource::new();
     for date in clock.peek() {
         price_source.add_quotes(
             price_dist.sample(&mut rng),
             price_dist.sample(&mut rng),
-            date,
+            *date,
             "ABC",
         );
         price_source.add_quotes(
             price_dist.sample(&mut rng),
             price_dist.sample(&mut rng),
-            date,
+            *date,
             "BCD",
         );
     }
@@ -48,12 +49,9 @@ fn staticweight_integration_test() {
     weights.insert("ABC", 0.5);
     weights.insert("BCD", 0.5);
 
-    let exchange = SingleExchangeBuilder::new()
-        .with_price_source(price_source)
-        .with_clock(clock.clone())
-        .build();
+    let exchange = SyncExchangeImpl::new(clock.clone(), price_source);
 
-    let simbrkr: SingleBroker<Dividend, DefaultCorporateEventsSource, Quote, DefaultPriceSource> =
+    let simbrkr: SingleBroker<Dividend, DefaultCorporateEventsSource> =
         SingleBrokerBuilder::new()
             .with_trade_costs(vec![BrokerCost::Flat(1.0.into())])
             .with_exchange(exchange)

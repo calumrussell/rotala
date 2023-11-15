@@ -256,28 +256,29 @@ impl PerformanceCalculator {
 #[cfg(test)]
 mod tests {
     use crate::broker::implement::single::{SingleBroker, SingleBrokerBuilder};
-    use crate::broker::{BrokerCost, Dividend, Quote};
-    use crate::input::{DefaultCorporateEventsSource, DefaultPriceSource};
+    use crate::broker::{BrokerCost, Dividend};
+    use crate::input::DefaultCorporateEventsSource;
     use crate::perf::StrategySnapshot;
     use crate::strategy::implement::staticweight::StaticWeightStrategyBuilder;
     use crate::strategy::{History, Strategy};
     use crate::types::PortfolioAllocation;
     use alator_clock::{Clock, ClockBuilder};
     use alator_exchange::SyncExchangeImpl;
+    use alator_exchange::input::DefaultPriceSource;
 
     use super::Frequency;
     use super::PerformanceCalculator;
     use super::PortfolioCalculations;
 
     fn setup() -> (
-        SingleBroker<Dividend, DefaultCorporateEventsSource, Quote>,
+        SingleBroker<Dividend, DefaultCorporateEventsSource>,
         Clock,
     ) {
         let clock = ClockBuilder::with_length_in_dates(100, 103)
             .with_frequency(&Frequency::Second)
             .build();
 
-        let mut price_source = DefaultPriceSource::new(clock.clone());
+        let mut price_source = DefaultPriceSource::new();
         price_source.add_quotes(101.0, 102.0, 100, "ABC");
         price_source.add_quotes(102.0, 103.0, 101, "ABC");
         price_source.add_quotes(97.0, 98.0, 102, "ABC");

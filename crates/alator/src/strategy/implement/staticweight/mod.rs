@@ -9,7 +9,7 @@ use crate::broker::{
     BacktestBroker, BrokerCalculations, BrokerCashEvent, DividendPayment, EventLog, ReceivesOrders,
     ReceivesOrdersAsync, Trade,
 };
-use crate::input::{CorporateEventsSource, Dividendable, PriceSource, Quotable};
+use crate::input::{CorporateEventsSource, Dividendable};
 use crate::schedule::{DefaultTradingSchedule, TradingSchedule};
 use crate::strategy::{
     AsyncTransferFrom, Audit, History, Strategy, StrategyEvent, TransferFrom,
@@ -20,24 +20,22 @@ use alator_clock::Clock;
 
 ///Basic implementation of an investment strategy which takes a set of fixed-weight allocations and
 ///rebalances over time towards those weights.
-pub struct StaticWeightStrategy<D, T, Q>
+pub struct StaticWeightStrategy<D, T>
 where
     D: Dividendable,
     T: CorporateEventsSource<D>,
-    Q: Quotable,
 {
-    brkr: SingleBroker<D, T, Q>,
+    brkr: SingleBroker<D, T>,
     target_weights: PortfolioAllocation,
     net_cash_flow: CashValue,
     clock: Clock,
     history: Vec<StrategySnapshot>,
 }
 
-impl<D, T, Q> StaticWeightStrategy<D, T, Q>
+impl<D, T> StaticWeightStrategy<D, T>
 where
     D: Dividendable,
     T: CorporateEventsSource<D>,
-    Q: Quotable,
 {
     pub fn get_snapshot(&mut self) -> StrategySnapshot {
         // Defaults to zero inflation because most users probably aren't looking
@@ -52,11 +50,10 @@ where
     }
 }
 
-impl<D, T, Q> Strategy for StaticWeightStrategy<D, T, Q>
+impl<D, T> Strategy for StaticWeightStrategy<D, T>
 where
     D: Dividendable,
     T: CorporateEventsSource<D>,
-    Q: Quotable,
 {
     fn init(&mut self, initital_cash: &f64) {
         self.deposit_cash(initital_cash);
@@ -88,11 +85,10 @@ where
     }
 }
 
-impl<D, T, Q> TransferTo for StaticWeightStrategy<D, T, Q>
+impl<D, T> TransferTo for StaticWeightStrategy<D, T>
 where
     D: Dividendable,
     T: CorporateEventsSource<D>,
-    Q: Quotable,
 {
     fn deposit_cash(&mut self, cash: &f64) -> StrategyEvent {
         info!("STRATEGY: Depositing {:?} into strategy", cash);
@@ -102,11 +98,10 @@ where
     }
 }
 
-impl<D, T, Q> TransferFrom for StaticWeightStrategy<D, T, Q>
+impl<D, T> TransferFrom for StaticWeightStrategy<D, T>
 where
     D: Dividendable,
     T: CorporateEventsSource<D>,
-    Q: Quotable,
 {
     fn withdraw_cash(&mut self, cash: &f64) -> StrategyEvent {
         if let BrokerCashEvent::WithdrawSuccess(withdrawn) = self.brkr.withdraw_cash(cash) {
@@ -131,11 +126,10 @@ where
     }
 }
 
-impl<D, T, Q> Audit for StaticWeightStrategy<D, T, Q>
+impl<D, T> Audit for StaticWeightStrategy<D, T>
 where
     D: Dividendable,
     T: CorporateEventsSource<D>,
-    Q: Quotable,
 {
     fn trades_between(&self, start: &i64, end: &i64) -> Vec<Trade> {
         self.brkr.trades_between(start, end)
@@ -146,11 +140,10 @@ where
     }
 }
 
-impl<D, T, Q> History for StaticWeightStrategy<D, T, Q>
+impl<D, T> History for StaticWeightStrategy<D, T>
 where
     D: Dividendable,
     T: CorporateEventsSource<D>,
-    Q: Quotable,
 {
     fn get_history(&self) -> Vec<StrategySnapshot> {
         self.history.clone()

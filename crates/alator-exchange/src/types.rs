@@ -36,6 +36,24 @@ impl From<proto::Quote> for Quote {
     }
 }
 
+impl Quote {
+    pub fn get_bid(&self) -> f64 {
+        self.bid
+    }
+
+    pub fn get_ask(&self) -> f64 {
+        self.ask
+    }
+
+    pub fn get_symbol(&self) -> String {
+        self.symbol.clone()
+    }
+
+    pub fn get_date(&self) -> i64 {
+        self.date
+    }
+}
+
 pub type DefaultExchangeOrderId = u64;
 pub type DefaultSubscriberId = u64;
 
