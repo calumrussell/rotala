@@ -140,7 +140,6 @@ use crate::broker::{ReceivesOrders, ReceivesOrdersAsync};
 use crate::input::{PriceSource, Quotable};
 
 pub mod broker;
-pub mod exchange;
 pub mod input;
 pub mod perf;
 pub mod schedule;

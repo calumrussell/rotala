@@ -2,11 +2,11 @@
 use pyo3::{pyclass, pymethods};
 
 use crate::{
-    exchange::{DefaultSubscriberId, ExchangeOrder, ExchangeOrderMessage, ExchangeTrade},
     input::{Dividendable, Quotable},
     types::{CashValue, PortfolioQty, Price},
 };
 use alator_clock::DateTime;
+use alator_exchange::{ ExchangeOrder, ExchangeOrderMessage };
 
 #[allow(unused)]
 use crate::types::PortfolioAllocation;
@@ -294,11 +294,11 @@ pub enum TradeType {
     Sell,
 }
 
-impl From<crate::exchange::TradeType> for TradeType {
-    fn from(value: crate::exchange::TradeType) -> Self {
+impl From<alator_exchange::TradeType> for TradeType {
+    fn from(value: alator_exchange::TradeType) -> Self {
         match value {
-            crate::exchange::TradeType::Buy => TradeType::Buy,
-            crate::exchange::TradeType::Sell => TradeType::Sell,
+            alator_exchange::TradeType::Buy => TradeType::Buy,
+            alator_exchange::TradeType::Sell => TradeType::Sell,
         }
     }
 }
@@ -364,8 +364,8 @@ impl PartialEq for Trade {
     }
 }
 
-impl From<ExchangeTrade> for Trade {
-    fn from(value: ExchangeTrade) -> Self {
+impl From<alator_exchange::ExchangeTrade> for Trade {
+    fn from(value: alator_exchange::ExchangeTrade) -> Self {
         Self {
             symbol: value.symbol,
             date: value.date,
@@ -432,28 +432,28 @@ pub enum OrderType {
     StopBuy,
 }
 
-impl From<crate::exchange::OrderType> for OrderType {
-    fn from(value: crate::exchange::OrderType) -> Self {
+impl From<alator_exchange::OrderType> for OrderType {
+    fn from(value: alator_exchange::OrderType) -> Self {
         match value {
-            crate::exchange::OrderType::LimitBuy => OrderType::LimitBuy,
-            crate::exchange::OrderType::LimitSell => OrderType::LimitSell,
-            crate::exchange::OrderType::MarketBuy => OrderType::MarketBuy,
-            crate::exchange::OrderType::MarketSell => OrderType::MarketSell,
-            crate::exchange::OrderType::StopBuy => OrderType::StopBuy,
-            crate::exchange::OrderType::StopSell => OrderType::StopSell,
+            alator_exchange::OrderType::LimitBuy => OrderType::LimitBuy,
+            alator_exchange::OrderType::LimitSell => OrderType::LimitSell,
+            alator_exchange::OrderType::MarketBuy => OrderType::MarketBuy,
+            alator_exchange::OrderType::MarketSell => OrderType::MarketSell,
+            alator_exchange::OrderType::StopBuy => OrderType::StopBuy,
+            alator_exchange::OrderType::StopSell => OrderType::StopSell,
         }
     }
 }
 
-impl From<OrderType> for crate::exchange::OrderType {
+impl From<OrderType> for alator_exchange::OrderType {
     fn from(value: OrderType) -> Self {
         match value {
-            OrderType::LimitBuy => crate::exchange::OrderType::LimitBuy,
-            OrderType::LimitSell => crate::exchange::OrderType::LimitSell,
-            OrderType::MarketBuy => crate::exchange::OrderType::MarketBuy,
-            OrderType::MarketSell => crate::exchange::OrderType::MarketSell,
-            OrderType::StopBuy => crate::exchange::OrderType::StopBuy,
-            OrderType::StopSell => crate::exchange::OrderType::StopSell,
+            OrderType::LimitBuy => alator_exchange::OrderType::LimitBuy,
+            OrderType::LimitSell => alator_exchange::OrderType::LimitSell,
+            OrderType::MarketBuy => alator_exchange::OrderType::MarketBuy,
+            OrderType::MarketSell => alator_exchange::OrderType::MarketSell,
+            OrderType::StopBuy => alator_exchange::OrderType::StopBuy,
+            OrderType::StopSell => alator_exchange::OrderType::StopSell,
         }
     }
 }
@@ -534,7 +534,7 @@ impl Order {
         }
     }
 
-    pub fn into_exchange(&self, subscriber_id: DefaultSubscriberId) -> ExchangeOrder {
+    pub fn into_exchange(&self, subscriber_id: alator_exchange::DefaultSubscriberId) -> ExchangeOrder {
         let price: Option<f64> = self.get_price().as_ref().map(|price| (**price));
 
         ExchangeOrder {
@@ -548,7 +548,7 @@ impl Order {
 
     pub fn into_exchange_message(
         &self,
-        subscriber_id: DefaultSubscriberId,
+        subscriber_id: alator_exchange::DefaultSubscriberId,
     ) -> ExchangeOrderMessage {
         let price: Option<f64> = self.get_price().as_ref().map(|price| (**price));
 

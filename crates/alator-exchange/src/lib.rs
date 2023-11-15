@@ -19,17 +19,18 @@
 //! use std::sync::{atomic::AtomicU64, Mutex};
 mod orderbook;
 mod rpc;
+mod single;
 mod types;
 
 pub mod input;
-mod single;
 pub use crate::types::proto::{
     exchange_client::ExchangeClient, FetchQuotesRequest, FetchTradesRequest, RegisterSourceRequest,
     SendOrderRequest, TickRequest,
 };
 pub use rpc::RPCExchange;
+pub use single::SyncExchangeImpl;
 pub use types::{
-    DefaultExchangeOrderId, ExchangeOrder, ExchangeTrade, OrderType, Quote, TradeType,
+    DefaultExchangeOrderId, DefaultSubscriberId, ExchangeNotificationMessage, ExchangeOrder, ExchangeOrderMessage, ExchangeTrade, OrderType, Quote, TradeType,
 };
 
 pub trait ExchangeSync {

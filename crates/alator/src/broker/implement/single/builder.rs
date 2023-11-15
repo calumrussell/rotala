@@ -1,35 +1,32 @@
 use std::collections::HashMap;
 use std::marker::PhantomData;
 
+use alator_exchange::SyncExchangeImpl;
+
 use crate::broker::implement::single::SingleBroker;
 use crate::broker::{BrokerCost, BrokerLog};
-use crate::exchange::implement::single::SingleExchange;
-use crate::input::{CorporateEventsSource, Dividendable, PriceSource, Quotable};
+use crate::input::{CorporateEventsSource, Dividendable, Quotable};
 use crate::types::{CashValue, PortfolioHoldings};
 
 /// Builds [SingleBroker].
-pub struct SingleBrokerBuilder<D, T, Q, P>
+pub struct SingleBrokerBuilder<D, T>
 where
     D: Dividendable,
     T: CorporateEventsSource<D>,
-    Q: Quotable,
-    P: PriceSource<Q>,
 {
     //Cannot run without data but can run with empty trade_costs
     corporate_source: Option<T>,
     trade_costs: Vec<BrokerCost>,
-    exchange: Option<SingleExchange<Q, P>>,
+    exchange: Option<SyncExchangeImpl>,
     dividend: PhantomData<D>,
 }
 
-impl<D, T, Q, P> SingleBrokerBuilder<D, T, Q, P>
+impl<D, T> SingleBrokerBuilder<D, T>
 where
     D: Dividendable,
     T: CorporateEventsSource<D>,
-    Q: Quotable,
-    P: PriceSource<Q>,
 {
-    pub fn build(&mut self) -> SingleBroker<D, T, Q, P> {
+    pub fn build<Q: Quotable>(&mut self) -> SingleBroker<D, T, Q> {
         if self.exchange.is_none() {
             panic!("Cannot build broker without exchange");
         }
@@ -71,7 +68,7 @@ where
         self
     }
 
-    pub fn with_exchange(&mut self, exchange: SingleExchange<Q, P>) -> &mut Self {
+    pub fn with_exchange(&mut self, exchange: SyncExchangeImpl) -> &mut Self {
         self.exchange = Some(exchange);
         self
     }
@@ -91,12 +88,10 @@ where
     }
 }
 
-impl<D, T, Q, P> Default for SingleBrokerBuilder<D, T, Q, P>
+impl<D, T> Default for SingleBrokerBuilder<D, T>
 where
     D: Dividendable,
     T: CorporateEventsSource<D>,
-    Q: Quotable,
-    P: PriceSource<Q>,
 {
     fn default() -> Self {
         Self::new()

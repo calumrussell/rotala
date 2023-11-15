@@ -5,7 +5,7 @@ use crate::{DefaultExchangeOrderId, ExchangeOrder, ExchangeSync, ExchangeTrade, 
 use alator_clock::Clock;
 
 #[derive(Debug)]
-pub struct SingleExchange {
+pub struct SyncExchangeImpl {
     clock: Clock,
     price_source: DefaultPriceSource,
     orderbook: OrderBook,
@@ -14,7 +14,7 @@ pub struct SingleExchange {
     order_buffer: Vec<ExchangeOrder>,
 }
 
-impl SingleExchange {
+impl SyncExchangeImpl {
     pub fn new(clock: Clock, price_source: DefaultPriceSource) -> Self {
         Self {
             clock,
@@ -26,7 +26,7 @@ impl SingleExchange {
     }
 }
 
-impl ExchangeSync for SingleExchange {
+impl ExchangeSync for SyncExchangeImpl {
     fn fetch_quotes(&self) -> Vec<Quote> {
         if let Some(quotes) = self.price_source.get_quotes(&self.clock.now()) {
             return quotes;
@@ -71,9 +71,9 @@ mod tests {
     use crate::input::DefaultPriceSource;
     use crate::{ExchangeOrder, ExchangeSync};
 
-    use super::SingleExchange;
+    use super::SyncExchangeImpl;
 
-    fn setup() -> SingleExchange {
+    fn setup() -> SyncExchangeImpl {
         let clock = alator_clock::ClockBuilder::with_length_in_seconds(100, 3)
             .with_frequency(&alator_clock::Frequency::Second)
             .build();
@@ -83,7 +83,7 @@ mod tests {
         price_source.add_quotes(102.00, 103.00, 101, "ABC".to_owned());
         price_source.add_quotes(105.00, 106.00, 102, "ABC".to_owned());
 
-        let exchange = SingleExchange::new(clock, price_source);
+        let exchange = SyncExchangeImpl::new(clock, price_source);
         exchange
     }
 
@@ -186,7 +186,7 @@ mod tests {
         price_source.add_quotes(101.00, 102.00, 100, "ABC".to_owned());
         price_source.add_quotes(105.00, 106.00, 102, "ABC".to_owned());
 
-        let mut exchange = SingleExchange::new(clock, price_source);
+        let mut exchange = SyncExchangeImpl::new(clock, price_source);
 
         exchange.insert_order(ExchangeOrder::market_buy(0, "ABC", 100.0));
         exchange.check();

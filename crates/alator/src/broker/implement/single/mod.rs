@@ -6,8 +6,8 @@ use log::info;
 use std::collections::HashMap;
 use std::marker::PhantomData;
 use std::sync::Arc;
+use alator_exchange::SyncExchangeImpl;
 
-use crate::exchange::implement::single::SingleExchange;
 use crate::input::{CorporateEventsSource, Dividendable, PriceSource, Quotable};
 use crate::types::{CashValue, PortfolioHoldings, PortfolioQty, Price};
 
@@ -48,16 +48,15 @@ enum BrokerState {
 
 /// Single-threaded broker. Created with [SingleBrokerBuilder].
 #[derive(Debug)]
-pub struct SingleBroker<D, T, Q, P>
+pub struct SingleBroker<D, T, Q>
 where
     D: Dividendable,
     T: CorporateEventsSource<D>,
     Q: Quotable,
-    P: PriceSource<Q>,
 {
     cash: CashValue,
     corporate_source: Option<T>,
-    exchange: SingleExchange<Q, P>,
+    exchange: SyncExchangeImpl,
     //TODO: this could be preallocated, tiny gains but this can only be as large as
     //the number of stocks in the universe. If we have a lot of changes then the HashMap
     //will be constantly resized.
@@ -74,12 +73,11 @@ where
     broker_state: BrokerState,
 }
 
-impl<D, T, Q, P> SingleBroker<D, T, Q, P>
+impl<D, T, Q> SingleBroker<D, T, Q>
 where
     D: Dividendable,
     T: CorporateEventsSource<D>,
     Q: Quotable,
-    P: PriceSource<Q>,
 {
     pub fn cost_basis(&self, symbol: &str) -> Option<Price> {
         self.log.cost_basis(symbol)
@@ -134,16 +132,16 @@ where
         for trade in completed_trades {
             match trade.typ {
                 //Force debit so we can end up with negative cash here
-                crate::exchange::TradeType::Buy => self.debit_force(&trade.value),
-                crate::exchange::TradeType::Sell => self.credit(&trade.value),
+                alator_exchange::TradeType::Buy => self.debit_force(&trade.value),
+                alator_exchange::TradeType::Sell => self.credit(&trade.value),
             };
             self.log.record::<Trade>(trade.clone().into());
 
             let curr_position = self.get_position_qty(&trade.symbol).unwrap_or_default();
 
             let updated = match trade.typ {
-                crate::exchange::TradeType::Buy => *curr_position + trade.quantity,
-                crate::exchange::TradeType::Sell => *curr_position - trade.quantity,
+                alator_exchange::TradeType::Buy => *curr_position + trade.quantity,
+                alator_exchange::TradeType::Sell => *curr_position - trade.quantity,
             };
             self.update_holdings(&trade.symbol, PortfolioQty::from(updated));
 
@@ -152,8 +150,8 @@ where
             let pending = self.pending_orders.get(&trade.symbol).unwrap_or_default();
 
             let updated_pending = match trade.typ {
-                crate::exchange::TradeType::Buy => *pending - trade.quantity,
-                crate::exchange::TradeType::Sell => *pending + trade.quantity,
+                alator_exchange::TradeType::Buy => *pending - trade.quantity,
+                alator_exchange::TradeType::Sell => *pending + trade.quantity,
             };
             if updated_pending == 0.0 {
                 self.pending_orders.remove(&trade.symbol);
@@ -194,12 +192,11 @@ where
     }
 }
 
-impl<D, T, Q, P> GetsQuote<Q> for SingleBroker<D, T, Q, P>
+impl<D, T, Q> GetsQuote<Q> for SingleBroker<D, T, Q>
 where
     D: Dividendable,
     T: CorporateEventsSource<D>,
     Q: Quotable,
-    P: PriceSource<Q>,
 {
     fn get_quote(&self, symbol: &str) -> Option<Arc<Q>> {
         self.latest_quotes.get(symbol).cloned()
@@ -218,12 +215,11 @@ where
     }
 }
 
-impl<D, T, Q, P> BacktestBroker<Q> for SingleBroker<D, T, Q, P>
+impl<D, T, Q> BacktestBroker<Q> for SingleBroker<D, T, Q>
 where
     D: Dividendable,
     T: CorporateEventsSource<D>,
     Q: Quotable,
-    P: PriceSource<Q>,
 {
     fn update_holdings(&mut self, symbol: &str, change: PortfolioQty) {
         //We have to take ownership for logging but it is easier just to use ref for symbol as that
@@ -385,12 +381,11 @@ where
     }
 }
 
-impl<D, T, Q, P> ReceivesOrders for SingleBroker<D, T, Q, P>
+impl<D, T, Q> ReceivesOrders for SingleBroker<D, T, Q>
 where
     D: Dividendable,
     T: CorporateEventsSource<D>,
     Q: Quotable,
-    P: PriceSource<Q>,
 {
     fn send_order(&mut self, order: Order) -> BrokerEvent {
         //This is an estimate of the cost based on the current price, can still end with negative
@@ -499,12 +494,11 @@ where
     }
 }
 
-impl<D, T, Q, P> EventLog for SingleBroker<D, T, Q, P>
+impl<D, T, Q> EventLog for SingleBroker<D, T, Q>
 where
     D: Dividendable,
     T: CorporateEventsSource<D>,
     Q: Quotable,
-    P: PriceSource<Q>,
 {
     fn trades_between(&self, start: &i64, end: &i64) -> Vec<Trade> {
         self.log.trades_between(start, end)
@@ -522,14 +516,14 @@ mod tests {
         Quote, ReceivesOrders,
     };
 
-    use crate::exchange::implement::single::SingleExchangeBuilder;
     use crate::input::{DefaultCorporateEventsSource, DefaultPriceSource};
     use crate::types::{CashValue, PortfolioQty};
     use alator_clock::{ClockBuilder, Frequency};
+    use alator_exchange::SyncExchangeImpl;
 
     use super::{SingleBroker, SingleBrokerBuilder};
 
-    fn setup() -> SingleBroker<Dividend, DefaultCorporateEventsSource, Quote, DefaultPriceSource> {
+    fn setup() -> SingleBroker<Dividend, DefaultCorporateEventsSource, Quote> {
         let clock = ClockBuilder::with_length_in_seconds(100, 5)
             .with_frequency(&Frequency::Second)
             .build();
@@ -551,10 +545,7 @@ mod tests {
         let mut corporate_source = DefaultCorporateEventsSource::new(clock.clone());
         corporate_source.add_dividends(5.0, "ABC", 102);
 
-        let exchange = SingleExchangeBuilder::new()
-            .with_clock(clock.clone())
-            .with_price_source(price_source)
-            .build();
+        let exchange = SyncExchangeImpl::new(clock.clone(), price_source);
 
         let brkr = SingleBrokerBuilder::new()
             .with_corporate_source(corporate_source)
@@ -728,10 +719,7 @@ mod tests {
         price_source.add_quotes(104.00, 105.00, 101, "ABC");
         price_source.add_quotes(95.00, 96.00, 102, "ABC");
 
-        let exchange = SingleExchangeBuilder::new()
-            .with_clock(clock.clone())
-            .with_price_source(price_source)
-            .build();
+        let exchange = SyncExchangeImpl::new(clock.clone(), price_source);
 
         let _brkr: SingleBroker<Dividend, DefaultCorporateEventsSource, Quote, DefaultPriceSource> =
             SingleBrokerBuilder::new()
@@ -766,10 +754,7 @@ mod tests {
         price_source.add_quotes(104.00, 105.00, 103, "ABC");
         price_source.add_quotes(12.00, 13.00, 103, "BCD");
 
-        let exchange = SingleExchangeBuilder::new()
-            .with_price_source(price_source)
-            .with_clock(clock.clone())
-            .build();
+        let exchange = SyncExchangeImpl::new(clock.clone(), price_source);
 
         let mut brkr: SingleBroker<
             Dividend,
@@ -824,10 +809,7 @@ mod tests {
         price_source.add_quotes(150.00, 151.00, 101, "ABC");
         price_source.add_quotes(150.00, 151.00, 102, "ABC");
 
-        let exchange = SingleExchangeBuilder::new()
-            .with_clock(clock.clone())
-            .with_price_source(price_source)
-            .build();
+        let exchange = SyncExchangeImpl::new(clock.clone(), price_source);
 
         let mut brkr: SingleBroker<
             Dividend,
@@ -870,11 +852,8 @@ mod tests {
         price_source.add_quotes(200.00, 201.00, 101, "ABC");
         price_source.add_quotes(200.00, 201.00, 101, "ABC");
 
-        let exchange = SingleExchangeBuilder::new()
-            .with_clock(clock.clone())
-            .with_price_source(price_source)
-            .build();
-
+        let exchange = SyncExchangeImpl::new(clock.clone(), price_source);
+        
         let mut brkr: SingleBroker<
             Dividend,
             DefaultCorporateEventsSource,

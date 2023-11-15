@@ -205,40 +205,36 @@ impl Display for UnexecutableOrderError {
 #[cfg(test)]
 mod tests {
 
-    use super::{BacktestBroker, BrokerCalculations, BrokerCost, OrderType, Quote};
-    use crate::broker::implement::multi::{ConcurrentBroker, ConcurrentBrokerBuilder};
-    use crate::broker::{Dividend, ReceivesOrdersAsync};
-    use crate::exchange::implement::multi::ConcurrentExchangeBuilder;
+    use super::{BacktestBroker, BrokerCalculations, BrokerCost, OrderType};
+    use crate::broker::implement::single::SingleBrokerBuilder;
+    use crate::broker::ReceivesOrdersAsync;
     use crate::input::{
-        fake_price_source_generator, DefaultCorporateEventsSource, DefaultPriceSource,
+        fake_price_source_generator, DefaultPriceSource,
     };
     use crate::types::PortfolioAllocation;
     use alator_clock::{ClockBuilder, Frequency};
+    use alator_exchange::SyncExchangeImpl;
 
-    #[tokio::test]
-    async fn diff_direction_correct_if_need_to_buy() {
+    #[test]
+    fn diff_direction_correct_if_need_to_buy() {
         let clock = ClockBuilder::with_length_in_days(0, 10)
             .with_frequency(&Frequency::Daily)
             .build();
         let price_source = fake_price_source_generator(clock.clone());
 
-        let mut exchange = ConcurrentExchangeBuilder::new()
-            .with_clock(clock.clone())
-            .with_price_source(price_source)
-            .build();
+        let exchange = SyncExchangeImpl::new(clock.clone(), price_source);
 
-        let mut brkr: ConcurrentBroker<Dividend, DefaultCorporateEventsSource, Quote> =
-            ConcurrentBrokerBuilder::new()
-                .with_trade_costs(vec![BrokerCost::flat(1.0)])
-                .build(&mut exchange)
-                .await;
+        let mut brkr = SingleBrokerBuilder::new()
+            .with_trade_costs(vec![BrokerCost::flat(1.0)])
+            .with_exchange(exchange)
+            .build();
 
         let mut weights = PortfolioAllocation::new();
         weights.insert("ABC", 1.0);
 
         brkr.deposit_cash(&100_000.0);
-        exchange.check().await;
-        brkr.check().await;
+        exchange.check();
+        brkr.check();
 
         let orders = BrokerCalculations::diff_brkr_against_target_weights(&weights, &mut brkr);
         println!("{:?}", orders);
@@ -249,8 +245,8 @@ mod tests {
         ));
     }
 
-    #[tokio::test]
-    async fn diff_direction_correct_if_need_to_sell() {
+    #[test]
+    fn diff_direction_correct_if_need_to_sell() {
         //This is connected to the previous test, if the above fails then this will never pass.
         //However, if the above passes this could still fail.
         let clock = ClockBuilder::with_length_in_days(0, 10)
@@ -259,29 +255,25 @@ mod tests {
 
         let price_source = fake_price_source_generator(clock.clone());
 
-        let mut exchange = ConcurrentExchangeBuilder::new()
-            .with_clock(clock.clone())
-            .with_price_source(price_source)
-            .build();
+        let exchange = SyncExchangeImpl::new(clock.clone(), price_source);
 
-        let mut brkr: ConcurrentBroker<Dividend, DefaultCorporateEventsSource, Quote> =
-            ConcurrentBrokerBuilder::new()
-                .with_trade_costs(vec![BrokerCost::flat(1.0)])
-                .build(&mut exchange)
-                .await;
+        let mut brkr = SingleBrokerBuilder::new()
+            .with_trade_costs(vec![BrokerCost::flat(1.0)])
+            .with_exchange(exchange)
+            .build();
 
         let mut weights = PortfolioAllocation::new();
         weights.insert("ABC", 1.0);
 
         brkr.deposit_cash(&100_000.0);
         let orders = BrokerCalculations::diff_brkr_against_target_weights(&weights, &mut brkr);
-        brkr.send_orders(&orders).await;
+        brkr.send_orders(&orders);
 
-        exchange.check().await;
-        brkr.check().await;
+        exchange.check();
+        brkr.check();
 
-        exchange.check().await;
-        brkr.check().await;
+        exchange.check();
+        brkr.check();
 
         let mut weights1 = PortfolioAllocation::new();
         //This weight needs to very small because it is possible for the data generator to generate
@@ -298,8 +290,8 @@ mod tests {
         ));
     }
 
-    #[tokio::test]
-    async fn diff_continues_if_security_missing() {
+    #[test]
+    fn diff_continues_if_security_missing() {
         //In this scenario, the user has inserted incorrect information but this scenario can also occur if there is no quote
         //for a given security on a certain date. We are interested in the latter case, not the former but it is more
         //difficult to test for the latter, and the code should be the same.
@@ -308,15 +300,12 @@ mod tests {
             .build();
 
         let price_source = fake_price_source_generator(clock.clone());
-        let mut exchange = ConcurrentExchangeBuilder::new()
-            .with_clock(clock.clone())
-            .with_price_source(price_source)
+        let exchange = SyncExchangeImpl::new(clock.clone(), price_source);
+
+        let mut brkr = SingleBrokerBuilder::new()
+            .with_trade_costs(vec![BrokerCost::flat(1.0)])
+            .with_exchange(exchange)
             .build();
-        let mut brkr: ConcurrentBroker<Dividend, DefaultCorporateEventsSource, Quote> =
-            ConcurrentBrokerBuilder::new()
-                .with_trade_costs(vec![BrokerCost::flat(1.0)])
-                .build(&mut exchange)
-                .await;
 
         let mut weights = PortfolioAllocation::new();
         weights.insert("ABC", 0.5);
@@ -326,15 +315,15 @@ mod tests {
         weights.insert("XYZ", 0.5);
 
         brkr.deposit_cash(&100_000.0);
-        exchange.check().await;
-        brkr.check().await;
+        exchange.check();
+        brkr.check();
         let orders = BrokerCalculations::diff_brkr_against_target_weights(&weights, &mut brkr);
         assert!(orders.len() == 1);
     }
 
-    #[tokio::test]
+    #[test]
     #[should_panic]
-    async fn diff_panics_if_brkr_has_no_cash() {
+    fn diff_panics_if_brkr_has_no_cash() {
         //If we get to a point where the client is diffing without cash, we can assume that no further operations are possible
         //and we should panic
         let clock = ClockBuilder::with_length_in_days(0, 10)
@@ -342,21 +331,18 @@ mod tests {
             .build();
 
         let price_source = fake_price_source_generator(clock.clone());
-        let mut exchange = ConcurrentExchangeBuilder::new()
-            .with_clock(clock.clone())
-            .with_price_source(price_source)
+        let exchange = SyncExchangeImpl::new(clock.clone(), price_source);
+
+        let mut brkr = SingleBrokerBuilder::new()
+            .with_trade_costs(vec![BrokerCost::flat(1.0)])
+            .with_exchange(exchange)
             .build();
-        let mut brkr: ConcurrentBroker<Dividend, DefaultCorporateEventsSource, Quote> =
-            ConcurrentBrokerBuilder::new()
-                .with_trade_costs(vec![BrokerCost::flat(1.0)])
-                .build(&mut exchange)
-                .await;
 
         let mut weights = PortfolioAllocation::new();
         weights.insert("ABC", 1.0);
 
-        exchange.check().await;
-        brkr.check().await;
+        exchange.check();
+        brkr.check();
         BrokerCalculations::diff_brkr_against_target_weights(&weights, &mut brkr);
     }
 
@@ -384,8 +370,8 @@ mod tests {
         assert!((*initial.1).eq(&1.1));
     }
 
-    #[tokio::test]
-    async fn diff_handles_sent_but_unexecuted_orders() {
+    #[test]
+    fn diff_handles_sent_but_unexecuted_orders() {
         //It is possible for the client to issue orders for infinitely increasing numbers of shares
         //if there is a gap between orders being issued and executed. For example, if we are
         //missing price data the client could think we need 100 shares, that order doesn't get
@@ -402,39 +388,38 @@ mod tests {
         price_source.add_quotes(100.00, 100.00, 101, "ABC");
         price_source.add_quotes(100.00, 100.00, 103, "ABC");
 
-        let mut exchange = ConcurrentExchangeBuilder::new()
-            .with_clock(clock.clone())
-            .with_price_source(price_source)
-            .build();
+        let exchange = SyncExchangeImpl::new(clock.clone(), price_source);
 
-        let mut brkr: ConcurrentBroker<Dividend, DefaultCorporateEventsSource, Quote> =
-            ConcurrentBrokerBuilder::new().build(&mut exchange).await;
+        let mut brkr = SingleBrokerBuilder::new()
+            .with_trade_costs(vec![BrokerCost::flat(1.0)])
+            .with_exchange(exchange)
+            .build();
 
         brkr.deposit_cash(&100_000.0);
 
         //No price for security so we haven't diffed correctly
-        exchange.check().await;
-        brkr.check().await;
+        exchange.check();
+        brkr.check();
 
-        exchange.check().await;
-        brkr.check().await;
+        exchange.check();
+        brkr.check();
 
         let mut target_weights = PortfolioAllocation::new();
         target_weights.insert("ABC", 0.9);
 
         let orders =
             BrokerCalculations::diff_brkr_against_target_weights(&target_weights, &mut brkr);
-        brkr.send_orders(&orders).await;
+        brkr.send_orders(&orders);
 
-        exchange.check().await;
-        brkr.check().await;
+        exchange.check();
+        brkr.check();
 
         let orders1 =
             BrokerCalculations::diff_brkr_against_target_weights(&target_weights, &mut brkr);
 
-        brkr.send_orders(&orders1).await;
-        exchange.check().await;
-        brkr.check().await;
+        brkr.send_orders(&orders1);
+        exchange.check();
+        brkr.check();
 
         dbg!(brkr.get_position_qty("ABC"));
         //If the logic isn't correct the orders will have doubled up to 1800
@@ -456,13 +441,12 @@ mod tests {
         price_source.add_quotes(75.00, 75.00, 103, "ABC");
         price_source.add_quotes(75.00, 75.00, 104, "ABC");
 
-        let mut exchange = ConcurrentExchangeBuilder::new()
-            .with_clock(clock.clone())
-            .with_price_source(price_source)
-            .build();
+        let exchange = SyncExchangeImpl::new(clock.clone(), price_source);
 
-        let mut brkr: ConcurrentBroker<Dividend, DefaultCorporateEventsSource, Quote> =
-            ConcurrentBrokerBuilder::new().build(&mut exchange).await;
+        let mut brkr = SingleBrokerBuilder::new()
+            .with_trade_costs(vec![BrokerCost::flat(1.0)])
+            .with_exchange(exchange)
+            .build();
 
         brkr.deposit_cash(&100_000.0);
 
@@ -471,26 +455,27 @@ mod tests {
         let orders =
             BrokerCalculations::diff_brkr_against_target_weights(&target_weights, &mut brkr);
         println!("{:?}", orders);
-        brkr.send_orders(&orders).await;
+
+        brkr.send_orders(&orders);
 
         //No price for security so we haven't diffed correctly
-        exchange.check().await;
-        brkr.check().await;
+        exchange.check();
+        brkr.check();
 
-        exchange.check().await;
-        brkr.check().await;
+        exchange.check();
+        brkr.check();
 
-        exchange.check().await;
-        brkr.check().await;
+        exchange.check();
+        brkr.check();
 
         let orders1 =
             BrokerCalculations::diff_brkr_against_target_weights(&target_weights, &mut brkr);
         println!("{:?}", orders1);
 
-        brkr.send_orders(&orders1).await;
+        brkr.send_orders(&orders1);
 
-        exchange.check().await;
-        brkr.check().await;
+        exchange.check();
+        brkr.check();
 
         println!("{:?}", brkr.get_holdings());
         //If the logic isn't correct then the order will be for less shares than is actually

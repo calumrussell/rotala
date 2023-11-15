@@ -257,20 +257,20 @@ impl PerformanceCalculator {
 mod tests {
     use crate::broker::implement::single::{SingleBroker, SingleBrokerBuilder};
     use crate::broker::{BrokerCost, Dividend, Quote};
-    use crate::exchange::implement::single::SingleExchangeBuilder;
     use crate::input::{DefaultCorporateEventsSource, DefaultPriceSource};
     use crate::perf::StrategySnapshot;
     use crate::strategy::implement::staticweight::StaticWeightStrategyBuilder;
     use crate::strategy::{History, Strategy};
     use crate::types::PortfolioAllocation;
     use alator_clock::{Clock, ClockBuilder};
+    use alator_exchange::SyncExchangeImpl;
 
     use super::Frequency;
     use super::PerformanceCalculator;
     use super::PortfolioCalculations;
 
     fn setup() -> (
-        SingleBroker<Dividend, DefaultCorporateEventsSource, Quote, DefaultPriceSource>,
+        SingleBroker<Dividend, DefaultCorporateEventsSource, Quote>,
         Clock,
     ) {
         let clock = ClockBuilder::with_length_in_dates(100, 103)
@@ -288,10 +288,7 @@ mod tests {
         price_source.add_quotes(498.0, 499.0, 102, "BCD");
         price_source.add_quotes(495.0, 496.0, 103, "BCD");
 
-        let exchange = SingleExchangeBuilder::new()
-            .with_clock(clock.clone())
-            .with_price_source(price_source)
-            .build();
+        let exchange = SyncExchangeImpl::new(clock.clone(), price_source);
 
         let brkr = SingleBrokerBuilder::new()
             .with_trade_costs(vec![BrokerCost::PctOfValue(0.01)])
