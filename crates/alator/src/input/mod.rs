@@ -1,11 +1,11 @@
 //! Data sources
 
-use std::collections::HashMap;
-use std::sync::Arc;
-use alator_clock::{DateTime, Clock};
+use alator_clock::{Clock, DateTime};
 use alator_exchange::input::DefaultPriceSource;
 use rand::distributions::{Distribution, Uniform};
 use rand::thread_rng;
+use std::collections::HashMap;
+use std::sync::Arc;
 
 use crate::broker::Dividend;
 use crate::types::Price;
@@ -26,7 +26,6 @@ where
 {
     fn get_dividends(&self) -> Option<Vec<Arc<D>>>;
 }
-
 
 /// Generates random [DefaultPriceSource] for use in tests that don't depend on prices.
 pub fn fake_price_source_generator(clock: Clock) -> DefaultPriceSource {

@@ -1,13 +1,11 @@
-use std::collections::HashMap;
-use std::io::{Cursor, Write};
 use alator_clock::{Clock, ClockBuilder, Frequency};
 use alator_exchange::input::DefaultPriceSource;
 use alator_exchange::{Quote, SyncExchangeImpl};
+use std::collections::HashMap;
+use std::io::{Cursor, Write};
 
 use alator::broker::implement::single::{SingleBroker, SingleBrokerBuilder};
-use alator::broker::{
-    BacktestBroker, Dividend, GetsQuote, Order, OrderType, ReceivesOrders,
-};
+use alator::broker::{BacktestBroker, Dividend, GetsQuote, Order, OrderType, ReceivesOrders};
 use alator::input::DefaultCorporateEventsSource;
 use alator::simcontext::SimContextBuilder;
 use alator::strategy::{History, Strategy, StrategyEvent, TransferTo};
@@ -252,10 +250,7 @@ impl Strategy for MovingAverageStrategy {
 }
 
 impl MovingAverageStrategy {
-    fn new(
-        brkr: SingleBroker<Dividend, DefaultCorporateEventsSource>,
-        clock: Clock,
-    ) -> Self {
+    fn new(brkr: SingleBroker<Dividend, DefaultCorporateEventsSource>, clock: Clock) -> Self {
         let ten = MovingAverage::new(10);
         let fifty = MovingAverage::new(50);
         let history = Vec::new();

@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 use std::marker::PhantomData;
 
-use alator_exchange::{ ExchangeSync, SyncExchangeImpl};
+use alator_exchange::{ExchangeSync, SyncExchangeImpl};
 
 use crate::broker::implement::single::SingleBroker;
 use crate::broker::{BrokerCost, BrokerLog};

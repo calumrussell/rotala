@@ -2,7 +2,6 @@
 
 mod builder;
 
-
 pub use builder::SimContextBuilder;
 
 use crate::perf::{BacktestOutput, PerformanceCalculator};

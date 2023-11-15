@@ -1,14 +1,12 @@
-use alator_exchange::SyncExchangeImpl;
-use alator_exchange::input::DefaultPriceSource;
 use alator_clock::{ClockBuilder, Frequency};
+use alator_exchange::input::DefaultPriceSource;
+use alator_exchange::SyncExchangeImpl;
 use criterion::{criterion_group, criterion_main, Criterion};
 use rand::thread_rng;
 use rand_distr::{Distribution, Uniform};
 
 use alator::broker::implement::single::{SingleBroker, SingleBrokerBuilder};
-use alator::broker::{
-    BacktestBroker, BrokerCost, Dividend, Order, OrderType, ReceivesOrders,
-};
+use alator::broker::{BacktestBroker, BrokerCost, Dividend, Order, OrderType, ReceivesOrders};
 use alator::input::DefaultCorporateEventsSource;
 use alator::simcontext::SimContextBuilder;
 use alator::strategy::implement::staticweight::StaticWeightStrategyBuilder;
@@ -47,11 +45,10 @@ fn full_backtest_random_data() {
 
     let exchange = SyncExchangeImpl::new(clock.clone(), price_source);
 
-    let simbrkr: SingleBroker<Dividend, DefaultCorporateEventsSource> =
-        SingleBrokerBuilder::new()
-            .with_exchange(exchange)
-            .with_trade_costs(vec![BrokerCost::Flat(1.0.into())])
-            .build();
+    let simbrkr: SingleBroker<Dividend, DefaultCorporateEventsSource> = SingleBrokerBuilder::new()
+        .with_exchange(exchange)
+        .with_trade_costs(vec![BrokerCost::Flat(1.0.into())])
+        .build();
 
     let strat = StaticWeightStrategyBuilder::new()
         .with_brkr(simbrkr)

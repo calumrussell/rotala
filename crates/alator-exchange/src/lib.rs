@@ -30,7 +30,8 @@ pub use crate::types::proto::{
 pub use rpc::RPCExchange;
 pub use single::SyncExchangeImpl;
 pub use types::{
-    DefaultExchangeOrderId, DefaultSubscriberId, ExchangeNotificationMessage, ExchangeOrder, ExchangeOrderMessage, ExchangeTrade, OrderType, Quote, TradeType,
+    DefaultExchangeOrderId, DefaultSubscriberId, ExchangeNotificationMessage, ExchangeOrder,
+    ExchangeOrderMessage, ExchangeTrade, OrderType, Quote, TradeType,
 };
 
 pub trait ExchangeSync {

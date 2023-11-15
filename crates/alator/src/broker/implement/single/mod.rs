@@ -2,11 +2,11 @@
 mod builder;
 pub use builder::SingleBrokerBuilder;
 
+use alator_exchange::{ExchangeSync, Quote, SyncExchangeImpl};
 use log::info;
 use std::collections::HashMap;
 use std::marker::PhantomData;
 use std::sync::Arc;
-use alator_exchange::{ExchangeSync, SyncExchangeImpl, Quote};
 
 use crate::input::{CorporateEventsSource, Dividendable};
 use crate::types::{CashValue, PortfolioHoldings, PortfolioQty, Price};
@@ -122,7 +122,7 @@ where
         //Update prices, these prices are not tradable
         for quote in &self.exchange.fetch_quotes() {
             self.latest_quotes
-                .insert(quote.get_symbol().to_string(),quote.clone());
+                .insert(quote.get_symbol().to_string(), quote.clone());
         }
 
         //Reconcile broker against executed trades
@@ -413,9 +413,11 @@ where
                     }
                 };
 
-                if let Err(_err) =
-                    BrokerCalculations::client_has_sufficient_cash(&order, &Price::from(price), self)
-                {
+                if let Err(_err) = BrokerCalculations::client_has_sufficient_cash(
+                    &order,
+                    &Price::from(price),
+                    self,
+                ) {
                     info!(
                         "BROKER: Unable to send {:?} order for {:?} shares of {:?} to exchange",
                         order.get_order_type(),
@@ -513,8 +515,8 @@ mod tests {
     use crate::input::DefaultCorporateEventsSource;
     use crate::types::{CashValue, PortfolioQty};
     use alator_clock::{ClockBuilder, Frequency};
-    use alator_exchange::SyncExchangeImpl;
     use alator_exchange::input::DefaultPriceSource;
+    use alator_exchange::SyncExchangeImpl;
 
     use super::{SingleBroker, SingleBrokerBuilder};
 
@@ -751,13 +753,11 @@ mod tests {
 
         let exchange = SyncExchangeImpl::new(clock.clone(), price_source);
 
-        let mut brkr: SingleBroker<
-            Dividend,
-            DefaultCorporateEventsSource,
-        > = SingleBrokerBuilder::new()
-            .with_exchange(exchange)
-            .with_trade_costs(vec![BrokerCost::PctOfValue(0.01)])
-            .build();
+        let mut brkr: SingleBroker<Dividend, DefaultCorporateEventsSource> =
+            SingleBrokerBuilder::new()
+                .with_exchange(exchange)
+                .with_trade_costs(vec![BrokerCost::PctOfValue(0.01)])
+                .build();
 
         brkr.deposit_cash(&100_000.0);
         brkr.send_order(Order::market(OrderType::MarketBuy, "ABC", 100.0));
@@ -804,13 +804,11 @@ mod tests {
 
         let exchange = SyncExchangeImpl::new(clock.clone(), price_source);
 
-        let mut brkr: SingleBroker<
-            Dividend,
-            DefaultCorporateEventsSource,
-        > = SingleBrokerBuilder::new()
-            .with_exchange(exchange)
-            .with_trade_costs(vec![BrokerCost::PctOfValue(0.01)])
-            .build();
+        let mut brkr: SingleBroker<Dividend, DefaultCorporateEventsSource> =
+            SingleBrokerBuilder::new()
+                .with_exchange(exchange)
+                .with_trade_costs(vec![BrokerCost::PctOfValue(0.01)])
+                .build();
 
         brkr.deposit_cash(&100_000.0);
         //Because the price of ABC rises after this order is sent, we will end up with a negative
@@ -844,14 +842,12 @@ mod tests {
         price_source.add_quotes(200.00, 201.00, 101, "ABC");
 
         let exchange = SyncExchangeImpl::new(clock.clone(), price_source);
-        
-        let mut brkr: SingleBroker<
-            Dividend,
-            DefaultCorporateEventsSource,
-        > = SingleBrokerBuilder::new()
-            .with_exchange(exchange)
-            .with_trade_costs(vec![BrokerCost::PctOfValue(0.01)])
-            .build();
+
+        let mut brkr: SingleBroker<Dividend, DefaultCorporateEventsSource> =
+            SingleBrokerBuilder::new()
+                .with_exchange(exchange)
+                .with_trade_costs(vec![BrokerCost::PctOfValue(0.01)])
+                .build();
 
         brkr.deposit_cash(&100_000.0);
         //This will use all the available cash balance, the market price doubles so the broker ends

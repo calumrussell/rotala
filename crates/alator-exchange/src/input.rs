@@ -46,11 +46,8 @@ impl DefaultPriceSource {
     }
 
     pub fn from_hashmap(inner: HashMap<i64, HashMap<String, crate::Quote>>) -> Self {
-        Self {
-            inner
-        }
+        Self { inner }
     }
-
 }
 
 impl Default for DefaultPriceSource {

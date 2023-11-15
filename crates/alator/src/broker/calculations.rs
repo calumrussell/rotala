@@ -104,9 +104,7 @@ impl BrokerCalculations {
     /// divergences in performance from the underlying in certain cases. For example, if prices are
     /// volatile, in the case of low-frequency data, then the broker will end up continuously
     /// re-balancing in a random way under certain price movements.
-    pub async fn withdraw_cash_with_liquidation_async<
-        T: BacktestBroker + ReceivesOrdersAsync,
-    >(
+    pub async fn withdraw_cash_with_liquidation_async<T: BacktestBroker + ReceivesOrdersAsync>(
         cash: &f64,
         brkr: &mut T,
     ) -> super::BrokerCashEvent {

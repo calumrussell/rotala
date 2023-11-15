@@ -263,17 +263,14 @@ mod tests {
     use crate::strategy::{History, Strategy};
     use crate::types::PortfolioAllocation;
     use alator_clock::{Clock, ClockBuilder};
-    use alator_exchange::SyncExchangeImpl;
     use alator_exchange::input::DefaultPriceSource;
+    use alator_exchange::SyncExchangeImpl;
 
     use super::Frequency;
     use super::PerformanceCalculator;
     use super::PortfolioCalculations;
 
-    fn setup() -> (
-        SingleBroker<Dividend, DefaultCorporateEventsSource>,
-        Clock,
-    ) {
+    fn setup() -> (SingleBroker<Dividend, DefaultCorporateEventsSource>, Clock) {
         let clock = ClockBuilder::with_length_in_dates(100, 103)
             .with_frequency(&Frequency::Second)
             .build();

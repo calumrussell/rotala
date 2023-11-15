@@ -6,7 +6,7 @@ use crate::{
     types::{CashValue, PortfolioQty, Price},
 };
 use alator_clock::DateTime;
-use alator_exchange::{ ExchangeOrder, ExchangeOrderMessage };
+use alator_exchange::{ExchangeOrder, ExchangeOrderMessage};
 
 #[allow(unused)]
 use crate::types::PortfolioAllocation;
@@ -376,7 +376,10 @@ impl Order {
         }
     }
 
-    pub fn into_exchange(&self, subscriber_id: alator_exchange::DefaultSubscriberId) -> ExchangeOrder {
+    pub fn into_exchange(
+        &self,
+        subscriber_id: alator_exchange::DefaultSubscriberId,
+    ) -> ExchangeOrder {
         let price: Option<f64> = self.get_price().as_ref().map(|price| (**price));
 
         ExchangeOrder {
