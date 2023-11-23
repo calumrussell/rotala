@@ -224,11 +224,10 @@ mod tests {
 
         let mut exchange = SyncExchangeImpl::new(clock.clone(), price_source);
 
-        let mut brkr: SingleBroker<Dividend, DefaultCorporateEventsSource> =
-            SingleBrokerBuilder::new()
-                .with_trade_costs(vec![BrokerCost::flat(1.0)])
-                .with_exchange(exchange)
-                .build();
+        let mut brkr = SingleBrokerBuilder::new()
+            .with_trade_costs(vec![BrokerCost::flat(1.0)])
+            .with_exchange(exchange)
+            .build();
 
         let mut weights = PortfolioAllocation::new();
         weights.insert("ABC", 1.0);
@@ -257,11 +256,10 @@ mod tests {
 
         let mut exchange = SyncExchangeImpl::new(clock.clone(), price_source);
 
-        let mut brkr: SingleBroker<Dividend, DefaultCorporateEventsSource> =
-            SingleBrokerBuilder::new()
-                .with_trade_costs(vec![BrokerCost::flat(1.0)])
-                .with_exchange(exchange)
-                .build();
+        let mut brkr = SingleBrokerBuilder::new()
+            .with_trade_costs(vec![BrokerCost::flat(1.0)])
+            .with_exchange(exchange)
+            .build();
 
         let mut weights = PortfolioAllocation::new();
         weights.insert("ABC", 1.0);
@@ -301,11 +299,10 @@ mod tests {
         let price_source = fake_price_source_generator(clock.clone());
         let mut exchange = SyncExchangeImpl::new(clock.clone(), price_source);
 
-        let mut brkr: SingleBroker<Dividend, DefaultCorporateEventsSource> =
-            SingleBrokerBuilder::new()
-                .with_trade_costs(vec![BrokerCost::flat(1.0)])
-                .with_exchange(exchange)
-                .build();
+        let mut brkr = SingleBrokerBuilder::new()
+            .with_trade_costs(vec![BrokerCost::flat(1.0)])
+            .with_exchange(exchange)
+            .build();
 
         let mut weights = PortfolioAllocation::new();
         weights.insert("ABC", 0.5);
@@ -332,11 +329,10 @@ mod tests {
         let price_source = fake_price_source_generator(clock.clone());
         let mut exchange = SyncExchangeImpl::new(clock.clone(), price_source);
 
-        let mut brkr: SingleBroker<Dividend, DefaultCorporateEventsSource> =
-            SingleBrokerBuilder::new()
-                .with_trade_costs(vec![BrokerCost::flat(1.0)])
-                .with_exchange(exchange)
-                .build();
+        let mut brkr = SingleBrokerBuilder::new()
+            .with_trade_costs(vec![BrokerCost::flat(1.0)])
+            .with_exchange(exchange)
+            .build();
 
         let mut weights = PortfolioAllocation::new();
         weights.insert("ABC", 1.0);
@@ -389,8 +385,7 @@ mod tests {
 
         let mut exchange = SyncExchangeImpl::new(clock.clone(), price_source);
 
-        let mut brkr: SingleBroker<Dividend, DefaultCorporateEventsSource> =
-            SingleBrokerBuilder::new().with_exchange(exchange).build();
+        let mut brkr = SingleBrokerBuilder::new().with_exchange(exchange).build();
 
         brkr.deposit_cash(&100_000.0);
 
@@ -436,8 +431,7 @@ mod tests {
 
         let mut exchange = SyncExchangeImpl::new(clock.clone(), price_source);
 
-        let mut brkr: SingleBroker<Dividend, DefaultCorporateEventsSource> =
-            SingleBrokerBuilder::new().with_exchange(exchange).build();
+        let mut brkr = SingleBrokerBuilder::new().with_exchange(exchange).build();
 
         brkr.deposit_cash(&100_000.0);
 

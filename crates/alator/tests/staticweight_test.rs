@@ -4,9 +4,8 @@ use alator_exchange::SyncExchangeImpl;
 use rand::distributions::{Distribution, Uniform};
 use rand::thread_rng;
 
-use alator::broker::implement::single::{SingleBroker, SingleBrokerBuilder};
-use alator::broker::{BrokerCost, Dividend};
-use alator::input::DefaultCorporateEventsSource;
+use alator::broker::implement::single::SingleBrokerBuilder;
+use alator::broker::BrokerCost;
 use alator::simcontext::SimContextBuilder;
 use alator::strategy::implement::staticweight::StaticWeightStrategyBuilder;
 use alator::types::{CashValue, PortfolioAllocation};
@@ -51,7 +50,7 @@ fn staticweight_integration_test() {
 
     let exchange = SyncExchangeImpl::new(clock.clone(), price_source);
 
-    let simbrkr: SingleBroker<Dividend, DefaultCorporateEventsSource> = SingleBrokerBuilder::new()
+    let simbrkr = SingleBrokerBuilder::new()
         .with_trade_costs(vec![BrokerCost::Flat(1.0.into())])
         .with_exchange(exchange)
         .build();

@@ -256,8 +256,7 @@ impl PerformanceCalculator {
 #[cfg(test)]
 mod tests {
     use crate::broker::implement::single::{SingleBroker, SingleBrokerBuilder};
-    use crate::broker::{BrokerCost, Dividend};
-    use crate::input::DefaultCorporateEventsSource;
+    use crate::broker::BrokerCost;
     use crate::perf::StrategySnapshot;
     use crate::strategy::implement::staticweight::StaticWeightStrategyBuilder;
     use crate::strategy::{History, Strategy};
@@ -270,7 +269,7 @@ mod tests {
     use super::PerformanceCalculator;
     use super::PortfolioCalculations;
 
-    fn setup() -> (SingleBroker<Dividend, DefaultCorporateEventsSource>, Clock) {
+    fn setup() -> (SingleBroker, Clock) {
         let clock = ClockBuilder::with_length_in_dates(100, 103)
             .with_frequency(&Frequency::Second)
             .build();

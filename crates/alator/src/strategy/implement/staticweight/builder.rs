@@ -1,27 +1,18 @@
 use crate::broker::implement::single::SingleBroker;
-use crate::input::{CorporateEventsSource, Dividendable};
 use crate::types::PortfolioAllocation;
 use alator_clock::Clock;
 
 use super::StaticWeightStrategy;
 
-pub struct StaticWeightStrategyBuilder<D, T>
-where
-    D: Dividendable,
-    T: CorporateEventsSource<D>,
-{
+pub struct StaticWeightStrategyBuilder {
     //If missing either field, we cannot run this strategy
-    brkr: Option<SingleBroker<D, T>>,
+    brkr: Option<SingleBroker>,
     weights: Option<PortfolioAllocation>,
     clock: Option<Clock>,
 }
 
-impl<D, T> StaticWeightStrategyBuilder<D, T>
-where
-    D: Dividendable,
-    T: CorporateEventsSource<D>,
-{
-    pub fn default(&mut self) -> StaticWeightStrategy<D, T> {
+impl StaticWeightStrategyBuilder {
+    pub fn default(&mut self) -> StaticWeightStrategy {
         if self.brkr.is_none() || self.weights.is_none() || self.clock.is_none() {
             panic!("Strategy must have broker, weights, and clock");
         }
@@ -42,7 +33,7 @@ where
         self
     }
 
-    pub fn with_brkr(&mut self, brkr: SingleBroker<D, T>) -> &mut Self {
+    pub fn with_brkr(&mut self, brkr: SingleBroker) -> &mut Self {
         self.brkr = Some(brkr);
         self
     }
@@ -61,11 +52,7 @@ where
     }
 }
 
-impl<D, T> Default for StaticWeightStrategyBuilder<D, T>
-where
-    D: Dividendable,
-    T: CorporateEventsSource<D>,
-{
+impl Default for StaticWeightStrategyBuilder {
     fn default() -> Self {
         Self::new()
     }

@@ -5,28 +5,19 @@ use alator_exchange::{ExchangeSync, SyncExchangeImpl};
 
 use crate::broker::implement::single::SingleBroker;
 use crate::broker::{BrokerCost, BrokerLog};
-use crate::input::{CorporateEventsSource, Dividendable};
+use crate::input::{CorporateEventsSource, DefaultCorporateEventsSource, Dividendable};
 use crate::types::{CashValue, PortfolioHoldings};
 
 /// Builds [SingleBroker].
-pub struct SingleBrokerBuilder<D, T>
-where
-    D: Dividendable,
-    T: CorporateEventsSource<D>,
-{
+pub struct SingleBrokerBuilder {
     //Cannot run without data but can run with empty trade_costs
-    corporate_source: Option<T>,
+    corporate_source: Option<DefaultCorporateEventsSource>,
     trade_costs: Vec<BrokerCost>,
     exchange: Option<SyncExchangeImpl>,
-    dividend: PhantomData<D>,
 }
 
-impl<D, T> SingleBrokerBuilder<D, T>
-where
-    D: Dividendable,
-    T: CorporateEventsSource<D>,
-{
-    pub fn build(&mut self) -> SingleBroker<D, T> {
+impl SingleBrokerBuilder {
+    pub fn build(&mut self) -> SingleBroker {
         if self.exchange.is_none() {
             panic!("Cannot build broker without exchange");
         }
@@ -58,12 +49,11 @@ where
             exchange,
             trade_costs: self.trade_costs.clone(),
             latest_quotes: first_quotes,
-            dividend: PhantomData,
             broker_state: super::BrokerState::Ready,
         }
     }
 
-    pub fn with_corporate_source(&mut self, data: T) -> &mut Self {
+    pub fn with_corporate_source(&mut self, data: DefaultCorporateEventsSource) -> &mut Self {
         self.corporate_source = Some(data);
         self
     }
@@ -83,16 +73,11 @@ where
             corporate_source: None,
             trade_costs: Vec::new(),
             exchange: None,
-            dividend: PhantomData,
         }
     }
 }
 
-impl<D, T> Default for SingleBrokerBuilder<D, T>
-where
-    D: Dividendable,
-    T: CorporateEventsSource<D>,
-{
+impl Default for SingleBrokerBuilder {
     fn default() -> Self {
         Self::new()
     }

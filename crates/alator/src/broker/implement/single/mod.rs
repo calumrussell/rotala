@@ -8,12 +8,12 @@ use std::collections::HashMap;
 use std::marker::PhantomData;
 use std::sync::Arc;
 
-use crate::input::{CorporateEventsSource, Dividendable};
+use crate::input::{CorporateEventsSource, DefaultCorporateEventsSource, Dividendable};
 use crate::types::{CashValue, PortfolioHoldings, PortfolioQty, Price};
 
 use crate::broker::{
     BacktestBroker, BrokerCalculations, BrokerCashEvent, BrokerCost, BrokerEvent, BrokerLog,
-    DividendPayment, EventLog, GetsQuote, Order, OrderType, ReceivesOrders, Trade,
+    Dividend, DividendPayment, EventLog, GetsQuote, Order, OrderType, ReceivesOrders, Trade,
 };
 
 /// Once the broker moves into Failed state then all operations that mutate state are rejected.
@@ -48,13 +48,9 @@ enum BrokerState {
 
 /// Single-threaded broker. Created with [SingleBrokerBuilder].
 #[derive(Debug)]
-pub struct SingleBroker<D, T>
-where
-    D: Dividendable,
-    T: CorporateEventsSource<D>,
-{
+pub struct SingleBroker {
     cash: CashValue,
-    corporate_source: Option<T>,
+    corporate_source: Option<DefaultCorporateEventsSource>,
     exchange: SyncExchangeImpl,
     //TODO: this could be preallocated, tiny gains but this can only be as large as
     //the number of stocks in the universe. If we have a lot of changes then the HashMap
@@ -68,15 +64,10 @@ where
     latest_quotes: HashMap<String, Quote>,
     log: BrokerLog,
     trade_costs: Vec<BrokerCost>,
-    dividend: PhantomData<D>,
     broker_state: BrokerState,
 }
 
-impl<D, T> SingleBroker<D, T>
-where
-    D: Dividendable,
-    T: CorporateEventsSource<D>,
-{
+impl SingleBroker {
     pub fn cost_basis(&self, symbol: &str) -> Option<Price> {
         self.log.cost_basis(symbol)
     }
@@ -190,11 +181,7 @@ where
     }
 }
 
-impl<D, T> GetsQuote for SingleBroker<D, T>
-where
-    D: Dividendable,
-    T: CorporateEventsSource<D>,
-{
+impl GetsQuote for SingleBroker {
     fn get_quote(&self, symbol: &str) -> Option<Quote> {
         self.latest_quotes.get(symbol).cloned()
     }
@@ -212,11 +199,7 @@ where
     }
 }
 
-impl<D, T> BacktestBroker for SingleBroker<D, T>
-where
-    D: Dividendable,
-    T: CorporateEventsSource<D>,
-{
+impl BacktestBroker for SingleBroker {
     fn update_holdings(&mut self, symbol: &str, change: PortfolioQty) {
         //We have to take ownership for logging but it is easier just to use ref for symbol as that
         //is used throughout
@@ -377,11 +360,7 @@ where
     }
 }
 
-impl<D, T> ReceivesOrders for SingleBroker<D, T>
-where
-    D: Dividendable,
-    T: CorporateEventsSource<D>,
-{
+impl ReceivesOrders for SingleBroker {
     fn send_order(&mut self, order: Order) -> BrokerEvent {
         //This is an estimate of the cost based on the current price, can still end with negative
         //balance when we reconcile with actuals, may also reject valid orders at the margin
@@ -491,11 +470,7 @@ where
     }
 }
 
-impl<D, T> EventLog for SingleBroker<D, T>
-where
-    D: Dividendable,
-    T: CorporateEventsSource<D>,
-{
+impl EventLog for SingleBroker {
     fn trades_between(&self, start: &i64, end: &i64) -> Vec<Trade> {
         self.log.trades_between(start, end)
     }
@@ -520,7 +495,7 @@ mod tests {
 
     use super::{SingleBroker, SingleBrokerBuilder};
 
-    fn setup() -> SingleBroker<Dividend, DefaultCorporateEventsSource> {
+    fn setup() -> SingleBroker {
         let clock = ClockBuilder::with_length_in_seconds(100, 5)
             .with_frequency(&Frequency::Second)
             .build();
@@ -718,11 +693,10 @@ mod tests {
 
         let exchange = SyncExchangeImpl::new(clock.clone(), price_source);
 
-        let _brkr: SingleBroker<Dividend, DefaultCorporateEventsSource> =
-            SingleBrokerBuilder::new()
-                .with_exchange(exchange)
-                .with_trade_costs(vec![BrokerCost::PctOfValue(0.01)])
-                .build();
+        let _brkr = SingleBrokerBuilder::new()
+            .with_exchange(exchange)
+            .with_trade_costs(vec![BrokerCost::PctOfValue(0.01)])
+            .build();
     }
 
     #[test]
@@ -753,11 +727,10 @@ mod tests {
 
         let exchange = SyncExchangeImpl::new(clock.clone(), price_source);
 
-        let mut brkr: SingleBroker<Dividend, DefaultCorporateEventsSource> =
-            SingleBrokerBuilder::new()
-                .with_exchange(exchange)
-                .with_trade_costs(vec![BrokerCost::PctOfValue(0.01)])
-                .build();
+        let mut brkr = SingleBrokerBuilder::new()
+            .with_exchange(exchange)
+            .with_trade_costs(vec![BrokerCost::PctOfValue(0.01)])
+            .build();
 
         brkr.deposit_cash(&100_000.0);
         brkr.send_order(Order::market(OrderType::MarketBuy, "ABC", 100.0));
@@ -804,11 +777,10 @@ mod tests {
 
         let exchange = SyncExchangeImpl::new(clock.clone(), price_source);
 
-        let mut brkr: SingleBroker<Dividend, DefaultCorporateEventsSource> =
-            SingleBrokerBuilder::new()
-                .with_exchange(exchange)
-                .with_trade_costs(vec![BrokerCost::PctOfValue(0.01)])
-                .build();
+        let mut brkr = SingleBrokerBuilder::new()
+            .with_exchange(exchange)
+            .with_trade_costs(vec![BrokerCost::PctOfValue(0.01)])
+            .build();
 
         brkr.deposit_cash(&100_000.0);
         //Because the price of ABC rises after this order is sent, we will end up with a negative
@@ -843,11 +815,10 @@ mod tests {
 
         let exchange = SyncExchangeImpl::new(clock.clone(), price_source);
 
-        let mut brkr: SingleBroker<Dividend, DefaultCorporateEventsSource> =
-            SingleBrokerBuilder::new()
-                .with_exchange(exchange)
-                .with_trade_costs(vec![BrokerCost::PctOfValue(0.01)])
-                .build();
+        let mut brkr = SingleBrokerBuilder::new()
+            .with_exchange(exchange)
+            .with_trade_costs(vec![BrokerCost::PctOfValue(0.01)])
+            .build();
 
         brkr.deposit_cash(&100_000.0);
         //This will use all the available cash balance, the market price doubles so the broker ends

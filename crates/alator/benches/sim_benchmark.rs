@@ -5,9 +5,8 @@ use criterion::{criterion_group, criterion_main, Criterion};
 use rand::thread_rng;
 use rand_distr::{Distribution, Uniform};
 
-use alator::broker::implement::single::{SingleBroker, SingleBrokerBuilder};
-use alator::broker::{BacktestBroker, BrokerCost, Dividend, Order, OrderType, ReceivesOrders};
-use alator::input::DefaultCorporateEventsSource;
+use alator::broker::implement::single::SingleBrokerBuilder;
+use alator::broker::{BacktestBroker, BrokerCost, Order, OrderType, ReceivesOrders};
 use alator::simcontext::SimContextBuilder;
 use alator::strategy::implement::staticweight::StaticWeightStrategyBuilder;
 use alator::types::{CashValue, PortfolioAllocation};
@@ -45,7 +44,7 @@ fn full_backtest_random_data() {
 
     let exchange = SyncExchangeImpl::new(clock.clone(), price_source);
 
-    let simbrkr: SingleBroker<Dividend, DefaultCorporateEventsSource> = SingleBrokerBuilder::new()
+    let simbrkr = SingleBrokerBuilder::new()
         .with_exchange(exchange)
         .with_trade_costs(vec![BrokerCost::Flat(1.0.into())])
         .build();
@@ -81,8 +80,7 @@ fn trade_execution_logic() {
 
     let exchange = SyncExchangeImpl::new(clock.clone(), price_source);
 
-    let mut brkr: SingleBroker<Dividend, DefaultCorporateEventsSource> =
-        SingleBrokerBuilder::new().with_exchange(exchange).build();
+    let mut brkr = SingleBrokerBuilder::new().with_exchange(exchange).build();
 
     brkr.deposit_cash(&100_000.0);
     brkr.send_order(Order::market(OrderType::MarketBuy, "ABC", 100.0));

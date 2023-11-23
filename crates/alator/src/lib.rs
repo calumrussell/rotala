@@ -81,8 +81,7 @@
 //!
 //!     let exchange = SyncExchangeImpl::new(clock.clone(), price_source);
 //!
-//!     let simbrkr: SingleBroker<Dividend, DefaultCorporateEventsSource> =
-//!         SingleBrokerBuilder::new()
+//!     let simbrkr = SingleBrokerBuilder::new()
 //!             .with_trade_costs(vec![BrokerCost::Flat(1.0.into())])
 //!             .with_exchange(exchange)
 //!             .build();
