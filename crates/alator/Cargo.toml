@@ -9,7 +9,12 @@ repository = "https://github.com/calumrussell/alator"
 readme = "README.md"
 
 [dependencies]
+<<<<<<< HEAD:crates/alator/Cargo.toml
 itertools = "0.11.0"
+=======
+itertools = "0.12.0"
+time = { version = "0.3.17", features = ["macros", "parsing"] }
+>>>>>>> 86e356670edb1ea832471ac96f70369c332baf9d:src/alator/Cargo.toml
 rand = "0.8.4"
 rand_distr = "0.4.1"
 log = "0.4.17" 
