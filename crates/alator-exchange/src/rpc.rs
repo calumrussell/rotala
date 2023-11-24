@@ -149,12 +149,17 @@ pub struct RPCExchange {
 }
 
 impl RPCExchange {
-    pub async fn build_exchange_client(path: &str) -> Result<RPCExchange, Box<dyn std::error::Error>> {
+    pub async fn build_exchange_client(
+        path: &str,
+    ) -> Result<RPCExchange, Box<dyn std::error::Error>> {
         let client = ExchangeClient::connect(path.to_owned()).await?;
         Ok(RPCExchange::new(client))
     }
 
-    pub async fn build_exchange_client_stream(client: tokio::io::DuplexStream, path: &str) -> Result<RPCExchange, Box<dyn std::error::Error>> {
+    pub async fn build_exchange_client_stream(
+        client: tokio::io::DuplexStream,
+        path: &str,
+    ) -> Result<RPCExchange, Box<dyn std::error::Error>> {
         let mut client = Some(client);
         let channel = tonic::transport::Endpoint::try_from(path.to_owned())?
             .connect_with_connector(tower::service_fn(move |_: tonic::transport::Uri| {
