@@ -4,7 +4,7 @@ use alator_exchange::{Quote, SyncExchangeImpl};
 use std::collections::HashMap;
 use std::io::{Cursor, Write};
 
-use alator::broker::implement::single::{SingleBroker, SingleBrokerBuilder};
+use alator::broker::single::{SingleBroker, SingleBrokerBuilder};
 use alator::broker::{BacktestBroker, GetsQuote, Order, OrderType, ReceivesOrders};
 use alator::simcontext::SimContextBuilder;
 use alator::strategy::{History, Strategy, StrategyEvent, TransferTo};

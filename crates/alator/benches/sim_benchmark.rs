@@ -5,7 +5,7 @@ use criterion::{criterion_group, criterion_main, Criterion};
 use rand::thread_rng;
 use rand_distr::{Distribution, Uniform};
 
-use alator::broker::implement::single::SingleBrokerBuilder;
+use alator::broker::single::SingleBrokerBuilder;
 use alator::broker::{BacktestBroker, BrokerCost, Order, OrderType, ReceivesOrders};
 use alator::simcontext::SimContextBuilder;
 use alator::strategy::implement::staticweight::StaticWeightStrategyBuilder;

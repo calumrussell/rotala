@@ -1,4 +1,4 @@
-use crate::broker::implement::single::SingleBroker;
+use crate::broker::single::SingleBroker;
 use crate::types::PortfolioAllocation;
 use alator_clock::Clock;
 

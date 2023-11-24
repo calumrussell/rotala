@@ -4,7 +4,7 @@ pub use builder::StaticWeightStrategyBuilder;
 
 use log::info;
 
-use crate::broker::implement::single::SingleBroker;
+use crate::broker::single::SingleBroker;
 use crate::broker::{
     BacktestBroker, BrokerCalculations, BrokerCashEvent, DividendPayment, EventLog, ReceivesOrders,
     Trade,

@@ -255,7 +255,7 @@ impl PerformanceCalculator {
 
 #[cfg(test)]
 mod tests {
-    use crate::broker::implement::single::{SingleBroker, SingleBrokerBuilder};
+    use crate::broker::single::{SingleBroker, SingleBrokerBuilder};
     use crate::broker::BrokerCost;
     use crate::perf::StrategySnapshot;
     use crate::strategy::implement::staticweight::StaticWeightStrategyBuilder;

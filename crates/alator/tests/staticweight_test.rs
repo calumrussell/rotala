@@ -4,7 +4,7 @@ use alator_exchange::SyncExchangeImpl;
 use rand::distributions::{Distribution, Uniform};
 use rand::thread_rng;
 
-use alator::broker::implement::single::SingleBrokerBuilder;
+use alator::broker::single::SingleBrokerBuilder;
 use alator::broker::BrokerCost;
 use alator::simcontext::SimContextBuilder;
 use alator::strategy::implement::staticweight::StaticWeightStrategyBuilder;

@@ -59,7 +59,7 @@
 //!     use alator_exchange::input::DefaultPriceSource;
 //!
 //!     use alator::broker::Dividend;
-//!     use alator::broker::implement::single::{ SingleBroker, SingleBrokerBuilder };
+//!     use alator::broker::single::{ SingleBroker, SingleBrokerBuilder };
 //!     use alator::broker::BrokerCost;
 //!     use alator::input::{ fake_price_source_generator, DefaultCorporateEventsSource };
 //!     use alator::strategy::implement::staticweight::StaticWeightStrategyBuilder;
