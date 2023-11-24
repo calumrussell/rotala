@@ -17,7 +17,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let exchange_server = RPCExchange::build_exchange_server(clock, source);
 
-    println!("DefaultExchange listening on {}", addr);
+    println!("RPCExchange listening on {}", addr);
 
     Server::builder()
         .add_service(exchange_server)

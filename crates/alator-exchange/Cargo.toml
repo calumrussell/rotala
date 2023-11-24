@@ -11,6 +11,10 @@ path = "src/lib.rs"
 name = "alator-exchange-server"
 path = "src/bin/server.rs"
 
+[[bin]]
+name = "alator-exchange-example-client"
+path = "src/bin/example_client.rs"
+
 [dependencies]
 tokio = { version = "1.0", features = ["rt-multi-thread", "macros"] }
 prost = "0.12"
