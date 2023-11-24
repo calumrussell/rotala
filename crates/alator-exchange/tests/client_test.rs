@@ -1,12 +1,13 @@
 use alator_exchange::input::DefaultPriceSource;
-use alator_exchange::{ExchangeAsync, ExchangeClient, RPCExchange};
+use alator_exchange::{ExchangeAsync, RPCExchange};
 use tonic::codegen::tokio_stream;
-use tonic::transport::{Endpoint, Server, Uri};
-use tower::service_fn;
+use tonic::transport::Server;
 
 #[tokio::test]
 async fn test_system() -> Result<(), Box<dyn std::error::Error>> {
     let (client, server) = tokio::io::duplex(1024);
+
+    let mut rpc_exchange = RPCExchange::build_exchange_client(client, "http://[::]:50051").await?;
 
     let clock = alator_clock::ClockBuilder::with_length_in_seconds(100, 100)
         .with_frequency(&alator_clock::Frequency::Second)
@@ -27,29 +28,6 @@ async fn test_system() -> Result<(), Box<dyn std::error::Error>> {
             .serve_with_incoming(tokio_stream::iter(vec![Ok::<_, std::io::Error>(server)]))
             .await
     });
-
-    // Move client to an option so we can _move_ the inner value
-    // on the first attempt to connect. All other attempts will fail.
-    let mut client = Some(client);
-    let channel = Endpoint::try_from("http://[::]:50051")?
-        .connect_with_connector(service_fn(move |_: Uri| {
-            let client = client.take();
-
-            async move {
-                if let Some(client) = client {
-                    Ok(client)
-                } else {
-                    Err(std::io::Error::new(
-                        std::io::ErrorKind::Other,
-                        "Client already taken",
-                    ))
-                }
-            }
-        }))
-        .await?;
-
-    let client = ExchangeClient::new(channel);
-    let mut rpc_exchange = RPCExchange::new(client);
 
     let subscriber_id = rpc_exchange.register_source().await.unwrap();
 
