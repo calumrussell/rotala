@@ -1,6 +1,6 @@
 //! Generates orders
 
-pub mod implement;
+pub mod staticweight;
 
 use async_trait::async_trait;
 

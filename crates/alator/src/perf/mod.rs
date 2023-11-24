@@ -258,7 +258,7 @@ mod tests {
     use crate::broker::single::{SingleBroker, SingleBrokerBuilder};
     use crate::broker::BrokerCost;
     use crate::perf::StrategySnapshot;
-    use crate::strategy::implement::staticweight::StaticWeightStrategyBuilder;
+    use crate::strategy::staticweight::StaticWeightStrategyBuilder;
     use crate::strategy::{History, Strategy};
     use crate::types::PortfolioAllocation;
     use alator_clock::{Clock, ClockBuilder};

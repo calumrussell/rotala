@@ -62,7 +62,7 @@
 //!     use alator::broker::single::{ SingleBroker, SingleBrokerBuilder };
 //!     use alator::broker::BrokerCost;
 //!     use alator::input::{ fake_price_source_generator, DefaultCorporateEventsSource };
-//!     use alator::strategy::implement::staticweight::StaticWeightStrategyBuilder;
+//!     use alator::strategy::staticweight::StaticWeightStrategyBuilder;
 //!     use alator::simcontext::SimContextBuilder;
 //!     use alator::types::{ CashValue, PortfolioAllocation };
 //!

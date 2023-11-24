@@ -7,7 +7,7 @@ use rand::thread_rng;
 use alator::broker::single::SingleBrokerBuilder;
 use alator::broker::BrokerCost;
 use alator::simcontext::SimContextBuilder;
-use alator::strategy::implement::staticweight::StaticWeightStrategyBuilder;
+use alator::strategy::staticweight::StaticWeightStrategyBuilder;
 use alator::types::{CashValue, PortfolioAllocation};
 
 fn build_data(clock: Clock) -> DefaultPriceSource {

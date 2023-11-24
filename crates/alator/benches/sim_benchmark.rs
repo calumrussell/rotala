@@ -8,7 +8,7 @@ use rand_distr::{Distribution, Uniform};
 use alator::broker::single::SingleBrokerBuilder;
 use alator::broker::{BacktestBroker, BrokerCost, Order, OrderType, ReceivesOrders};
 use alator::simcontext::SimContextBuilder;
-use alator::strategy::implement::staticweight::StaticWeightStrategyBuilder;
+use alator::strategy::staticweight::StaticWeightStrategyBuilder;
 use alator::types::{CashValue, PortfolioAllocation};
 
 fn full_backtest_random_data() {
