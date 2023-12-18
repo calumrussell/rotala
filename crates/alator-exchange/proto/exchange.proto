@@ -1,0 +1,95 @@
+syntax = "proto3";
+
+option java_multiple_files = true;
+option java_package = "io.grpc.exchange";
+option java_outer_classname = "ExchangeProto";
+
+package exchange;
+
+enum OrderType {
+    MarketSell = 0;
+    MarketBuy = 1;
+    LimitSell = 2;
+    LimitBuy = 3;
+    StopSell = 4;
+    StopBuy = 5;
+}
+
+enum TradeType {
+    Buy = 0;
+    Sell = 1;
+}
+
+message Trade {
+    double quantity = 1;
+    int64 date = 2;
+    string symbol = 3;
+    double value = 4;
+    uint64 subscriber_id = 5;
+    TradeType typ = 6;
+}
+
+message Quote {
+    double bid = 1; 
+    double ask = 2; 
+    int64 date = 3;
+    string symbol = 4;
+}
+
+message Order {
+    OrderType order_type = 1;
+    string symbol = 2;
+    optional double price = 3;
+    double quantity = 4;
+}
+
+service Exchange {
+    rpc RegisterSource(RegisterSourceRequest) returns (RegisterSourceReply);
+    rpc SendOrder(SendOrderRequest) returns (SendOrderReply);
+    rpc DeleteOrder(DeleteOrderRequest) returns (DeleteOrderReply);
+    rpc FetchTrades(FetchTradesRequest) returns (FetchTradesReply);
+    rpc FetchQuotes(FetchQuotesRequest) returns (FetchQuotesReply);
+    rpc Tick(TickRequest) returns (TickReply);
+}
+
+message RegisterSourceRequest {}
+
+message RegisterSourceReply {
+    uint64 subscriber_id = 1;
+}
+
+message SendOrderRequest {
+    uint64 subscriber_id = 1;
+    Order order = 2;
+}
+
+message SendOrderReply {
+    uint64 order_id = 1;
+}
+
+message DeleteOrderRequest {
+    uint64 subscriber_id = 1;
+    uint64 order_id = 2;
+}
+
+message DeleteOrderReply {
+    uint64 order_id = 1;
+}
+
+message FetchTradesRequest { }
+
+message FetchTradesReply {
+    repeated Trade trades = 1;
+}
+
+message FetchQuotesRequest { }
+
+message FetchQuotesReply {
+    repeated Quote quotes = 1;
+}
+
+message TickRequest { 
+    uint64 subscriber_id = 1;
+}
+
+message TickReply { }
