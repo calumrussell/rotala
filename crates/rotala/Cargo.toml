@@ -5,7 +5,8 @@ edition = "2021"
 
 [dependencies]
 actix-web = "4"
+alator-clock = { path = "../alator-clock" }
 
 [[bin]]
 name = "test"
-path = "./bin/test.rs"
+path = "./src/bin/test.rs"
