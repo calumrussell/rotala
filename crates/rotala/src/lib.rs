@@ -1,6 +1,6 @@
 mod api;
-mod input;
 mod exchange;
+mod input;
 mod orderbook;
 
 use std::cmp::Ordering;

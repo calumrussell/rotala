@@ -1,13 +1,13 @@
-use crate::{Quote, ExchangeTrade, ExchangeOrder};
+use crate::{ExchangeOrder, ExchangeTrade, Quote};
 
 pub type ExchangeOrderId = u64;
 
 pub struct InitMessage {
     pub start: i64,
-    pub frequency: u64
+    pub frequency: u64,
 }
 
-pub trait RheaTrait {
+pub trait ApiDefinition {
     fn init() -> InitMessage;
     fn insert_order(&mut self, order: ExchangeOrder);
     fn delete_order(&mut self, order_id: ExchangeOrderId);

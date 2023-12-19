@@ -1,8 +1,8 @@
 use alator_clock::Clock;
 
-use crate::{ExchangeTrade, ExchangeOrder, Quote};
 use crate::input::DefaultPriceSource;
 use crate::orderbook::diana::Diana;
+use crate::{ExchangeOrder, ExchangeTrade, Quote};
 
 pub struct Uist {
     clock: Clock,
@@ -25,15 +25,14 @@ impl Uist {
     }
 }
 
-impl crate::api::rhea::RheaTrait for Uist {
+impl crate::api::rhea::ApiDefinition for Uist {
     fn init() -> crate::api::rhea::InitMessage {
         crate::api::rhea::InitMessage {
             start: 100,
             frequency: 100,
         }
-
     }
-    
+
     fn fetch_quotes(&self) -> Vec<Quote> {
         if let Some(quotes) = self.price_source.get_quotes(&self.clock.now()) {
             return quotes;
@@ -71,10 +70,10 @@ impl crate::api::rhea::RheaTrait for Uist {
 }
 #[cfg(test)]
 mod tests {
+    use super::Uist;
+    use crate::api::rhea::ApiDefinition;
     use crate::input::DefaultPriceSource;
     use crate::ExchangeOrder;
-    use super::Uist;
-    use crate::api::rhea::RheaTrait;
 
     fn setup() -> Uist {
         let clock = alator_clock::ClockBuilder::with_length_in_seconds(100, 3)
