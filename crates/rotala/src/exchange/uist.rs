@@ -25,9 +25,9 @@ impl Uist {
     }
 }
 
-impl super::traits::rhea::RheaTrait for Uist {
-    fn init() -> super::traits::rhea::InitMessage {
-        super::traits::rhea::InitMessage {
+impl crate::api::rhea::RheaTrait for Uist {
+    fn init() -> crate::api::rhea::InitMessage {
+        crate::api::rhea::InitMessage {
             start: 100,
             frequency: 100,
         }
@@ -49,7 +49,7 @@ impl super::traits::rhea::RheaTrait for Uist {
         self.order_buffer.push(order);
     }
 
-    fn delete_order(&mut self, order_id: super::traits::rhea::ExchangeOrderId) {
+    fn delete_order(&mut self, order_id: crate::api::rhea::ExchangeOrderId) {
         self.orderbook.delete_order(order_id);
     }
 
@@ -74,7 +74,7 @@ mod tests {
     use crate::input::DefaultPriceSource;
     use crate::ExchangeOrder;
     use super::Uist;
-    use super::super::traits::rhea::RheaTrait;
+    use crate::api::rhea::RheaTrait;
 
     fn setup() -> Uist {
         let clock = alator_clock::ClockBuilder::with_length_in_seconds(100, 3)
