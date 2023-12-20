@@ -2,7 +2,7 @@ use std::ops::Deref;
 
 use crate::clock::Clock;
 use crate::input::penelope::{Penelope, PenelopeQuote};
-use crate::orderbook::diana::{Diana, DianaOrderId, DianaOrder, DianaTrade, DianaOrderType};
+use crate::orderbook::diana::{Diana, DianaOrder, DianaOrderId, DianaOrderType, DianaTrade};
 
 #[derive(Debug, Clone)]
 pub enum UistOrderType {
@@ -18,7 +18,7 @@ impl From<UistOrderType> for DianaOrderType {
     fn from(value: UistOrderType) -> Self {
         match value {
             UistOrderType::MarketBuy => DianaOrderType::MarketBuy,
-            UistOrderType::MarketSell=> DianaOrderType::MarketSell,
+            UistOrderType::MarketSell => DianaOrderType::MarketSell,
             UistOrderType::LimitBuy => DianaOrderType::LimitBuy,
             UistOrderType::LimitSell => DianaOrderType::LimitSell,
             UistOrderType::StopBuy => DianaOrderType::StopBuy,
@@ -52,14 +52,12 @@ impl Deref for UistOrder {
 
 impl UistOrder {
     fn market(order_type: UistOrderType, symbol: impl Into<String>, shares: f64) -> Self {
-        Self(
-            DianaOrder {
-                order_type: order_type.into(),
-                symbol: symbol.into(),
-                shares,
-                price: None,
-            }
-        )
+        Self(DianaOrder {
+            order_type: order_type.into(),
+            symbol: symbol.into(),
+            shares,
+            price: None,
+        })
     }
 
     fn delayed(
@@ -68,14 +66,12 @@ impl UistOrder {
         shares: f64,
         price: f64,
     ) -> Self {
-        Self(
-            DianaOrder {
-                order_type: order_type.into(),
-                symbol: symbol.into(),
-                shares,
-                price: Some(price),
-            }
-        )
+        Self(DianaOrder {
+            order_type: order_type.into(),
+            symbol: symbol.into(),
+            shares,
+            price: Some(price),
+        })
     }
 
     pub fn market_buy(symbol: impl Into<String>, shares: f64) -> Self {
