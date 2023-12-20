@@ -1,12 +1,38 @@
 use std::collections::HashMap;
 
-#[derive(Debug)]
-pub struct DefaultPriceSource {
-    inner: HashMap<i64, HashMap<String, crate::Quote>>,
+#[derive(Clone, Debug)]
+pub struct PenelopeQuote {
+    pub bid: f64,
+    pub ask: f64,
+    pub date: i64,
+    pub symbol: String,
 }
 
-impl DefaultPriceSource {
-    pub fn get_quote(&self, date: &i64, symbol: &str) -> Option<&crate::Quote> {
+impl PenelopeQuote {
+    pub fn get_bid(&self) -> f64 {
+        self.bid
+    }
+
+    pub fn get_ask(&self) -> f64 {
+        self.ask
+    }
+
+    pub fn get_symbol(&self) -> String {
+        self.symbol.clone()
+    }
+
+    pub fn get_date(&self) -> i64 {
+        self.date
+    }
+}
+
+#[derive(Debug)]
+pub struct Penelope {
+    inner: HashMap<i64, HashMap<String, PenelopeQuote>>,
+}
+
+impl Penelope {
+    pub fn get_quote(&self, date: &i64, symbol: &str) -> Option<&PenelopeQuote> {
         if let Some(date_row) = self.inner.get(date) {
             if let Some(quote) = date_row.get(symbol) {
                 return Some(quote);
@@ -15,7 +41,7 @@ impl DefaultPriceSource {
         None
     }
 
-    pub fn get_quotes(&self, date: &i64) -> Option<Vec<crate::Quote>> {
+    pub fn get_quotes(&self, date: &i64) -> Option<Vec<PenelopeQuote>> {
         if let Some(date_row) = self.inner.get(date) {
             return Some(date_row.values().cloned().collect());
         }
@@ -23,7 +49,7 @@ impl DefaultPriceSource {
     }
 
     pub fn add_quotes(&mut self, bid: f64, ask: f64, date: i64, symbol: impl Into<String> + Clone) {
-        let quote = crate::Quote {
+        let quote = PenelopeQuote {
             bid,
             ask,
             date,
@@ -45,12 +71,12 @@ impl DefaultPriceSource {
         }
     }
 
-    pub fn from_hashmap(inner: HashMap<i64, HashMap<String, crate::Quote>>) -> Self {
+    pub fn from_hashmap(inner: HashMap<i64, HashMap<String, PenelopeQuote>>) -> Self {
         Self { inner }
     }
 }
 
-impl Default for DefaultPriceSource {
+impl Default for Penelope {
     fn default() -> Self {
         Self::new()
     }
