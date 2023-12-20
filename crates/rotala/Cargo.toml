@@ -5,7 +5,7 @@ edition = "2021"
 
 [dependencies]
 actix-web = "4"
-alator-clock = { path = "../alator-clock" }
+time = { version = "0.3.17", features = ["macros", "parsing"] }
 
 [[bin]]
 name = "test"

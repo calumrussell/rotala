@@ -42,11 +42,11 @@ pub struct DianaOrderImpl {
     pub price: Option<f64>,
 }
 
-impl DianaOrderImpl{
+impl DianaOrderImpl {
     fn get_shares(&self) -> f64 {
         self.shares
     }
-    
+
     fn get_symbol(&self) -> &str {
         &self.symbol
     }
@@ -58,11 +58,7 @@ impl DianaOrderImpl{
         &self.order_type
     }
 
-    fn market(
-        order_type: DianaOrderType,
-        symbol: impl Into<String>,
-        shares: f64,
-    ) -> Self {
+    fn market(order_type: DianaOrderType, symbol: impl Into<String>, shares: f64) -> Self {
         Self {
             order_type,
             symbol: symbol.into(),
@@ -85,49 +81,27 @@ impl DianaOrderImpl{
         }
     }
 
-    pub fn market_buy(
-        symbol: impl Into<String>,
-        shares: f64,
-    ) -> Self {
+    pub fn market_buy(symbol: impl Into<String>, shares: f64) -> Self {
         DianaOrderImpl::market(DianaOrderType::MarketBuy, symbol, shares)
     }
 
-    pub fn market_sell(
-        symbol: impl Into<String>,
-        shares: f64,
-    ) -> Self {
+    pub fn market_sell(symbol: impl Into<String>, shares: f64) -> Self {
         DianaOrderImpl::market(DianaOrderType::MarketSell, symbol, shares)
     }
 
-    pub fn stop_buy(
-        symbol: impl Into<String>,
-        shares: f64,
-        price: f64,
-    ) -> Self {
+    pub fn stop_buy(symbol: impl Into<String>, shares: f64, price: f64) -> Self {
         DianaOrderImpl::delayed(DianaOrderType::StopBuy, symbol, shares, price)
     }
 
-    pub fn stop_sell(
-        symbol: impl Into<String>,
-        shares: f64,
-        price: f64,
-    ) -> Self {
+    pub fn stop_sell(symbol: impl Into<String>, shares: f64, price: f64) -> Self {
         DianaOrderImpl::delayed(DianaOrderType::StopSell, symbol, shares, price)
     }
 
-    pub fn limit_buy(
-        symbol: impl Into<String>,
-        shares: f64,
-        price: f64,
-    ) -> Self {
+    pub fn limit_buy(symbol: impl Into<String>, shares: f64, price: f64) -> Self {
         DianaOrderImpl::delayed(DianaOrderType::LimitBuy, symbol, shares, price)
     }
 
-    pub fn limit_sell(
-        symbol: impl Into<String>,
-        shares: f64,
-        price: f64,
-    ) -> Self {
+    pub fn limit_sell(symbol: impl Into<String>, shares: f64, price: f64) -> Self {
         DianaOrderImpl::delayed(DianaOrderType::LimitSell, symbol, shares, price)
     }
 }
@@ -199,7 +173,7 @@ impl Diana {
                 value,
                 quantity: order.get_shares(),
                 date: date.into(),
-                typ: DianaTradeType::Sell, 
+                typ: DianaTradeType::Sell,
             }
         };
 
@@ -270,8 +244,8 @@ impl Diana {
 mod tests {
     use super::Diana as OrderBook;
     use super::DianaOrderImpl;
+    use crate::clock::{Clock, ClockBuilder, Frequency};
     use crate::input::penelope::Penelope;
-    use alator_clock::{Clock, ClockBuilder, Frequency};
 
     fn setup() -> (Clock, Penelope) {
         let clock = ClockBuilder::with_length_in_seconds(100, 3)

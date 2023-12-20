@@ -1,6 +1,6 @@
-use alator_clock::Clock;
-
-use crate::{orderbook::diana::{Diana, DianaOrderImpl, DianaOrderId, DianaTrade}, input::penelope::{Penelope, PenelopeQuote}};
+use crate::clock::Clock;
+use crate::input::penelope::{Penelope, PenelopeQuote};
+use crate::orderbook::diana::{Diana, DianaOrderId, DianaOrderImpl, DianaTrade};
 
 #[derive(Clone, Debug)]
 pub enum TradeType {
@@ -19,7 +19,7 @@ pub struct Trade {
 
 pub struct InitMessage {
     pub start: i64,
-    pub frequency: u64
+    pub frequency: u64,
 }
 
 pub struct Uist {
@@ -84,16 +84,16 @@ impl Uist {
         executed_trades
     }
 }
+
 #[cfg(test)]
 mod tests {
     use super::Uist;
-    use crate::orderbook::diana::DianaOrderImpl;
     use crate::input::penelope::Penelope;
+    use crate::orderbook::diana::DianaOrderImpl;
 
     fn setup() -> Uist {
-
-        let clock = alator_clock::ClockBuilder::with_length_in_seconds(100, 3)
-            .with_frequency(&alator_clock::Frequency::Second)
+        let clock = crate::clock::ClockBuilder::with_length_in_seconds(100, 3)
+            .with_frequency(&crate::clock::Frequency::Second)
             .build();
 
         let mut price_source = Penelope::new();
@@ -196,8 +196,8 @@ mod tests {
 
     #[test]
     fn test_that_order_with_missing_price_executes_later() {
-        let clock = alator_clock::ClockBuilder::with_length_in_seconds(100, 3)
-            .with_frequency(&alator_clock::Frequency::Second)
+        let clock = crate::clock::ClockBuilder::with_length_in_seconds(100, 3)
+            .with_frequency(&crate::clock::Frequency::Second)
             .build();
 
         let mut price_source = Penelope::new();
