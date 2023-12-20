@@ -26,6 +26,17 @@ impl Frequency {
     }
 }
 
+impl From<Frequency> for u8 {
+    fn from(freq: Frequency) -> Self {
+        match freq {
+            Frequency::Second => 0,
+            Frequency::Daily => 1,
+            Frequency::Monthly => 2,
+            Frequency::Yearly => 3,
+        }
+    }
+}
+
 pub enum Weekday {
     Monday,
     Tuesday,
@@ -179,6 +190,7 @@ pub struct ClockInner {
     //the state of the Clock
     pos: usize,
     dates: Vec<DateTime>,
+    frequency: Frequency,
 }
 
 /// Used to synchronize time between components.
@@ -224,7 +236,7 @@ impl Clock {
         }
     }
 
-    //Doesn't change the iteration state, used for clients to setup data using clock
+    // Doesn't change the iteration state, used for clients to setup data using clock
     pub fn peek(&self) -> IntoIter<DateTime> {
         let inner = self.inner.lock().unwrap();
         inner.dates.clone().into_iter()
@@ -236,15 +248,25 @@ impl Clock {
         inner.dates.len()
     }
 
+    pub fn frequency(&self) -> Frequency {
+        // Don't need this lock as we are reading immutable
+        let inner = self.inner.lock().unwrap();
+        inner.frequency.clone()
+    }
+
     /// Check to see if dates are empty
     pub fn is_empty(&self) -> bool {
         let inner = self.inner.lock().unwrap();
         inner.dates.is_empty()
     }
 
-    pub fn new(dates: Vec<DateTime>) -> Self {
+    pub fn new(dates: Vec<DateTime>, frequency: Frequency) -> Self {
         Self {
-            inner: Arc::new(Mutex::new(ClockInner { dates, pos: 0 })),
+            inner: Arc::new(Mutex::new(ClockInner {
+                dates,
+                pos: 0,
+                frequency,
+            })),
         }
     }
 }
@@ -254,13 +276,14 @@ pub struct ClockBuilder {
     pub start: DateTime,
     pub end: DateTime,
     pub dates: Vec<DateTime>,
+    pub frequency: Frequency,
 }
 
 impl ClockBuilder {
     const SECS_IN_DAY: i64 = 86_400;
 
     pub fn build(self) -> Clock {
-        Clock::new(self.dates)
+        Clock::new(self.dates, self.frequency)
     }
 
     pub fn with_frequency(&self, freq: &Frequency) -> Self {
@@ -275,6 +298,7 @@ impl ClockBuilder {
                     start: self.start,
                     end: self.end,
                     dates,
+                    frequency: Frequency::Daily,
                 }
             }
             Frequency::Second => {
@@ -285,6 +309,7 @@ impl ClockBuilder {
                     start: self.start,
                     end: self.end,
                     dates,
+                    frequency: Frequency::Second,
                 }
             }
             _ => panic!("Clock frequencies apart from Daily/Second are not supported"),
@@ -299,6 +324,7 @@ impl ClockBuilder {
             start: start_val,
             end,
             dates: Vec::new(),
+            frequency: Frequency::Second,
         }
     }
 
@@ -311,14 +337,7 @@ impl ClockBuilder {
             start: start_val,
             end,
             dates: Vec::new(),
-        }
-    }
-
-    pub fn with_length_in_dates(start: impl Into<DateTime>, end: impl Into<DateTime>) -> Self {
-        Self {
-            start: start.into(),
-            end: end.into(),
-            dates: Vec::new(),
+            frequency: Frequency::Daily,
         }
     }
 }
@@ -330,7 +349,7 @@ mod tests {
     #[test]
     #[should_panic]
     fn test_that_ticking_past_the_length_of_dates_triggers_panic() {
-        let mut clock = ClockBuilder::with_length_in_dates(1, 3)
+        let mut clock = ClockBuilder::with_length_in_seconds(1, 2)
             .with_frequency(&Frequency::Second)
             .build();
         clock.tick();
@@ -340,7 +359,7 @@ mod tests {
 
     #[test]
     fn test_that_there_isnt_next_when_tick_at_end() {
-        let mut clock = ClockBuilder::with_length_in_dates(1, 3)
+        let mut clock = ClockBuilder::with_length_in_seconds(1, 2)
             .with_frequency(&Frequency::Second)
             .build();
         assert!(clock.has_next());
@@ -353,8 +372,7 @@ mod tests {
     #[test]
     fn test_that_clock_created_from_fixed_peeks_correctly() {
         let start = 1;
-        let end = start + (3 * 86400);
-        let clock = ClockBuilder::with_length_in_dates(start, end)
+        let clock = ClockBuilder::with_length_in_days(start, 3)
             .with_frequency(&Frequency::Daily)
             .build();
         let mut dates: Vec<i64> = Vec::new();

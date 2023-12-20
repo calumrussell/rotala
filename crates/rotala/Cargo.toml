@@ -6,6 +6,8 @@ edition = "2021"
 [dependencies]
 actix-web = "4"
 time = { version = "0.3.17", features = ["macros", "parsing"] }
+rand = "0.8.4"
+rand_distr = "0.4.1"
 
 [[bin]]
 name = "test"

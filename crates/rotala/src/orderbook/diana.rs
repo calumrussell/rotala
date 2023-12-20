@@ -35,14 +35,14 @@ pub struct DianaTrade {
 }
 
 #[derive(Clone, Debug)]
-pub struct DianaOrderImpl {
+pub struct DianaOrder {    
     pub order_type: DianaOrderType,
     pub symbol: String,
     pub shares: f64,
     pub price: Option<f64>,
 }
 
-impl DianaOrderImpl {
+impl DianaOrder {
     fn get_shares(&self) -> f64 {
         self.shares
     }
@@ -57,58 +57,11 @@ impl DianaOrderImpl {
     pub fn get_order_type(&self) -> &DianaOrderType {
         &self.order_type
     }
-
-    fn market(order_type: DianaOrderType, symbol: impl Into<String>, shares: f64) -> Self {
-        Self {
-            order_type,
-            symbol: symbol.into(),
-            shares,
-            price: None,
-        }
-    }
-
-    fn delayed(
-        order_type: DianaOrderType,
-        symbol: impl Into<String>,
-        shares: f64,
-        price: f64,
-    ) -> Self {
-        Self {
-            order_type,
-            symbol: symbol.into(),
-            shares,
-            price: Some(price),
-        }
-    }
-
-    pub fn market_buy(symbol: impl Into<String>, shares: f64) -> Self {
-        DianaOrderImpl::market(DianaOrderType::MarketBuy, symbol, shares)
-    }
-
-    pub fn market_sell(symbol: impl Into<String>, shares: f64) -> Self {
-        DianaOrderImpl::market(DianaOrderType::MarketSell, symbol, shares)
-    }
-
-    pub fn stop_buy(symbol: impl Into<String>, shares: f64, price: f64) -> Self {
-        DianaOrderImpl::delayed(DianaOrderType::StopBuy, symbol, shares, price)
-    }
-
-    pub fn stop_sell(symbol: impl Into<String>, shares: f64, price: f64) -> Self {
-        DianaOrderImpl::delayed(DianaOrderType::StopSell, symbol, shares, price)
-    }
-
-    pub fn limit_buy(symbol: impl Into<String>, shares: f64, price: f64) -> Self {
-        DianaOrderImpl::delayed(DianaOrderType::LimitBuy, symbol, shares, price)
-    }
-
-    pub fn limit_sell(symbol: impl Into<String>, shares: f64, price: f64) -> Self {
-        DianaOrderImpl::delayed(DianaOrderType::LimitSell, symbol, shares, price)
-    }
 }
 
-impl Eq for DianaOrderImpl {}
+impl Eq for DianaOrder {}
 
-impl PartialEq for DianaOrderImpl {
+impl PartialEq for DianaOrder {
     fn eq(&self, other: &Self) -> bool {
         self.symbol == other.symbol
             && self.order_type == other.order_type
@@ -119,7 +72,7 @@ impl PartialEq for DianaOrderImpl {
 #[doc(hidden)]
 #[derive(Debug)]
 pub(crate) struct Diana {
-    inner: HashMap<u64, DianaOrderImpl>,
+    inner: HashMap<u64, DianaOrder>,
     last: u64,
 }
 
@@ -141,7 +94,7 @@ impl Diana {
         self.inner.remove(&order_id);
     }
 
-    pub fn insert_order(&mut self, order: DianaOrderImpl) -> u64 {
+    pub fn insert_order(&mut self, order: DianaOrder) -> u64 {
         let last = self.last;
         self.last = last + 1;
         self.inner.insert(last, order);
@@ -153,7 +106,7 @@ impl Diana {
     }
 
     pub fn execute_orders(&mut self, date: i64, source: &Penelope) -> Vec<DianaTrade> {
-        let execute_buy = |quote: &PenelopeQuote, order: &DianaOrderImpl| -> DianaTrade {
+        let execute_buy = |quote: &PenelopeQuote, order: &DianaOrder| -> DianaTrade {
             let trade_price = quote.get_ask();
             let value = trade_price * order.get_shares();
             DianaTrade {
@@ -165,7 +118,7 @@ impl Diana {
             }
         };
 
-        let execute_sell = |quote: &PenelopeQuote, order: &DianaOrderImpl| -> DianaTrade {
+        let execute_sell = |quote: &PenelopeQuote, order: &DianaOrder| -> DianaTrade {
             let trade_price = quote.get_bid();
             let value = trade_price * order.get_shares();
             DianaTrade {
@@ -243,9 +196,10 @@ impl Diana {
 #[cfg(test)]
 mod tests {
     use super::Diana as OrderBook;
-    use super::DianaOrderImpl;
+    use super::DianaOrder;
     use crate::clock::{Clock, ClockBuilder, Frequency};
     use crate::input::penelope::Penelope;
+    use crate::orderbook::diana::DianaOrderType;
 
     fn setup() -> (Clock, Penelope) {
         let clock = ClockBuilder::with_length_in_seconds(100, 3)
@@ -263,11 +217,12 @@ mod tests {
     fn test_that_multiple_orders_will_execute() {
         let (_clock, source) = setup();
         let mut orderbook = OrderBook::new();
+        let order = DianaOrder { order_type: DianaOrderType::MarketBuy, symbol: "ABC".to_string(), shares: 25.0, price: None};
 
-        orderbook.insert_order(DianaOrderImpl::market_buy("ABC", 25.0));
-        orderbook.insert_order(DianaOrderImpl::market_buy("ABC", 25.0));
-        orderbook.insert_order(DianaOrderImpl::market_buy("ABC", 25.0));
-        orderbook.insert_order(DianaOrderImpl::market_buy("ABC", 25.0));
+        orderbook.insert_order(order.clone());
+        orderbook.insert_order(order.clone());
+        orderbook.insert_order(order.clone());
+        orderbook.insert_order(order);
 
         let executed = orderbook.execute_orders(100.into(), &source);
         assert_eq!(executed.len(), 4);
@@ -277,8 +232,9 @@ mod tests {
     fn test_that_buy_market_executes() {
         let (_clock, source) = setup();
         let mut orderbook = OrderBook::new();
+        let order = DianaOrder { order_type: DianaOrderType::MarketBuy, symbol: "ABC".to_string(), shares: 100.0, price: None};
 
-        orderbook.insert_order(DianaOrderImpl::market_buy("ABC", 100.0));
+        orderbook.insert_order(order);
         let mut executed = orderbook.execute_orders(100.into(), &source);
         assert_eq!(executed.len(), 1);
 
@@ -292,8 +248,9 @@ mod tests {
     fn test_that_sell_market_executes() {
         let (_clock, source) = setup();
         let mut orderbook = OrderBook::new();
+        let order = DianaOrder { order_type: DianaOrderType::MarketSell, symbol: "ABC".to_string(), shares: 100.0, price: None};
 
-        orderbook.insert_order(DianaOrderImpl::market_sell("ABC", 100.0));
+        orderbook.insert_order(order);
         let mut executed = orderbook.execute_orders(100.into(), &source);
         assert_eq!(executed.len(), 1);
 
@@ -307,9 +264,11 @@ mod tests {
     fn test_that_buy_limit_triggers_correctly() {
         let (_clock, source) = setup();
         let mut orderbook = OrderBook::new();
+        let order = DianaOrder { order_type: DianaOrderType::LimitBuy, symbol: "ABC".to_string(), shares: 100.0, price: Some(95.0)};
+        let order1 = DianaOrder { order_type: DianaOrderType::LimitBuy, symbol: "ABC".to_string(), shares: 100.0, price: Some(105.0)};
 
-        orderbook.insert_order(DianaOrderImpl::limit_buy("ABC", 100.0, 95.0));
-        orderbook.insert_order(DianaOrderImpl::limit_buy("ABC", 100.0, 105.0));
+        orderbook.insert_order(order);
+        orderbook.insert_order(order1);
         let mut executed = orderbook.execute_orders(100.into(), &source);
         //Only one order should execute on this tick
         assert_eq!(executed.len(), 1);
@@ -324,9 +283,11 @@ mod tests {
     fn test_that_sell_limit_triggers_correctly() {
         let (_clock, source) = setup();
         let mut orderbook = OrderBook::new();
+        let order = DianaOrder { order_type: DianaOrderType::LimitSell, symbol: "ABC".to_string(), shares: 100.0, price: Some(95.0)};
+        let order1 = DianaOrder { order_type: DianaOrderType::LimitSell, symbol: "ABC".to_string(), shares: 100.0, price: Some(105.0)};
 
-        orderbook.insert_order(DianaOrderImpl::limit_sell("ABC", 100.0, 95.0));
-        orderbook.insert_order(DianaOrderImpl::limit_sell("ABC", 100.0, 105.0));
+        orderbook.insert_order(order);
+        orderbook.insert_order(order1);
         let mut executed = orderbook.execute_orders(100.into(), &source);
         //Only one order should execute on this tick
         assert_eq!(executed.len(), 1);
@@ -345,9 +306,11 @@ mod tests {
 
         let (_clock, source) = setup();
         let mut orderbook = OrderBook::new();
+        let order = DianaOrder { order_type: DianaOrderType::StopBuy, symbol: "ABC".to_string(), shares: 100.0, price: Some(95.0)};
+        let order1 = DianaOrder { order_type: DianaOrderType::StopBuy, symbol: "ABC".to_string(), shares: 100.0, price: Some(105.0)};
 
-        orderbook.insert_order(DianaOrderImpl::stop_buy("ABC", 100.0, 95.0));
-        orderbook.insert_order(DianaOrderImpl::stop_buy("ABC", 100.0, 105.0));
+        orderbook.insert_order(order);
+        orderbook.insert_order(order1);
         let mut executed = orderbook.execute_orders(100.into(), &source);
         //Only one order should execute on this tick
         assert_eq!(executed.len(), 1);
@@ -365,16 +328,18 @@ mod tests {
 
         let (_clock, source) = setup();
         let mut orderbook = OrderBook::new();
+        let order = DianaOrder { order_type: DianaOrderType::StopSell, symbol: "ABC".to_string(), shares: 100.0, price: Some(99.0)};
+        let order1 = DianaOrder { order_type: DianaOrderType::StopSell, symbol: "ABC".to_string(), shares: 100.0, price: Some(105.0)};
 
-        orderbook.insert_order(DianaOrderImpl::stop_buy("ABC", 100.0, 99.0));
-        orderbook.insert_order(DianaOrderImpl::stop_buy("ABC", 100.0, 105.0));
+        orderbook.insert_order(order);
+        orderbook.insert_order(order1);
         let mut executed = orderbook.execute_orders(100.into(), &source);
         //Only one order should execute on this tick
         assert_eq!(executed.len(), 1);
 
         let trade = executed.pop().unwrap();
-        //Stop order has price of 105 but should execute at the ask, which is 102
-        assert_eq!(trade.value / trade.quantity, 102.00);
+        //Stop order has price of 105 but should execute at the bid, which is 101
+        assert_eq!(trade.value / trade.quantity, 101.00);
         assert_eq!(trade.date, 100);
     }
 
@@ -382,8 +347,9 @@ mod tests {
     fn test_that_order_for_nonexistent_stock_fails_silently() {
         let (_clock, source) = setup();
         let mut orderbook = OrderBook::new();
+        let order = DianaOrder { order_type: DianaOrderType::MarketBuy, symbol: "XYZ".to_string(), shares: 100.0, price: None};
 
-        orderbook.insert_order(DianaOrderImpl::market_buy("XYZ", 100.0));
+        orderbook.insert_order(order);
         let executed = orderbook.execute_orders(100.into(), &source);
         assert_eq!(executed.len(), 0);
     }
@@ -401,7 +367,8 @@ mod tests {
         clock.tick();
 
         let mut orderbook = OrderBook::new();
-        orderbook.insert_order(DianaOrderImpl::market_buy("ABC", 100.0));
+        let order = DianaOrder { order_type: DianaOrderType::MarketBuy, symbol: "ABC".to_string(), shares: 100.0, price: None};
+        orderbook.insert_order(order);
         let orders = orderbook.execute_orders(101.into(), &price_source);
         //Trades cannot execute without prices
         assert_eq!(orders.len(), 0);

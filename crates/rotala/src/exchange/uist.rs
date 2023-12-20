@@ -1,34 +1,120 @@
+use std::ops::Deref;
+
 use crate::clock::Clock;
 use crate::input::penelope::{Penelope, PenelopeQuote};
-use crate::orderbook::diana::{Diana, DianaOrderId, DianaOrderImpl, DianaTrade};
+use crate::orderbook::diana::{Diana, DianaOrderId, DianaOrder, DianaTrade, DianaOrderType};
 
-#[derive(Clone, Debug)]
-pub enum TradeType {
-    Buy,
-    Sell,
+#[derive(Debug, Clone)]
+pub enum UistOrderType {
+    MarketBuy,
+    MarketSell,
+    LimitBuy,
+    LimitSell,
+    StopBuy,
+    StopSell,
 }
 
-#[derive(Clone, Debug)]
-pub struct Trade {
-    pub symbol: String,
-    pub value: f64,
-    pub quantity: f64,
-    pub date: i64,
-    pub typ: TradeType,
+impl From<UistOrderType> for DianaOrderType {
+    fn from(value: UistOrderType) -> Self {
+        match value {
+            UistOrderType::MarketBuy => DianaOrderType::MarketBuy,
+            UistOrderType::MarketSell=> DianaOrderType::MarketSell,
+            UistOrderType::LimitBuy => DianaOrderType::LimitBuy,
+            UistOrderType::LimitSell => DianaOrderType::LimitSell,
+            UistOrderType::StopBuy => DianaOrderType::StopBuy,
+            UistOrderType::StopSell => DianaOrderType::StopSell,
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct UistOrderId(DianaOrderId);
+
+#[derive(Debug, Clone)]
+pub struct UistTrade(DianaTrade);
+
+impl Deref for UistTrade {
+    type Target = DianaTrade;
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct UistOrder(DianaOrder);
+
+impl Deref for UistOrder {
+    type Target = DianaOrder;
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+impl UistOrder {
+    fn market(order_type: UistOrderType, symbol: impl Into<String>, shares: f64) -> Self {
+        Self(
+            DianaOrder {
+                order_type: order_type.into(),
+                symbol: symbol.into(),
+                shares,
+                price: None,
+            }
+        )
+    }
+
+    fn delayed(
+        order_type: UistOrderType,
+        symbol: impl Into<String>,
+        shares: f64,
+        price: f64,
+    ) -> Self {
+        Self(
+            DianaOrder {
+                order_type: order_type.into(),
+                symbol: symbol.into(),
+                shares,
+                price: Some(price),
+            }
+        )
+    }
+
+    pub fn market_buy(symbol: impl Into<String>, shares: f64) -> Self {
+        UistOrder::market(UistOrderType::MarketBuy, symbol, shares)
+    }
+
+    pub fn market_sell(symbol: impl Into<String>, shares: f64) -> Self {
+        UistOrder::market(UistOrderType::MarketSell, symbol, shares)
+    }
+
+    pub fn stop_buy(symbol: impl Into<String>, shares: f64, price: f64) -> Self {
+        UistOrder::delayed(UistOrderType::StopBuy, symbol, shares, price)
+    }
+
+    pub fn stop_sell(symbol: impl Into<String>, shares: f64, price: f64) -> Self {
+        UistOrder::delayed(UistOrderType::StopSell, symbol, shares, price)
+    }
+
+    pub fn limit_buy(symbol: impl Into<String>, shares: f64, price: f64) -> Self {
+        UistOrder::delayed(UistOrderType::LimitBuy, symbol, shares, price)
+    }
+
+    pub fn limit_sell(symbol: impl Into<String>, shares: f64, price: f64) -> Self {
+        UistOrder::delayed(UistOrderType::LimitSell, symbol, shares, price)
+    }
 }
 
 pub struct InitMessage {
     pub start: i64,
-    pub frequency: u64,
+    pub frequency: u8,
 }
 
 pub struct Uist {
     clock: Clock,
     price_source: Penelope,
     orderbook: Diana,
-    trade_log: Vec<DianaTrade>,
+    trade_log: Vec<UistTrade>,
     //This is cleared on every tick
-    order_buffer: Vec<DianaOrderImpl>,
+    order_buffer: Vec<UistOrder>,
 }
 
 impl Uist {
@@ -42,54 +128,58 @@ impl Uist {
         }
     }
 
-    fn init() -> InitMessage {
+    pub fn init(&self) -> InitMessage {
         InitMessage {
-            start: 100,
-            frequency: 100,
+            start: *self.clock.now(),
+            frequency: self.clock.frequency().into(),
         }
     }
 
-    fn fetch_quotes(&self) -> Vec<PenelopeQuote> {
+    pub fn fetch_quotes(&self) -> Vec<PenelopeQuote> {
         if let Some(quotes) = self.price_source.get_quotes(&self.clock.now()) {
             return quotes;
         }
         vec![]
     }
 
-    fn fetch_trades(&self, from: usize) -> Vec<DianaTrade> {
+    pub fn fetch_trades(&self, from: usize) -> Vec<UistTrade> {
         self.trade_log[from..].to_vec()
     }
 
-    fn insert_order(&mut self, order: DianaOrderImpl) {
+    pub fn insert_order(&mut self, order: UistOrder) {
         self.order_buffer.push(order);
     }
 
-    fn delete_order(&mut self, order_id: DianaOrderId) {
+    pub fn delete_order(&mut self, order_id: DianaOrderId) {
         self.orderbook.delete_order(order_id);
     }
 
-    fn check(&mut self) -> Vec<DianaTrade> {
+    pub fn check(&mut self) -> Vec<UistTrade> {
         //To eliminate lookahead bias, we only start executing orders on the next
         //tick.
         self.clock.tick();
 
         for order in &self.order_buffer {
-            self.orderbook.insert_order(order.clone());
+            self.orderbook.insert_order(order.0.clone());
         }
 
         let now = self.clock.now();
         let executed_trades = self.orderbook.execute_orders(*now, &self.price_source);
-        self.trade_log.extend(executed_trades.clone());
+        let mut executed_trades_internal_format = Vec::new();
+        for executed_trade in executed_trades {
+            self.trade_log.push(UistTrade(executed_trade.clone()));
+            executed_trades_internal_format.push(UistTrade(executed_trade.clone()));
+        }
         self.order_buffer.clear();
-        executed_trades
+        executed_trades_internal_format
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::Uist;
+    use crate::exchange::uist::UistOrder;
     use crate::input::penelope::Penelope;
-    use crate::orderbook::diana::DianaOrderImpl;
 
     fn setup() -> Uist {
         let clock = crate::clock::ClockBuilder::with_length_in_seconds(100, 3)
@@ -109,7 +199,7 @@ mod tests {
     fn test_that_buy_market_executes_incrementing_trade_log() {
         let mut exchange = setup();
 
-        exchange.insert_order(DianaOrderImpl::market_buy("ABC", 100.0));
+        exchange.insert_order(UistOrder::market_buy("ABC", 100.0));
         exchange.check();
 
         //TODO: no abstraction!
@@ -120,10 +210,10 @@ mod tests {
     fn test_that_multiple_orders_are_executed_on_same_tick() {
         let mut exchange = setup();
 
-        exchange.insert_order(DianaOrderImpl::market_buy("ABC", 25.0));
-        exchange.insert_order(DianaOrderImpl::market_buy("ABC", 25.0));
-        exchange.insert_order(DianaOrderImpl::market_buy("ABC", 25.0));
-        exchange.insert_order(DianaOrderImpl::market_buy("ABC", 25.0));
+        exchange.insert_order(UistOrder::market_buy("ABC", 25.0));
+        exchange.insert_order(UistOrder::market_buy("ABC", 25.0));
+        exchange.insert_order(UistOrder::market_buy("ABC", 25.0));
+        exchange.insert_order(UistOrder::market_buy("ABC", 25.0));
 
         exchange.check();
         assert_eq!(exchange.trade_log.len(), 4);
@@ -132,12 +222,12 @@ mod tests {
     #[test]
     fn test_that_multiple_orders_are_executed_on_consecutive_tick() {
         let mut exchange = setup();
-        exchange.insert_order(DianaOrderImpl::market_buy("ABC", 25.0));
-        exchange.insert_order(DianaOrderImpl::market_buy("ABC", 25.0));
+        exchange.insert_order(UistOrder::market_buy("ABC", 25.0));
+        exchange.insert_order(UistOrder::market_buy("ABC", 25.0));
         exchange.check();
 
-        exchange.insert_order(DianaOrderImpl::market_buy("ABC", 25.0));
-        exchange.insert_order(DianaOrderImpl::market_buy("ABC", 25.0));
+        exchange.insert_order(UistOrder::market_buy("ABC", 25.0));
+        exchange.insert_order(UistOrder::market_buy("ABC", 25.0));
         exchange.check();
 
         assert_eq!(exchange.trade_log.len(), 4);
@@ -148,7 +238,7 @@ mod tests {
         //Verifies that trades do not execute instaneously removing lookahead bias
         let mut exchange = setup();
 
-        exchange.insert_order(DianaOrderImpl::market_buy("ABC", 100.0));
+        exchange.insert_order(UistOrder::market_buy("ABC", 100.0));
         exchange.check();
 
         assert_eq!(exchange.trade_log.len(), 1);
@@ -163,7 +253,7 @@ mod tests {
         //Verifies that trades do not execute instaneously removing lookahead bias
         let mut exchange = setup();
 
-        exchange.insert_order(DianaOrderImpl::market_sell("ABC", 100.0));
+        exchange.insert_order(UistOrder::market_sell("ABC", 100.0));
         exchange.check();
 
         assert_eq!(exchange.trade_log.len(), 1);
@@ -177,7 +267,7 @@ mod tests {
     fn test_that_order_for_nonexistent_stock_fails_silently() {
         let mut exchange = setup();
 
-        exchange.insert_order(DianaOrderImpl::market_buy("XYZ", 100.0));
+        exchange.insert_order(UistOrder::market_buy("XYZ", 100.0));
         exchange.check();
 
         assert_eq!(exchange.trade_log.len(), 0);
@@ -188,7 +278,7 @@ mod tests {
         //Sounds redundant but accidentally removing the clear could cause unusual errors elsewhere
         let mut exchange = setup();
 
-        exchange.insert_order(DianaOrderImpl::market_buy("ABC", 100.0));
+        exchange.insert_order(UistOrder::market_buy("ABC", 100.0));
         exchange.check();
 
         assert!(exchange.order_buffer.is_empty());
@@ -206,7 +296,7 @@ mod tests {
 
         let mut exchange = Uist::new(clock, price_source);
 
-        exchange.insert_order(DianaOrderImpl::market_buy("ABC", 100.0));
+        exchange.insert_order(UistOrder::market_buy("ABC", 100.0));
         exchange.check();
         //Orderbook should have one order and trade log has no executed trades
         assert_eq!(exchange.trade_log.len(), 0);

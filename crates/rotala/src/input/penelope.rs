@@ -1,3 +1,6 @@
+use crate::clock::Clock;
+use rand::distributions::{Distribution, Uniform};
+use rand::thread_rng;
 use std::collections::HashMap;
 
 #[derive(Clone, Debug)]
@@ -80,4 +83,31 @@ impl Default for Penelope {
     fn default() -> Self {
         Self::new()
     }
+}
+
+/// Generates random [Penelope] for use in tests that don't depend on prices.
+pub fn random_penelope_generator(length: i64) -> (Penelope, Clock) {
+    let clock = crate::clock::ClockBuilder::with_length_in_seconds(100, length)
+        .with_frequency(&crate::clock::Frequency::Second)
+        .build();
+
+    let price_dist = Uniform::new(90.0, 100.0);
+    let mut rng = thread_rng();
+
+    let mut penelope = Penelope::new();
+    for date in clock.peek() {
+        penelope.add_quotes(
+            price_dist.sample(&mut rng),
+            price_dist.sample(&mut rng),
+            *date,
+            "ABC",
+        );
+        penelope.add_quotes(
+            price_dist.sample(&mut rng),
+            price_dist.sample(&mut rng),
+            *date,
+            "BCD",
+        );
+    }
+    (penelope, clock)
 }
