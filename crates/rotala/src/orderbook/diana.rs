@@ -113,7 +113,7 @@ impl Diana {
                 symbol: order.get_symbol().to_string(),
                 value,
                 quantity: order.get_shares(),
-                date: date.into(),
+                date,
                 typ: DianaTradeType::Buy,
             }
         };
@@ -125,7 +125,7 @@ impl Diana {
                 symbol: order.get_symbol().to_string(),
                 value,
                 quantity: order.get_shares(),
-                date: date.into(),
+                date,
                 typ: DianaTradeType::Sell,
             }
         };
