@@ -1,10 +1,8 @@
-use rotala::exchange::uist::{Uist, UistOrder};
-use rotala::input::penelope::random_penelope_generator;
+use rotala::exchange::uist::{UistOrder, random_uist_generator};
 
 #[test]
 fn test_that_uist_works() {
-    let (penelope, clock) = random_penelope_generator(100);
-    let mut exchange = Uist::new(clock, penelope);
+    let mut exchange = random_uist_generator(1000);
 
     let _init = exchange.init();
 

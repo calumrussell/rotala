@@ -1,16 +1,18 @@
 use std::collections::HashMap;
 
+use serde::{Deserialize, Serialize};
+
 use crate::input::penelope::{Penelope, PenelopeQuote};
 
 pub type DianaOrderId = u64;
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Deserialize, Serialize)]
 pub enum DianaTradeType {
     Buy,
     Sell,
 }
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Deserialize, Serialize)]
 pub enum DianaOrderType {
     MarketSell,
     MarketBuy,
@@ -25,7 +27,7 @@ pub trait DianaQuote {
     fn get_bid(&self) -> f64;
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct DianaTrade {
     pub symbol: String,
     pub value: f64,
@@ -34,7 +36,7 @@ pub struct DianaTrade {
     pub typ: DianaTradeType,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct DianaOrder {
     pub order_type: DianaOrderType,
     pub symbol: String,

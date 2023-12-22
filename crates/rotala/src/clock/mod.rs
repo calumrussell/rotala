@@ -13,17 +13,7 @@ pub enum Frequency {
     Daily,
     Monthly,
     Yearly,
-}
-
-impl Frequency {
-    pub fn to_str(&self) -> String {
-        match self {
-            Self::Second => String::from("Second"),
-            Self::Daily => String::from("Daily"),
-            Self::Monthly => String::from("Monthly"),
-            Self::Yearly => String::from("Yearly"),
-        }
-    }
+    Fixed,
 }
 
 impl From<Frequency> for u8 {
@@ -33,6 +23,7 @@ impl From<Frequency> for u8 {
             Frequency::Daily => 1,
             Frequency::Monthly => 2,
             Frequency::Yearly => 3,
+            Frequency::Fixed => 4,
         }
     }
 }
@@ -190,7 +181,6 @@ pub struct ClockInner {
     //the state of the Clock
     pos: usize,
     dates: Vec<DateTime>,
-    frequency: Frequency,
 }
 
 /// Used to synchronize time between components.
@@ -203,12 +193,14 @@ pub struct ClockInner {
 #[derive(Debug)]
 pub struct Clock {
     inner: Arc<Mutex<ClockInner>>,
+    frequency: Frequency,
 }
 
 impl Clone for Clock {
     fn clone(&self) -> Self {
         Clock {
             inner: Arc::clone(&self.inner),
+            frequency: self.frequency.clone(),
         }
     }
 }
@@ -248,10 +240,8 @@ impl Clock {
         inner.dates.len()
     }
 
-    pub fn frequency(&self) -> Frequency {
-        // Don't need this lock as we are reading immutable
-        let inner = self.inner.lock().unwrap();
-        inner.frequency.clone()
+    pub fn frequency(&self) -> &Frequency {
+        &self.frequency
     }
 
     /// Check to see if dates are empty
@@ -260,13 +250,23 @@ impl Clock {
         inner.dates.is_empty()
     }
 
+    pub fn from_fixed(dates: Vec<DateTime>) -> Self {
+        Self {
+            inner: Arc::new(Mutex::new(ClockInner {
+                dates,
+                pos: 0,
+            })),
+            frequency: Frequency::Fixed,
+        }
+    }
+
     pub fn new(dates: Vec<DateTime>, frequency: Frequency) -> Self {
         Self {
             inner: Arc::new(Mutex::new(ClockInner {
                 dates,
                 pos: 0,
-                frequency,
             })),
+            frequency,
         }
     }
 }
@@ -340,6 +340,7 @@ impl ClockBuilder {
             frequency: Frequency::Daily,
         }
     }
+
 }
 
 #[cfg(test)]

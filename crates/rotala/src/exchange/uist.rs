@@ -1,10 +1,13 @@
 use std::ops::Deref;
+use rand::distributions::{Distribution, Uniform};
+use rand::thread_rng;
+use serde::{Deserialize, Serialize};
 
 use crate::clock::Clock;
 use crate::input::penelope::{Penelope, PenelopeQuote};
 use crate::orderbook::diana::{Diana, DianaOrder, DianaOrderId, DianaOrderType, DianaTrade};
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 pub enum UistOrderType {
     MarketBuy,
     MarketSell,
@@ -27,10 +30,10 @@ impl From<UistOrderType> for DianaOrderType {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct UistOrderId(DianaOrderId);
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct UistTrade(DianaTrade);
 
 impl Deref for UistTrade {
@@ -40,7 +43,7 @@ impl Deref for UistTrade {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct UistOrder(DianaOrder);
 
 impl Deref for UistOrder {
@@ -99,6 +102,7 @@ impl UistOrder {
     }
 }
 
+#[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct InitMessage {
     pub start: i64,
     pub frequency: u8,
@@ -127,7 +131,7 @@ impl Uist {
     pub fn init(&self) -> InitMessage {
         InitMessage {
             start: *self.clock.now(),
-            frequency: self.clock.frequency().into(),
+            frequency: self.clock.frequency().clone().into(),
         }
     }
 
@@ -146,8 +150,8 @@ impl Uist {
         self.order_buffer.push(order);
     }
 
-    pub fn delete_order(&mut self, order_id: DianaOrderId) {
-        self.orderbook.delete_order(order_id);
+    pub fn delete_order(&mut self, order_id: UistOrderId) {
+        self.orderbook.delete_order(order_id.0);
     }
 
     pub fn check(&mut self) -> Vec<UistTrade> {
@@ -169,6 +173,34 @@ impl Uist {
         self.order_buffer.clear();
         executed_trades_internal_format
     }
+}
+
+/// Generates random [Uist] for use in tests that don't depend on prices.
+pub fn random_uist_generator(length: i64) -> Uist {
+    let clock = crate::clock::ClockBuilder::with_length_in_seconds(100, length)
+        .with_frequency(&crate::clock::Frequency::Second)
+        .build();
+
+    let price_dist = Uniform::new(90.0, 100.0);
+    let mut rng = thread_rng();
+
+    let mut penelope = Penelope::new();
+    for date in clock.peek() {
+        penelope.add_quotes(
+            price_dist.sample(&mut rng),
+            price_dist.sample(&mut rng),
+            *date,
+            "ABC",
+        );
+        penelope.add_quotes(
+            price_dist.sample(&mut rng),
+            price_dist.sample(&mut rng),
+            *date,
+            "BCD",
+        );
+    }
+
+    Uist::new(clock, penelope)
 }
 
 #[cfg(test)]
