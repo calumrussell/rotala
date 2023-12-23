@@ -1,7 +1,7 @@
-use std::ops::Deref;
 use rand::distributions::{Distribution, Uniform};
 use rand::thread_rng;
 use serde::{Deserialize, Serialize};
+use std::ops::Deref;
 
 use crate::clock::Clock;
 use crate::input::penelope::{Penelope, PenelopeQuote};

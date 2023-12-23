@@ -16,5 +16,5 @@ serde_json = "1.0.108"
 env_logger = "0.10.0"
 
 [[bin]]
-name = "test"
-path = "./src/bin/test.rs"
+name = "uist_server_test"
+path = "./src/bin/uist_server_test.rs"

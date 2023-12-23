@@ -252,20 +252,14 @@ impl Clock {
 
     pub fn from_fixed(dates: Vec<DateTime>) -> Self {
         Self {
-            inner: Arc::new(Mutex::new(ClockInner {
-                dates,
-                pos: 0,
-            })),
+            inner: Arc::new(Mutex::new(ClockInner { dates, pos: 0 })),
             frequency: Frequency::Fixed,
         }
     }
 
     pub fn new(dates: Vec<DateTime>, frequency: Frequency) -> Self {
         Self {
-            inner: Arc::new(Mutex::new(ClockInner {
-                dates,
-                pos: 0,
-            })),
+            inner: Arc::new(Mutex::new(ClockInner { dates, pos: 0 })),
             frequency,
         }
     }
@@ -340,7 +334,6 @@ impl ClockBuilder {
             frequency: Frequency::Daily,
         }
     }
-
 }
 
 #[cfg(test)]

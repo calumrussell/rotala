@@ -1,7 +1,8 @@
-
 use std::collections::HashMap;
 
-#[derive(Clone, Debug)]
+use serde::{Deserialize, Serialize};
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct PenelopeQuote {
     pub bid: f64,
     pub ask: f64,

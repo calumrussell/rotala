@@ -1,14 +1,17 @@
 use std::collections::HashSet;
 use std::io::{Cursor, Write};
 
-use crate::{input::penelope::Penelope, clock::{DateTime, Clock}};
+use crate::{
+    clock::{Clock, DateTime},
+    input::penelope::Penelope,
+};
 
 /// Get the data from Binance, build quote from open and close of candle, insert the quotes
 /// Penelope and initialize the clock.
 fn binance_build() -> (Penelope, Clock) {
     let url =
         "https://data.binance.vision/data/spot/daily/klines/BTCUSDT/1m/BTCUSDT-1m-2022-08-03.zip";
-    
+
     let mut penelope = Penelope::new();
     let mut dates: HashSet<DateTime> = HashSet::new();
 
@@ -43,16 +46,16 @@ fn binance_build() -> (Penelope, Clock) {
                                 row[1].parse::<f64>().unwrap().into(),
                                 row[1].parse::<f64>().unwrap().into(),
                                 open_date.into(),
-                                "BTC"
+                                "BTC",
                             );
- 
+
                             let close_date = (row[6].parse::<i64>().unwrap()) / 1000;
                             dates.insert(close_date.into());
                             penelope.add_quotes(
                                 row[4].parse::<f64>().unwrap().into(),
                                 row[4].parse::<f64>().unwrap().into(),
                                 close_date.into(),
-                                "BTC"
+                                "BTC",
                             );
                         }
                     }

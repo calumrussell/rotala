@@ -1,4 +1,4 @@
-use rotala::exchange::uist::{UistOrder, random_uist_generator};
+use rotala::exchange::uist::{random_uist_generator, UistOrder};
 
 #[test]
 fn test_that_uist_works() {
