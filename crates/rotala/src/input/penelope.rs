@@ -2,7 +2,10 @@ use std::collections::{HashMap, HashSet};
 
 use serde::{Deserialize, Serialize};
 
-use crate::{source::get_binance_1m_klines, clock::{Clock, DateTime}};
+use crate::{
+    clock::{Clock, DateTime},
+    source::get_binance_1m_klines,
+};
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct PenelopeQuote {
