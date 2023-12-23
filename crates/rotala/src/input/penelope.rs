@@ -1,6 +1,8 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 use serde::{Deserialize, Serialize};
+
+use crate::{source::get_binance_1m_klines, clock::{Clock, DateTime}};
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct PenelopeQuote {
@@ -65,6 +67,20 @@ impl Penelope {
             date_row.insert(symbol.into(), quote);
             self.inner.insert(date, date_row);
         }
+    }
+
+    pub fn from_binance() -> (Self, Clock) {
+        let mut penelope = Penelope::new();
+
+        let mut dates: HashSet<DateTime> = HashSet::new();
+        for record in get_binance_1m_klines() {
+            penelope.add_quotes(record.open, record.open, record.open_date, "BTC");
+            penelope.add_quotes(record.close, record.close, record.close_date, "BTC");
+            dates.insert(record.open_date.into());
+            dates.insert(record.close_date.into());
+        }
+        let clock = Clock::from_fixed(Vec::from_iter(dates));
+        (penelope, clock)
     }
 
     pub fn new() -> Self {

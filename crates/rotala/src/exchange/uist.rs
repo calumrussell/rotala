@@ -118,6 +118,11 @@ pub struct Uist {
 }
 
 impl Uist {
+    pub fn from_binance() -> Self {
+        let (penelope, clock) = Penelope::from_binance();
+        Self::new(clock, penelope)
+    }
+
     pub fn new(clock: Clock, price_source: Penelope) -> Self {
         Self {
             clock,
