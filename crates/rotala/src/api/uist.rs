@@ -24,7 +24,7 @@ pub async fn delete_order(
 ) -> web::Json<()> {
     let mut ex = exchange.lock().unwrap();
     ex.delete_order(delete_order.order_id.clone());
-    web::Json({})
+    web::Json(())
 }
 
 #[derive(Deserialize, Serialize)]
@@ -38,7 +38,7 @@ pub async fn insert_order(
 ) -> web::Json<()> {
     let mut ex = exchange.lock().unwrap();
     ex.insert_order(insert_order.order.clone());
-    web::Json({})
+    web::Json(())
 }
 
 #[derive(Deserialize, Serialize)]
