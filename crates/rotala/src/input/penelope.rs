@@ -102,7 +102,7 @@ impl PenelopeBuilder {
                 dates_vec.sort();
                 let first = **dates_vec.first().unwrap();
                 let last = **dates_vec.last().unwrap();
-                let gap = (last+1) - first;
+                let gap = (last) - first;
                 let clock = ClockBuilder::with_length_in_seconds(first, gap)
                     .with_frequency(&Frequency::Second)
                     .build();
@@ -133,5 +133,11 @@ impl PenelopeBuilder {
         }
 
         self.dates.insert(date.into());
+    }
+}
+
+impl Default for PenelopeBuilder {
+    fn default() -> Self {
+        Self::new()
     }
 }

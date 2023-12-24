@@ -4,7 +4,7 @@ use serde::{Deserialize, Serialize};
 use std::ops::Deref;
 
 use crate::clock::Clock;
-use crate::input::penelope::{Penelope, PenelopeQuote, PenelopeBuilder};
+use crate::input::penelope::{Penelope, PenelopeBuilder, PenelopeQuote};
 use crate::orderbook::diana::{Diana, DianaOrder, DianaOrderId, DianaOrderType, DianaTrade};
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -187,17 +187,17 @@ pub fn random_uist_generator(length: i64) -> Uist {
 
     let mut source_builder = PenelopeBuilder::new();
 
-    for date in 100..length+100 {
+    for date in 100..length + 100 {
         source_builder.add_quote(
             price_dist.sample(&mut rng),
             price_dist.sample(&mut rng),
-            date.into(),
+            date,
             "ABC",
         );
         source_builder.add_quote(
             price_dist.sample(&mut rng),
             price_dist.sample(&mut rng),
-            date.into(),
+            date,
             "BCD",
         );
     }

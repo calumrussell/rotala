@@ -211,7 +211,7 @@ mod tests {
         price_source_builder.add_quote(105.0, 106.00, 102, "ABC".to_string());
 
         let (penelope, clock) = price_source_builder.build_with_frequency(Frequency::Second);
-       (clock, penelope)
+        (clock, penelope)
     }
 
     #[test]
@@ -421,7 +421,8 @@ mod tests {
         price_source_builder.add_quote(101.00, 102.00, 100, "ABC".to_string());
         price_source_builder.add_quote(105.00, 106.00, 102, "ABC".to_string());
 
-        let (price_source, mut clock) = price_source_builder.build_with_frequency(Frequency::Second);
+        let (price_source, mut clock) =
+            price_source_builder.build_with_frequency(Frequency::Second);
 
         clock.tick();
 
