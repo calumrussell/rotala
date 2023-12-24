@@ -4,7 +4,7 @@ use serde::{Deserialize, Serialize};
 use std::ops::Deref;
 
 use crate::clock::Clock;
-use crate::input::penelope::{Penelope, PenelopeQuote};
+use crate::input::penelope::{Penelope, PenelopeQuote, PenelopeBuilder};
 use crate::orderbook::diana::{Diana, DianaOrder, DianaOrderId, DianaOrderType, DianaTrade};
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -182,29 +182,27 @@ impl Uist {
 
 /// Generates random [Uist] for use in tests that don't depend on prices.
 pub fn random_uist_generator(length: i64) -> Uist {
-    let clock = crate::clock::ClockBuilder::with_length_in_seconds(100, length)
-        .with_frequency(&crate::clock::Frequency::Second)
-        .build();
-
     let price_dist = Uniform::new(90.0, 100.0);
     let mut rng = thread_rng();
 
-    let mut penelope = Penelope::new();
-    for date in clock.peek() {
-        penelope.add_quotes(
+    let mut source_builder = PenelopeBuilder::new();
+
+    for date in 100..length+100 {
+        source_builder.add_quote(
             price_dist.sample(&mut rng),
             price_dist.sample(&mut rng),
-            *date,
+            date.into(),
             "ABC",
         );
-        penelope.add_quotes(
+        source_builder.add_quote(
             price_dist.sample(&mut rng),
             price_dist.sample(&mut rng),
-            *date,
+            date.into(),
             "BCD",
         );
     }
 
+    let (penelope, clock) = source_builder.build_with_frequency(crate::clock::Frequency::Second);
     Uist::new(clock, penelope)
 }
 
@@ -212,19 +210,17 @@ pub fn random_uist_generator(length: i64) -> Uist {
 mod tests {
     use super::Uist;
     use crate::exchange::uist::UistOrder;
-    use crate::input::penelope::Penelope;
+    use crate::input::penelope::PenelopeBuilder;
 
     fn setup() -> Uist {
-        let clock = crate::clock::ClockBuilder::with_length_in_seconds(100, 3)
-            .with_frequency(&crate::clock::Frequency::Second)
-            .build();
+        let mut source_builder = PenelopeBuilder::new();
+        source_builder.add_quote(101.00, 102.00, 100, "ABC".to_owned());
+        source_builder.add_quote(102.00, 103.00, 101, "ABC".to_owned());
+        source_builder.add_quote(105.00, 106.00, 102, "ABC".to_owned());
 
-        let mut price_source = Penelope::new();
-        price_source.add_quotes(101.00, 102.00, 100, "ABC".to_owned());
-        price_source.add_quotes(102.00, 103.00, 101, "ABC".to_owned());
-        price_source.add_quotes(105.00, 106.00, 102, "ABC".to_owned());
+        let (source, clock) = source_builder.build_with_frequency(crate::clock::Frequency::Second);
 
-        let exchange = Uist::new(clock, price_source);
+        let exchange = Uist::new(clock, source);
         exchange
     }
 
@@ -319,15 +315,13 @@ mod tests {
 
     #[test]
     fn test_that_order_with_missing_price_executes_later() {
-        let clock = crate::clock::ClockBuilder::with_length_in_seconds(100, 3)
-            .with_frequency(&crate::clock::Frequency::Second)
-            .build();
+        let mut source_builder = PenelopeBuilder::new();
+        source_builder.add_quote(101.00, 102.00, 100, "ABC".to_owned());
+        source_builder.add_quote(105.00, 106.00, 102, "ABC".to_owned());
 
-        let mut price_source = Penelope::new();
-        price_source.add_quotes(101.00, 102.00, 100, "ABC".to_owned());
-        price_source.add_quotes(105.00, 106.00, 102, "ABC".to_owned());
+        let (source, clock) = source_builder.build_with_frequency(crate::clock::Frequency::Second);
 
-        let mut exchange = Uist::new(clock, price_source);
+        let mut exchange = Uist::new(clock, source);
 
         exchange.insert_order(UistOrder::market_buy("ABC", 100.0));
         exchange.check();

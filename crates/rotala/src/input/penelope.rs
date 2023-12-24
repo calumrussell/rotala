@@ -3,7 +3,7 @@ use std::collections::{HashMap, HashSet};
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    clock::{Clock, DateTime},
+    clock::{Clock, DateTime, Frequency, ClockBuilder},
     source::get_binance_1m_klines,
 };
 
@@ -54,8 +54,69 @@ impl Penelope {
         }
         None
     }
+    pub fn from_binance() -> (Self, Clock) {
+        let mut builder = PenelopeBuilder::new();
 
-    pub fn add_quotes(&mut self, bid: f64, ask: f64, date: i64, symbol: impl Into<String> + Clone) {
+        for record in get_binance_1m_klines() {
+            builder.add_quote(record.open, record.open, record.open_date, "BTC");
+            builder.add_quote(record.close, record.close, record.close_date, "BTC");
+        }
+        builder.build()
+    }
+
+    pub fn from_hashmap(inner: HashMap<i64, HashMap<String, PenelopeQuote>>) -> Self {
+        Self { inner }
+    }
+}
+
+pub struct PenelopeBuilder {
+    inner: HashMap<i64, HashMap<String, PenelopeQuote>>,
+    dates: HashSet<DateTime>,
+}
+
+impl PenelopeBuilder {
+    pub fn new() -> Self {
+        Self {
+            inner: HashMap::new(),
+            dates: HashSet::new(),
+        }
+    }
+
+    pub fn build_with_frequency(&self, frequency: Frequency) -> (Penelope, Clock) {
+        // FIX: there is a clone of the underlying hashmap/dates which is very expensive, need to std::move
+        match frequency {
+            Frequency::Fixed => (Penelope::from_hashmap(self.inner.clone()), Clock::from_fixed(Vec::from_iter(self.dates.clone()))),
+            Frequency::Daily => {
+                let mut dates_vec = Vec::from_iter(self.dates.clone());
+                dates_vec.sort();
+                let first = **dates_vec.first().unwrap();
+                let last = **dates_vec.last().unwrap();
+                let gap = ((last + 1) - first) / 86400;
+                let clock = ClockBuilder::with_length_in_days(first, gap)
+                    .with_frequency(&Frequency::Daily)
+                    .build();
+                (Penelope::from_hashmap(self.inner.clone()), clock)
+            },
+            Frequency::Second => {
+                let mut dates_vec = Vec::from_iter(self.dates.clone());
+                dates_vec.sort();
+                let first = **dates_vec.first().unwrap();
+                let last = **dates_vec.last().unwrap();
+                let gap = (last+1) - first;
+                let clock = ClockBuilder::with_length_in_seconds(first, gap)
+                    .with_frequency(&Frequency::Second)
+                    .build();
+                (Penelope::from_hashmap(self.inner.clone()), clock)
+            }
+        }
+    }
+
+    pub fn build(&self) -> (Penelope, Clock) {
+        // FIX: there is a clone of the underlying hashmap/dates which is very expensive, need to std::move
+        (Penelope::from_hashmap(self.inner.clone()), Clock::from_fixed(Vec::from_iter(self.dates.clone())))
+    }
+
+    pub fn add_quote(&mut self, bid: f64, ask: f64, date: i64, symbol: impl Into<String> + Clone) {
         let quote = PenelopeQuote {
             bid,
             ask,
@@ -70,35 +131,7 @@ impl Penelope {
             date_row.insert(symbol.into(), quote);
             self.inner.insert(date, date_row);
         }
-    }
 
-    pub fn from_binance() -> (Self, Clock) {
-        let mut penelope = Penelope::new();
-
-        let mut dates: HashSet<DateTime> = HashSet::new();
-        for record in get_binance_1m_klines() {
-            penelope.add_quotes(record.open, record.open, record.open_date, "BTC");
-            penelope.add_quotes(record.close, record.close, record.close_date, "BTC");
-            dates.insert(record.open_date.into());
-            dates.insert(record.close_date.into());
-        }
-        let clock = Clock::from_fixed(Vec::from_iter(dates));
-        (penelope, clock)
-    }
-
-    pub fn new() -> Self {
-        Self {
-            inner: HashMap::new(),
-        }
-    }
-
-    pub fn from_hashmap(inner: HashMap<i64, HashMap<String, PenelopeQuote>>) -> Self {
-        Self { inner }
-    }
-}
-
-impl Default for Penelope {
-    fn default() -> Self {
-        Self::new()
+        self.dates.insert(date.into());
     }
 }

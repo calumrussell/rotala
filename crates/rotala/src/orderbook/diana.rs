@@ -199,20 +199,19 @@ impl Diana {
 mod tests {
     use super::Diana as OrderBook;
     use super::DianaOrder;
-    use crate::clock::{Clock, ClockBuilder, Frequency};
+    use crate::clock::{Clock, Frequency};
     use crate::input::penelope::Penelope;
+    use crate::input::penelope::PenelopeBuilder;
     use crate::orderbook::diana::DianaOrderType;
 
     fn setup() -> (Clock, Penelope) {
-        let clock = ClockBuilder::with_length_in_seconds(100, 3)
-            .with_frequency(&Frequency::Second)
-            .build();
+        let mut price_source_builder = PenelopeBuilder::new();
+        price_source_builder.add_quote(101.0, 102.00, 100, "ABC".to_string());
+        price_source_builder.add_quote(102.0, 103.00, 101, "ABC".to_string());
+        price_source_builder.add_quote(105.0, 106.00, 102, "ABC".to_string());
 
-        let mut price_source = Penelope::new();
-        price_source.add_quotes(101.0, 102.00, 100, "ABC".to_string());
-        price_source.add_quotes(102.0, 103.00, 101, "ABC".to_string());
-        price_source.add_quotes(105.0, 106.00, 102, "ABC".to_string());
-        (clock, price_source)
+        let (penelope, clock) = price_source_builder.build_with_frequency(Frequency::Second);
+       (clock, penelope)
     }
 
     #[test]
@@ -418,13 +417,11 @@ mod tests {
 
     #[test]
     fn test_that_order_with_missing_price_executes_later() {
-        let mut clock = ClockBuilder::with_length_in_seconds(100, 3)
-            .with_frequency(&Frequency::Second)
-            .build();
+        let mut price_source_builder = PenelopeBuilder::new();
+        price_source_builder.add_quote(101.00, 102.00, 100, "ABC".to_string());
+        price_source_builder.add_quote(105.00, 106.00, 102, "ABC".to_string());
 
-        let mut price_source = Penelope::new();
-        price_source.add_quotes(101.00, 102.00, 100, "ABC".to_string());
-        price_source.add_quotes(105.00, 106.00, 102, "ABC".to_string());
+        let (price_source, mut clock) = price_source_builder.build_with_frequency(Frequency::Second);
 
         clock.tick();
 

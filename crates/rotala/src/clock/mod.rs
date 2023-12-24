@@ -11,8 +11,6 @@ use time::{format_description, Date, OffsetDateTime};
 pub enum Frequency {
     Second,
     Daily,
-    Monthly,
-    Yearly,
     Fixed,
 }
 
@@ -21,9 +19,7 @@ impl From<Frequency> for u8 {
         match freq {
             Frequency::Second => 0,
             Frequency::Daily => 1,
-            Frequency::Monthly => 2,
-            Frequency::Yearly => 3,
-            Frequency::Fixed => 4,
+            Frequency::Fixed => 3,
         }
     }
 }
@@ -111,7 +107,7 @@ impl From<Month> for u8 {
 //The internal representation with the time package should remain hidden from clients. Whilst this
 //results in some duplication of the API, this retains the option to get rid of the dependency on
 //time or change individual functions later.
-#[derive(Clone, Debug, Hash, Eq, PartialEq, PartialOrd, Copy)]
+#[derive(Clone, Debug, Hash, Eq, PartialEq, PartialOrd, Copy, Ord)]
 pub struct DateTime(i64);
 
 impl DateTime {
