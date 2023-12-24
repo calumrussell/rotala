@@ -3,7 +3,7 @@ use std::collections::{HashMap, HashSet};
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    clock::{Clock, DateTime, Frequency, ClockBuilder},
+    clock::{Clock, ClockBuilder, DateTime, Frequency},
     source::get_binance_1m_klines,
 };
 
@@ -85,7 +85,10 @@ impl PenelopeBuilder {
     pub fn build_with_frequency(&self, frequency: Frequency) -> (Penelope, Clock) {
         // FIX: there is a clone of the underlying hashmap/dates which is very expensive, need to std::move
         match frequency {
-            Frequency::Fixed => (Penelope::from_hashmap(self.inner.clone()), Clock::from_fixed(Vec::from_iter(self.dates.clone()))),
+            Frequency::Fixed => (
+                Penelope::from_hashmap(self.inner.clone()),
+                Clock::from_fixed(Vec::from_iter(self.dates.clone())),
+            ),
             Frequency::Daily => {
                 let mut dates_vec = Vec::from_iter(self.dates.clone());
                 dates_vec.sort();
@@ -96,7 +99,7 @@ impl PenelopeBuilder {
                     .with_frequency(&Frequency::Daily)
                     .build();
                 (Penelope::from_hashmap(self.inner.clone()), clock)
-            },
+            }
             Frequency::Second => {
                 let mut dates_vec = Vec::from_iter(self.dates.clone());
                 dates_vec.sort();
@@ -113,7 +116,10 @@ impl PenelopeBuilder {
 
     pub fn build(&self) -> (Penelope, Clock) {
         // FIX: there is a clone of the underlying hashmap/dates which is very expensive, need to std::move
-        (Penelope::from_hashmap(self.inner.clone()), Clock::from_fixed(Vec::from_iter(self.dates.clone())))
+        (
+            Penelope::from_hashmap(self.inner.clone()),
+            Clock::from_fixed(Vec::from_iter(self.dates.clone())),
+        )
     }
 
     pub fn add_quote(&mut self, bid: f64, ask: f64, date: i64, symbol: impl Into<String> + Clone) {
