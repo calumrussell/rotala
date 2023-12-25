@@ -24,6 +24,16 @@ impl From<Frequency> for u8 {
     }
 }
 
+impl From<Frequency> for String {
+    fn from(freq: Frequency) -> Self {
+        match freq {
+            Frequency::Second => "SECOND".to_string(),
+            Frequency::Daily => "DAILY".to_string(),
+            Frequency::Fixed => "FIXED".to_string(),
+        }
+    }
+}
+
 pub enum Weekday {
     Monday,
     Tuesday,

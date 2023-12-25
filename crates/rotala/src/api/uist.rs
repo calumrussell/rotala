@@ -3,10 +3,7 @@ use std::sync::Mutex;
 use actix_web::web;
 use serde::{Deserialize, Serialize};
 
-use crate::{
-    exchange::uist::{InitMessage, Uist, UistOrder, UistOrderId, UistTrade},
-    input::penelope::PenelopeQuote,
-};
+use crate::exchange::uist::{InitMessage, Uist, UistOrder, UistOrderId, UistTrade, UistQuote};
 
 pub async fn check(exchange: web::Data<Mutex<Uist>>) -> web::Json<Vec<UistTrade>> {
     let mut ex = exchange.lock().unwrap();
@@ -54,7 +51,7 @@ pub async fn fetch_trades(
     web::Json(ex.fetch_trades(fetch_trade.from))
 }
 
-pub async fn fetch_quotes(exchange: web::Data<Mutex<Uist>>) -> web::Json<Vec<PenelopeQuote>> {
+pub async fn fetch_quotes(exchange: web::Data<Mutex<Uist>>) -> web::Json<Vec<UistQuote>> {
     let ex = exchange.lock().unwrap();
     web::Json(ex.fetch_quotes())
 }
@@ -91,7 +88,7 @@ mod tests {
         assert!(resp.frequency == 0);
 
         let req1 = test::TestRequest::get().uri("/fetch_quotes").to_request();
-        let _resp1: Vec<PenelopeQuote> = test::call_and_read_body_json(&app, req1).await;
+        let _resp1: Vec<UistQuote> = test::call_and_read_body_json(&app, req1).await;
 
         let req2 = test::TestRequest::get().uri("/check").to_request();
         test::call_service(&app, req2).await;

@@ -1,106 +1,17 @@
 use rand::distributions::{Distribution, Uniform};
 use rand::thread_rng;
 use serde::{Deserialize, Serialize};
-use std::ops::Deref;
 
 use crate::clock::Clock;
 use crate::input::penelope::{Penelope, PenelopeBuilder, PenelopeQuote};
-use crate::orderbook::diana::{Diana, DianaOrder, DianaOrderId, DianaOrderType, DianaTrade};
+use crate::orderbook::diana::{Diana, DianaOrder, DianaOrderId, DianaOrderType, DianaTrade, DianaTradeType};
 
-#[derive(Debug, Clone, Deserialize, Serialize)]
-pub enum UistOrderType {
-    MarketBuy,
-    MarketSell,
-    LimitBuy,
-    LimitSell,
-    StopBuy,
-    StopSell,
-}
-
-impl From<UistOrderType> for DianaOrderType {
-    fn from(value: UistOrderType) -> Self {
-        match value {
-            UistOrderType::MarketBuy => DianaOrderType::MarketBuy,
-            UistOrderType::MarketSell => DianaOrderType::MarketSell,
-            UistOrderType::LimitBuy => DianaOrderType::LimitBuy,
-            UistOrderType::LimitSell => DianaOrderType::LimitSell,
-            UistOrderType::StopBuy => DianaOrderType::StopBuy,
-            UistOrderType::StopSell => DianaOrderType::StopSell,
-        }
-    }
-}
-
-#[derive(Debug, Clone, Deserialize, Serialize)]
-pub struct UistOrderId(DianaOrderId);
-
-#[derive(Debug, Clone, Deserialize, Serialize)]
-pub struct UistTrade(DianaTrade);
-
-impl Deref for UistTrade {
-    type Target = DianaTrade;
-    fn deref(&self) -> &Self::Target {
-        &self.0
-    }
-}
-
-#[derive(Debug, Clone, Deserialize, Serialize)]
-pub struct UistOrder(DianaOrder);
-
-impl Deref for UistOrder {
-    type Target = DianaOrder;
-    fn deref(&self) -> &Self::Target {
-        &self.0
-    }
-}
-
-impl UistOrder {
-    fn market(order_type: UistOrderType, symbol: impl Into<String>, shares: f64) -> Self {
-        Self(DianaOrder {
-            order_type: order_type.into(),
-            symbol: symbol.into(),
-            shares,
-            price: None,
-        })
-    }
-
-    fn delayed(
-        order_type: UistOrderType,
-        symbol: impl Into<String>,
-        shares: f64,
-        price: f64,
-    ) -> Self {
-        Self(DianaOrder {
-            order_type: order_type.into(),
-            symbol: symbol.into(),
-            shares,
-            price: Some(price),
-        })
-    }
-
-    pub fn market_buy(symbol: impl Into<String>, shares: f64) -> Self {
-        UistOrder::market(UistOrderType::MarketBuy, symbol, shares)
-    }
-
-    pub fn market_sell(symbol: impl Into<String>, shares: f64) -> Self {
-        UistOrder::market(UistOrderType::MarketSell, symbol, shares)
-    }
-
-    pub fn stop_buy(symbol: impl Into<String>, shares: f64, price: f64) -> Self {
-        UistOrder::delayed(UistOrderType::StopBuy, symbol, shares, price)
-    }
-
-    pub fn stop_sell(symbol: impl Into<String>, shares: f64, price: f64) -> Self {
-        UistOrder::delayed(UistOrderType::StopSell, symbol, shares, price)
-    }
-
-    pub fn limit_buy(symbol: impl Into<String>, shares: f64, price: f64) -> Self {
-        UistOrder::delayed(UistOrderType::LimitBuy, symbol, shares, price)
-    }
-
-    pub fn limit_sell(symbol: impl Into<String>, shares: f64, price: f64) -> Self {
-        UistOrder::delayed(UistOrderType::LimitSell, symbol, shares, price)
-    }
-}
+pub type UistTradeType = DianaTradeType;
+pub type UistOrderType = DianaOrderType;
+pub type UistOrderId = DianaOrderId;
+pub type UistQuote = PenelopeQuote;
+pub type UistTrade = DianaTrade;
+pub type UistOrder = DianaOrder;
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct InitMessage {
@@ -108,6 +19,7 @@ pub struct InitMessage {
     pub frequency: u8,
 }
 
+#[derive(Debug)]
 pub struct Uist {
     clock: Clock,
     price_source: Penelope,
@@ -140,7 +52,7 @@ impl Uist {
         }
     }
 
-    pub fn fetch_quotes(&self) -> Vec<PenelopeQuote> {
+    pub fn fetch_quotes(&self) -> Vec<UistQuote> {
         if let Some(quotes) = self.price_source.get_quotes(&self.clock.now()) {
             return quotes;
         }
@@ -156,7 +68,7 @@ impl Uist {
     }
 
     pub fn delete_order(&mut self, order_id: UistOrderId) {
-        self.orderbook.delete_order(order_id.0);
+        self.orderbook.delete_order(order_id);
     }
 
     pub fn check(&mut self) -> Vec<UistTrade> {
@@ -165,15 +77,15 @@ impl Uist {
         self.clock.tick();
 
         for order in &self.order_buffer {
-            self.orderbook.insert_order(order.0.clone());
+            self.orderbook.insert_order(order.clone());
         }
 
         let now = self.clock.now();
         let executed_trades = self.orderbook.execute_orders(*now, &self.price_source);
         let mut executed_trades_internal_format = Vec::new();
         for executed_trade in executed_trades {
-            self.trade_log.push(UistTrade(executed_trade.clone()));
-            executed_trades_internal_format.push(UistTrade(executed_trade.clone()));
+            self.trade_log.push(executed_trade.clone());
+            executed_trades_internal_format.push(executed_trade.clone());
         }
         self.order_buffer.clear();
         executed_trades_internal_format

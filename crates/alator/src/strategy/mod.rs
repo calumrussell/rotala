@@ -3,10 +3,9 @@
 pub mod staticweight;
 
 use async_trait::async_trait;
+use rotala::exchange::uist::UistTrade;
 
 #[allow(unused)]
-use crate::broker::BrokerEvent;
-use crate::broker::{DividendPayment, Trade};
 use crate::types::{CashValue, StrategySnapshot};
 
 /// Generate changes for broker to act upon.
@@ -48,8 +47,7 @@ pub enum StrategyEvent {
 ///
 /// Used for tax calculations at the moment. Mirrors functions on broker.
 pub trait Audit {
-    fn trades_between(&self, start: &i64, end: &i64) -> Vec<Trade>;
-    fn dividends_between(&self, start: &i64, end: &i64) -> Vec<DividendPayment>;
+    fn trades_between(&self, start: &i64, end: &i64) -> Vec<UistTrade>;
 }
 
 /// Transfer cash into a strategy at the start or whilst running.

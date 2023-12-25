@@ -7,7 +7,7 @@ pub use builder::SimContextBuilder;
 use crate::perf::{BacktestOutput, PerformanceCalculator};
 use crate::strategy::{History, Strategy};
 use crate::types::CashValue;
-use alator_clock::{Clock, Frequency};
+use rotala::clock::{Clock, Frequency};
 
 /// Context for single-threaded simulation run.
 ///

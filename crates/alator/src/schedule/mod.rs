@@ -1,6 +1,6 @@
 //! Schedules for running backtests
 
-use alator_clock::{DateTime, Weekday};
+use rotala::clock::{DateTime, Weekday};
 
 /// Returns [bool] when it is time to trade.
 ///

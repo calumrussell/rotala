@@ -36,6 +36,18 @@ pub struct DianaTrade {
     pub typ: DianaTradeType,
 }
 
+impl DianaTrade {
+    pub fn new(symbol: impl Into<String>, value: f64, quantity: f64, date: i64, typ: DianaTradeType) -> Self {
+        Self {
+            symbol: symbol.into(),
+            value,
+            quantity,
+            date,
+            typ,
+        }
+    }
+}
+
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct DianaOrder {
     pub order_type: DianaOrderType,
@@ -45,11 +57,11 @@ pub struct DianaOrder {
 }
 
 impl DianaOrder {
-    fn get_shares(&self) -> f64 {
+    pub fn get_shares(&self) -> f64 {
         self.shares
     }
 
-    fn get_symbol(&self) -> &str {
+    pub fn get_symbol(&self) -> &str {
         &self.symbol
     }
     pub fn get_price(&self) -> &Option<f64> {
@@ -68,6 +80,55 @@ impl PartialEq for DianaOrder {
         self.symbol == other.symbol
             && self.order_type == other.order_type
             && self.shares == other.shares
+    }
+}
+
+impl DianaOrder {
+    fn market(order_type: DianaOrderType, symbol: impl Into<String>, shares: f64) -> Self {
+        Self {
+            order_type: order_type.into(),
+            symbol: symbol.into(),
+            shares,
+            price: None,
+        }
+    }
+
+    fn delayed(
+        order_type: DianaOrderType,
+        symbol: impl Into<String>,
+        shares: f64,
+        price: f64,
+    ) -> Self {
+        Self {
+            order_type: order_type.into(),
+            symbol: symbol.into(),
+            shares,
+            price: Some(price),
+        }
+    }
+
+    pub fn market_buy(symbol: impl Into<String>, shares: f64) -> Self {
+        DianaOrder::market(DianaOrderType::MarketBuy, symbol, shares)
+    }
+
+    pub fn market_sell(symbol: impl Into<String>, shares: f64) -> Self {
+        DianaOrder::market(DianaOrderType::MarketSell, symbol, shares)
+    }
+
+    pub fn stop_buy(symbol: impl Into<String>, shares: f64, price: f64) -> Self {
+        DianaOrder::delayed(DianaOrderType::StopBuy, symbol, shares, price)
+    }
+
+    pub fn stop_sell(symbol: impl Into<String>, shares: f64, price: f64) -> Self {
+        DianaOrder::delayed(DianaOrderType::StopSell, symbol, shares, price)
+    }
+
+    pub fn limit_buy(symbol: impl Into<String>, shares: f64, price: f64) -> Self {
+        DianaOrder::delayed(DianaOrderType::LimitBuy, symbol, shares, price)
+    }
+
+    pub fn limit_sell(symbol: impl Into<String>, shares: f64, price: f64) -> Self {
+        DianaOrder::delayed(DianaOrderType::LimitSell, symbol, shares, price)
     }
 }
 

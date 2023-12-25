@@ -4,7 +4,7 @@ use itertools::Itertools;
 use std::ops::Deref;
 use std::{collections::HashMap, ops::Add};
 
-use alator_clock::DateTime;
+use rotala::clock::DateTime;
 
 ///Defines a set of base types that are used by multiple components.
 

@@ -132,10 +132,7 @@
 //! * Shorting
 
 #[allow(unused)]
-use crate::broker::{ReceivesOrders, ReceivesOrdersAsync};
-#[allow(unused)]
 pub mod broker;
-pub mod input;
 pub mod perf;
 pub mod schedule;
 pub mod simcontext;
