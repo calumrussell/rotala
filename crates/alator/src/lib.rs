@@ -54,40 +54,26 @@
 //! An example backtest (with data creation excluded):
 //!
 //! ```
-//!     use alator_clock::{ClockBuilder, Frequency};
-//!     use alator_exchange::{ExchangeSync, SyncExchangeImpl};
-//!     use alator_exchange::input::DefaultPriceSource;
-//!
-//!     use alator::broker::Dividend;
-//!     use alator::broker::single::{ SingleBroker, SingleBrokerBuilder };
-//!     use alator::broker::BrokerCost;
-//!     use alator::input::{ fake_price_source_generator, DefaultCorporateEventsSource };
+//!     use alator::broker::uist::UistBrokerBuilder;
+//!     use alator::broker::types::BrokerCost;
 //!     use alator::strategy::staticweight::StaticWeightStrategyBuilder;
 //!     use alator::simcontext::SimContextBuilder;
 //!     use alator::types::{ CashValue, PortfolioAllocation };
+//!     use rotala::exchange::uist::random_uist_generator;
 //!
 //!     let initial_cash: CashValue = 100_000.0.into();
-//!     let length_in_days: i64 = 1000;
-//!     let start_date: i64 = 1609750800; //Date - 4/1/21 9:00:0000
-//!     let clock = ClockBuilder::with_length_in_days(start_date, length_in_days)
-//!         .with_frequency(&Frequency::Daily)
+//!     let (uist, clock) = random_uist_generator(1000);
+//!     let mut brkr = UistBrokerBuilder::new()
+//!         .with_trade_costs(vec![BrokerCost::flat(1.0)])
+//!         .with_exchange(uist)
 //!         .build();
-//!
-//!     let price_source = fake_price_source_generator(clock.clone());
 //!
 //!     let mut weights: PortfolioAllocation = PortfolioAllocation::new();
 //!     weights.insert("ABC", 0.5);
 //!     weights.insert("BCD", 0.5);
 //!
-//!     let exchange = SyncExchangeImpl::new(clock.clone(), price_source);
-//!
-//!     let simbrkr = SingleBrokerBuilder::new()
-//!             .with_trade_costs(vec![BrokerCost::Flat(1.0.into())])
-//!             .with_exchange(exchange)
-//!             .build();
-//!
 //!     let strat = StaticWeightStrategyBuilder::new()
-//!         .with_brkr(simbrkr)
+//!         .with_brkr(brkr)
 //!         .with_weights(weights)
 //!         .with_clock(clock.clone())
 //!         .default();

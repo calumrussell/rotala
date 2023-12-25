@@ -89,9 +89,9 @@ impl Strategy for StaticWeightStrategy {
     fn init(&mut self, initital_cash: &f64) {
         self.deposit_cash(initital_cash);
         if DefaultTradingSchedule::should_trade(&self.clock.now()) {
-            let orders = self.brkr.diff_brkr_against_target_weights(
-                &self.target_weights
-            );
+            let orders = self
+                .brkr
+                .diff_brkr_against_target_weights(&self.target_weights);
             if !orders.is_empty() {
                 self.brkr.send_orders(&orders);
             }
@@ -102,9 +102,9 @@ impl Strategy for StaticWeightStrategy {
         self.brkr.check();
         let now = self.clock.now();
         if DefaultTradingSchedule::should_trade(&now) {
-            let orders = self.brkr.diff_brkr_against_target_weights(
-                &self.target_weights
-            );
+            let orders = self
+                .brkr
+                .diff_brkr_against_target_weights(&self.target_weights);
             if !orders.is_empty() {
                 self.brkr.send_orders(&orders);
             }

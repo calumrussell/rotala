@@ -37,7 +37,13 @@ pub struct DianaTrade {
 }
 
 impl DianaTrade {
-    pub fn new(symbol: impl Into<String>, value: f64, quantity: f64, date: i64, typ: DianaTradeType) -> Self {
+    pub fn new(
+        symbol: impl Into<String>,
+        value: f64,
+        quantity: f64,
+        date: i64,
+        typ: DianaTradeType,
+    ) -> Self {
         Self {
             symbol: symbol.into(),
             value,
@@ -86,7 +92,7 @@ impl PartialEq for DianaOrder {
 impl DianaOrder {
     fn market(order_type: DianaOrderType, symbol: impl Into<String>, shares: f64) -> Self {
         Self {
-            order_type: order_type.into(),
+            order_type,
             symbol: symbol.into(),
             shares,
             price: None,
@@ -100,7 +106,7 @@ impl DianaOrder {
         price: f64,
     ) -> Self {
         Self {
-            order_type: order_type.into(),
+            order_type,
             symbol: symbol.into(),
             shares,
             price: Some(price),

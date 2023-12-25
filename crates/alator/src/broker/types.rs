@@ -44,7 +44,7 @@ impl BrokerCost {
 
     pub fn calc(&self, trade: impl BrokerTrade) -> CashValue {
         match self {
-            BrokerCost::PerShare(cost) => CashValue::from(*cost.clone() * trade.get_quantity().clone()),
+            BrokerCost::PerShare(cost) => CashValue::from(*cost.clone() * trade.get_quantity()),
             BrokerCost::PctOfValue(pct) => CashValue::from(trade.get_value() * *pct),
             BrokerCost::Flat(val) => val.clone(),
         }

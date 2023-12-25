@@ -1,8 +1,8 @@
 //! Generates performance stats for backtest
 
 use crate::types::StrategySnapshot;
-use rotala::clock::Frequency;
 use itertools::Itertools;
+use rotala::clock::Frequency;
 
 /// Output for single backtest run.
 #[derive(Clone, Debug)]
@@ -262,15 +262,14 @@ mod tests {
     use crate::broker::uist::UistBrokerBuilder;
     use crate::perf::StrategySnapshot;
     use crate::strategy::staticweight::StaticWeightStrategyBuilder;
+    use crate::strategy::{History, Strategy};
     use crate::types::PortfolioAllocation;
-    use crate::strategy::{Strategy, History};
 
     use super::Frequency;
     use super::PerformanceCalculator;
     use super::PortfolioCalculations;
 
     fn setup() -> (UistBroker, Clock) {
-
         let mut source_builder = PenelopeBuilder::new();
         source_builder.add_quote(101.0, 102.0, 100, "ABC");
         source_builder.add_quote(102.0, 103.0, 101, "ABC");
@@ -282,7 +281,8 @@ mod tests {
         source_builder.add_quote(498.0, 499.0, 102, "BCD");
         source_builder.add_quote(495.0, 496.0, 103, "BCD");
 
-        let (price_source, clock) = source_builder.build_with_frequency(rotala::clock::Frequency::Second);
+        let (price_source, clock) =
+            source_builder.build_with_frequency(rotala::clock::Frequency::Second);
         let uist = Uist::new(clock.clone(), price_source);
 
         let brkr = UistBrokerBuilder::new()

@@ -4,7 +4,9 @@ use serde::{Deserialize, Serialize};
 
 use crate::clock::Clock;
 use crate::input::penelope::{Penelope, PenelopeBuilder, PenelopeQuote};
-use crate::orderbook::diana::{Diana, DianaOrder, DianaOrderId, DianaOrderType, DianaTrade, DianaTradeType};
+use crate::orderbook::diana::{
+    Diana, DianaOrder, DianaOrderId, DianaOrderType, DianaTrade, DianaTradeType,
+};
 
 pub type UistTradeType = DianaTradeType;
 pub type UistOrderType = DianaOrderType;
@@ -93,7 +95,7 @@ impl Uist {
 }
 
 /// Generates random [Uist] for use in tests that don't depend on prices.
-pub fn random_uist_generator(length: i64) -> Uist {
+pub fn random_uist_generator(length: i64) -> (Uist, Clock) {
     let price_dist = Uniform::new(90.0, 100.0);
     let mut rng = thread_rng();
 
@@ -115,7 +117,7 @@ pub fn random_uist_generator(length: i64) -> Uist {
     }
 
     let (penelope, clock) = source_builder.build_with_frequency(crate::clock::Frequency::Second);
-    Uist::new(clock, penelope)
+    (Uist::new(clock.clone(), penelope), clock)
 }
 
 #[cfg(test)]

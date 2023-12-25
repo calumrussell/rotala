@@ -1,11 +1,17 @@
-use std::{collections::HashMap, error::Error, fmt::{Display, Formatter}};
 use itertools::Itertools;
+use std::{
+    collections::HashMap,
+    error::Error,
+    fmt::{Display, Formatter},
+};
 
-use rotala::clock::DateTime;
 use log::info;
-use rotala::exchange::uist::{Uist, UistQuote, UistTradeType, UistTrade, UistOrderType, UistOrder};
+use rotala::clock::DateTime;
+use rotala::exchange::uist::{Uist, UistOrder, UistOrderType, UistQuote, UistTrade, UistTradeType};
 
-use crate::types::{PortfolioHoldings, Price, CashValue, PortfolioQty, PortfolioValues, PortfolioAllocation};
+use crate::types::{
+    CashValue, PortfolioAllocation, PortfolioHoldings, PortfolioQty, PortfolioValues, Price,
+};
 
 use super::types::BrokerCost;
 
@@ -168,7 +174,7 @@ impl UistBroker {
                 UistTradeType::Buy => self.debit_force(&trade.value),
                 UistTradeType::Sell => self.credit(&trade.value),
             };
-            self.log.record::<UistTrade>(trade.clone().into());
+            self.log.record::<UistTrade>(trade.clone());
 
             let curr_position = self.get_position_qty(&trade.symbol).unwrap_or_default();
 
@@ -393,12 +399,12 @@ impl UistBroker {
                     UistOrderType::MarketBuy | UistOrderType::LimitBuy | UistOrderType::StopBuy => {
                         quote.get_ask()
                     }
-                    UistOrderType::MarketSell | UistOrderType::LimitSell | UistOrderType::StopSell => {
-                        quote.get_bid()
-                    }
+                    UistOrderType::MarketSell
+                    | UistOrderType::LimitSell
+                    | UistOrderType::StopSell => quote.get_bid(),
                 };
 
-                if let Err(_err) = self.client_has_sufficient_cash( &order, &Price::from(price)) {
+                if let Err(_err) = self.client_has_sufficient_cash(&order, &Price::from(price)) {
                     info!(
                         "BROKER: Unable to send {:?} order for {:?} shares of {:?} to exchange",
                         order.get_order_type(),
@@ -407,8 +413,7 @@ impl UistBroker {
                     );
                     return UistBrokerEvent::OrderInvalid(order.clone());
                 }
-                if let Err(_err) = self.client_has_sufficient_holdings_for_sale(&order)
-                {
+                if let Err(_err) = self.client_has_sufficient_holdings_for_sale(&order) {
                     info!(
                         "BROKER: Unable to send {:?} order for {:?} shares of {:?} to exchange",
                         order.get_order_type(),
@@ -438,9 +443,9 @@ impl UistBroker {
                         order.get_shares()
                     }
 
-                    UistOrderType::MarketSell | UistOrderType::LimitSell | UistOrderType::StopSell => {
-                        -order.get_shares()
-                    }
+                    UistOrderType::MarketSell
+                    | UistOrderType::LimitSell
+                    | UistOrderType::StopSell => -order.get_shares(),
                 };
 
                 if let Some(position) = self.pending_orders.get(order.get_symbol()) {
@@ -525,8 +530,7 @@ impl UistBroker {
                     let quote = self.get_quote(&ticker).unwrap();
                     let price = quote.get_bid();
                     let shares_req = PortfolioQty::from((total_sold / price).ceil());
-                    let order =
-                        UistOrder::market_sell(ticker, *shares_req);
+                    let order = UistOrder::market_sell(ticker, *shares_req);
                     info!("BROKER: Withdrawing {:?} with liquidation, queueing sale of {:?} shares of {:?}", cash, order.get_shares(), order.get_symbol());
                     sell_orders.push(order);
                     total_sold = 0.0;
@@ -558,7 +562,10 @@ impl UistBroker {
     ///
     /// Brokers do not expect target wights, they merely respond to orders so this structure
     /// is not required to create backtests.
-    pub fn diff_brkr_against_target_weights( &mut self, target_weights: &PortfolioAllocation) -> Vec<UistOrder> {
+    pub fn diff_brkr_against_target_weights(
+        &mut self,
+        target_weights: &PortfolioAllocation,
+    ) -> Vec<UistOrder> {
         //Returns orders so calling function has control over when orders are executed
         //Requires mutable reference to brkr because it calls get_position_value
         //Need liquidation value so we definitely have enough money to make all transactions after
@@ -575,21 +582,22 @@ impl UistBroker {
 
         //This returns a positive number for buy and negative for sell, this is necessary because
         //of calculations made later to find the net position of orders on the exchange.
-        let calc_required_shares_with_costs = |diff_val: &f64, quote: &UistQuote, brkr: &UistBroker| -> f64 {
-            if diff_val.lt(&0.0) {
-                let price = quote.get_bid();
-                let costs = brkr.calc_trade_impact(&diff_val.abs(), &price, false);
-                let total = (*costs.0 / *costs.1).floor();
-                -total
-            } else {
-                let price = quote.get_ask();
-                let costs = brkr.calc_trade_impact(&diff_val.abs(), &price, true);
-                (*costs.0 / *costs.1).floor()
-            }
-        };
+        let calc_required_shares_with_costs =
+            |diff_val: &f64, quote: &UistQuote, brkr: &UistBroker| -> f64 {
+                if diff_val.lt(&0.0) {
+                    let price = quote.get_bid();
+                    let costs = brkr.calc_trade_impact(&diff_val.abs(), &price, false);
+                    let total = (*costs.0 / *costs.1).floor();
+                    -total
+                } else {
+                    let price = quote.get_ask();
+                    let costs = brkr.calc_trade_impact(&diff_val.abs(), &price, true);
+                    (*costs.0 / *costs.1).floor()
+                }
+            };
 
         for symbol in target_weights.keys() {
-            let curr_val = self 
+            let curr_val = self
                 .get_position_value(&symbol)
                 .unwrap_or(CashValue::from(0.0));
             //Iterating over target_weights so will always find value
@@ -609,10 +617,7 @@ impl UistBroker {
                 //self.clear_pending_market_orders_by_symbol(&symbol);
                 if required_shares.ne(&0.0) {
                     if required_shares.gt(&0.0) {
-                        buy_orders.push(UistOrder::market_buy(
-                            symbol.clone(),
-                            required_shares,
-                        ));
+                        buy_orders.push(UistOrder::market_buy(symbol.clone(), required_shares));
                     } else {
                         sell_orders.push(UistOrder::market_sell(
                             symbol.clone(),
@@ -629,7 +634,11 @@ impl UistBroker {
         orders
     }
 
-    pub fn client_has_sufficient_cash( &self, order: &UistOrder, price: &Price) -> Result<(), InsufficientCashError> {
+    pub fn client_has_sufficient_cash(
+        &self,
+        order: &UistOrder,
+        price: &Price,
+    ) -> Result<(), InsufficientCashError> {
         let shares = order.get_shares();
         let value = CashValue::from(shares * **price);
         match order.get_order_type() {
@@ -644,7 +653,10 @@ impl UistBroker {
         }
     }
 
-    pub fn client_has_sufficient_holdings_for_sale(&self, order: &UistOrder) -> Result<(), UnexecutableOrderError> {
+    pub fn client_has_sufficient_holdings_for_sale(
+        &self,
+        order: &UistOrder,
+    ) -> Result<(), UnexecutableOrderError> {
         if let UistOrderType::MarketSell = order.get_order_type() {
             if let Some(holding) = self.get_position_qty(order.get_symbol()) {
                 if *holding >= order.get_shares() {
@@ -657,7 +669,10 @@ impl UistBroker {
         Ok(())
     }
 
-    pub fn client_is_issuing_nonsense_order(&self, order: &UistOrder,) -> Result<(), UnexecutableOrderError> {
+    pub fn client_is_issuing_nonsense_order(
+        &self,
+        order: &UistOrder,
+    ) -> Result<(), UnexecutableOrderError> {
         let shares = order.get_shares();
         if shares == 0.0 {
             return Err(UnexecutableOrderError);
@@ -668,7 +683,6 @@ impl UistBroker {
     pub fn trades_between(&self, start: &i64, stop: &i64) -> Vec<UistTrade> {
         self.log.trades_between(start, stop)
     }
-
 }
 
 pub struct UistBrokerBuilder {
@@ -736,13 +750,13 @@ impl Default for UistBrokerBuilder {
 
 #[derive(Clone, Debug)]
 pub enum UistRecordedEvent {
-    TradeCompleted(UistTrade)
+    TradeCompleted(UistTrade),
 }
 
 impl From<UistTrade> for UistRecordedEvent {
     fn from(value: UistTrade) -> Self {
         UistRecordedEvent::TradeCompleted(value)
-    } 
+    }
 }
 
 //Records events generated by brokers. Used for internal calculations but is public for tax
@@ -762,9 +776,8 @@ impl UistBrokerLog {
     pub fn trades(&self) -> Vec<UistTrade> {
         let mut trades = Vec::new();
         for event in &self.log {
-            if let UistRecordedEvent::TradeCompleted(trade) = event {
-                trades.push(trade.clone());
-            }
+            let UistRecordedEvent::TradeCompleted(trade) = event;
+            trades.push(trade.clone());
         }
         trades
     }
@@ -782,22 +795,21 @@ impl UistBrokerLog {
         let mut cum_qty = PortfolioQty::default();
         let mut cum_val = CashValue::default();
         for event in &self.log {
-            if let UistRecordedEvent::TradeCompleted(trade) = event {
-                if trade.symbol.eq(symbol) {
-                    match trade.typ {
-                        UistTradeType::Buy => {
-                            cum_qty = PortfolioQty::from(*cum_qty + trade.quantity.clone());
-                            cum_val = CashValue::from(*cum_val + trade.value.clone());
-                        }
-                        UistTradeType::Sell => {
-                            cum_qty = PortfolioQty::from(*cum_qty - trade.quantity.clone());
-                            cum_val = CashValue::from(*cum_val - trade.value.clone());
-                        }
+            let UistRecordedEvent::TradeCompleted(trade) = event;
+            if trade.symbol.eq(symbol) {
+                match trade.typ {
+                    UistTradeType::Buy => {
+                        cum_qty = PortfolioQty::from(*cum_qty + trade.quantity);
+                        cum_val = CashValue::from(*cum_val + trade.value);
                     }
-                    //reset the value if we are back to zero
-                    if (*cum_qty).eq(&0.0) {
-                        cum_val = CashValue::default();
+                    UistTradeType::Sell => {
+                        cum_qty = PortfolioQty::from(*cum_qty - trade.quantity);
+                        cum_val = CashValue::from(*cum_val - trade.value);
                     }
+                }
+                //reset the value if we are back to zero
+                if (*cum_qty).eq(&0.0) {
+                    cum_val = CashValue::default();
                 }
             }
         }
@@ -867,12 +879,16 @@ impl Display for UnexecutableOrderError {
 mod tests {
 
     use crate::broker::types::BrokerCost;
-    use crate::types::{CashValue, PortfolioQty, PortfolioAllocation};
+    use crate::types::{CashValue, PortfolioAllocation, PortfolioQty};
     use rotala::clock::{ClockBuilder, Frequency};
-    use rotala::exchange::uist::{Uist, UistTrade, UistTradeType, UistOrder, random_uist_generator, UistOrderType};
+    use rotala::exchange::uist::{
+        random_uist_generator, Uist, UistOrder, UistOrderType, UistTrade, UistTradeType,
+    };
     use rotala::input::penelope::PenelopeBuilder;
 
-    use super::{UistBroker, UistBrokerBuilder, UistBrokerLog, UistBrokerEvent, UistBrokerCashEvent};
+    use super::{
+        UistBroker, UistBrokerBuilder, UistBrokerCashEvent, UistBrokerEvent, UistBrokerLog,
+    };
 
     fn setup() -> UistBroker {
         let mut source_builder = PenelopeBuilder::new();
@@ -889,7 +905,8 @@ mod tests {
         source_builder.add_quote(95.00, 96.00, 103, "ABC");
         source_builder.add_quote(10.00, 11.00, 103, "BCD");
 
-        let (price_source, clock) = source_builder.build_with_frequency(rotala::clock::Frequency::Second);
+        let (price_source, clock) =
+            source_builder.build_with_frequency(rotala::clock::Frequency::Second);
         let uist = Uist::new(clock, price_source);
 
         let brkr = UistBrokerBuilder::new()
@@ -1048,7 +1065,8 @@ mod tests {
         source_builder.add_quote(104.00, 105.00, 101, "ABC");
         source_builder.add_quote(95.00, 96.00, 102, "ABC");
 
-        let (price_source, clock) = source_builder.build_with_frequency(rotala::clock::Frequency::Second);
+        let (price_source, clock) =
+            source_builder.build_with_frequency(rotala::clock::Frequency::Second);
         let uist = Uist::new(clock, price_source);
 
         let _brkr = UistBrokerBuilder::new()
@@ -1079,7 +1097,8 @@ mod tests {
         source_builder.add_quote(104.00, 105.00, 103, "ABC");
         source_builder.add_quote(12.00, 13.00, 103, "BCD");
 
-        let (price_source, clock) = source_builder.build_with_frequency(rotala::clock::Frequency::Second);
+        let (price_source, clock) =
+            source_builder.build_with_frequency(rotala::clock::Frequency::Second);
         let uist = Uist::new(clock, price_source);
 
         let mut brkr = UistBrokerBuilder::new()
@@ -1127,7 +1146,8 @@ mod tests {
         source_builder.add_quote(150.00, 151.00, 101, "ABC");
         source_builder.add_quote(150.00, 151.00, 102, "ABC");
 
-        let (price_source, clock) = source_builder.build_with_frequency(rotala::clock::Frequency::Second);
+        let (price_source, clock) =
+            source_builder.build_with_frequency(rotala::clock::Frequency::Second);
         let uist = Uist::new(clock, price_source);
 
         let mut brkr = UistBrokerBuilder::new()
@@ -1161,7 +1181,8 @@ mod tests {
         source_builder.add_quote(200.00, 201.00, 101, "ABC");
         source_builder.add_quote(200.00, 201.00, 101, "ABC");
 
-        let (price_source, clock) = source_builder.build_with_frequency(rotala::clock::Frequency::Second);
+        let (price_source, clock) =
+            source_builder.build_with_frequency(rotala::clock::Frequency::Second);
         let uist = Uist::new(clock, price_source);
 
         let mut brkr = UistBrokerBuilder::new()
@@ -1175,7 +1196,6 @@ mod tests {
 
         brkr.send_order(UistOrder::market_buy("ABC", 990.0));
 
-        brkr.check();
         brkr.check();
         brkr.check();
 
@@ -1272,7 +1292,7 @@ mod tests {
 
     #[test]
     fn diff_direction_correct_if_need_to_buy() {
-        let uist = random_uist_generator(100);
+        let (uist, clock) = random_uist_generator(100);
         let mut brkr = UistBrokerBuilder::new()
             .with_trade_costs(vec![BrokerCost::flat(1.0)])
             .with_exchange(uist)
@@ -1299,7 +1319,7 @@ mod tests {
         //This is connected to the previous test, if the above fails then this will never pass.
         //However, if the above passes this could still fail.
 
-        let uist = random_uist_generator(100);
+        let (uist, clock) = random_uist_generator(100);
         let mut brkr = UistBrokerBuilder::new()
             .with_trade_costs(vec![BrokerCost::flat(1.0)])
             .with_exchange(uist)
@@ -1336,7 +1356,7 @@ mod tests {
         //In this scenario, the user has inserted incorrect information but this scenario can also occur if there is no quote
         //for a given security on a certain date. We are interested in the latter case, not the former but it is more
         //difficult to test for the latter, and the code should be the same.
-        let uist = random_uist_generator(100);
+        let (uist, clock) = random_uist_generator(100);
         let mut brkr = UistBrokerBuilder::new()
             .with_trade_costs(vec![BrokerCost::flat(1.0)])
             .with_exchange(uist)
@@ -1360,7 +1380,7 @@ mod tests {
     fn diff_panics_if_brkr_has_no_cash() {
         //If we get to a point where the client is diffing without cash, we can assume that no further operations are possible
         //and we should panic
-        let uist = random_uist_generator(100);
+        let (uist, clock) = random_uist_generator(100);
         let mut brkr = UistBrokerBuilder::new()
             .with_trade_costs(vec![BrokerCost::flat(1.0)])
             .with_exchange(uist)
@@ -1412,12 +1432,11 @@ mod tests {
         source_builder.add_quote(100.00, 100.00, 101, "ABC");
         source_builder.add_quote(100.00, 100.00, 103, "ABC");
 
-        let (price_source, clock) = source_builder.build_with_frequency(rotala::clock::Frequency::Second);
+        let (price_source, clock) =
+            source_builder.build_with_frequency(rotala::clock::Frequency::Second);
         let uist = Uist::new(clock, price_source);
 
-        let mut brkr = UistBrokerBuilder::new()
-            .with_exchange(uist)
-            .build();
+        let mut brkr = UistBrokerBuilder::new().with_exchange(uist).build();
 
         brkr.deposit_cash(&100_000.0);
 
@@ -1455,12 +1474,11 @@ mod tests {
         source_builder.add_quote(75.00, 75.00, 103, "ABC");
         source_builder.add_quote(75.00, 75.00, 104, "ABC");
 
-        let (price_source, clock) = source_builder.build_with_frequency(rotala::clock::Frequency::Second);
+        let (price_source, clock) =
+            source_builder.build_with_frequency(rotala::clock::Frequency::Second);
         let uist = Uist::new(clock, price_source);
 
-        let mut brkr = UistBrokerBuilder::new()
-            .with_exchange(uist)
-            .build();
+        let mut brkr = UistBrokerBuilder::new().with_exchange(uist).build();
 
         brkr.deposit_cash(&100_000.0);
 

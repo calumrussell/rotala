@@ -3,7 +3,7 @@ use std::sync::Mutex;
 use actix_web::web;
 use serde::{Deserialize, Serialize};
 
-use crate::exchange::uist::{InitMessage, Uist, UistOrder, UistOrderId, UistTrade, UistQuote};
+use crate::exchange::uist::{InitMessage, Uist, UistOrder, UistOrderId, UistQuote, UistTrade};
 
 pub async fn check(exchange: web::Data<Mutex<Uist>>) -> web::Json<Vec<UistTrade>> {
     let mut ex = exchange.lock().unwrap();
@@ -20,7 +20,7 @@ pub async fn delete_order(
     delete_order: web::Json<DeleteOrderRequest>,
 ) -> web::Json<()> {
     let mut ex = exchange.lock().unwrap();
-    ex.delete_order(delete_order.order_id.clone());
+    ex.delete_order(delete_order.order_id);
     web::Json(())
 }
 
@@ -73,7 +73,7 @@ mod tests {
     async fn test_index_get() {
         let app = test::init_service(
             App::new()
-                .app_data(web::Data::new(Mutex::new(random_uist_generator(3000))))
+                .app_data(web::Data::new(Mutex::new(random_uist_generator(3000).0)))
                 .route("/", web::get().to(init))
                 .route("/fetch_quotes", web::get().to(fetch_quotes))
                 .route("/fetch_trades", web::get().to(fetch_trades))
@@ -85,6 +85,7 @@ mod tests {
 
         let req = test::TestRequest::get().uri("/").to_request();
         let resp: InitMessage = test::call_and_read_body_json(&app, req).await;
+        println!("{:?}", resp);
         assert!(resp.frequency == 0);
 
         let req1 = test::TestRequest::get().uri("/fetch_quotes").to_request();
