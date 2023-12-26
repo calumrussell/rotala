@@ -2,7 +2,5 @@
 resolver = "2"
 members = [
     "crates/alator",
-    "crates/alator-clock",
-    "crates/alator-exchange",
     "crates/rotala",
 ]
