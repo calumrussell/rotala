@@ -13,7 +13,8 @@ use crate::types::{
     CashValue, PortfolioAllocation, PortfolioHoldings, PortfolioQty, PortfolioValues, Price,
 };
 
-use super::types::BrokerCost;
+use super::{types::BrokerCost, BrokerStates, CashOperations, BrokerOperations, SendOrder, Quote, Portfolio};
+
 
 #[derive(Debug)]
 enum BrokerState {
@@ -37,199 +38,7 @@ pub struct UistBroker {
     broker_state: BrokerState,
 }
 
-impl UistBroker {
-    fn get_position_profit(&self, symbol: &str) -> Option<CashValue> {
-        if let Some(cost) = self.get_position_cost(symbol) {
-            if let Some(qty) = self.get_position_qty(symbol) {
-                if let Some(position_value) = self.get_position_value(symbol) {
-                    let price = *position_value / *qty.clone();
-                    let value = CashValue::from(*qty.clone() * (price - *cost));
-                    return Some(value);
-                }
-            }
-        }
-        None
-    }
-
-    fn get_position_liquidation_value(&self, symbol: &str) -> Option<CashValue> {
-        if let Some(position_value) = self.get_position_value(symbol) {
-            if let Some(qty) = self.get_position_qty(symbol) {
-                let price = Price::from(*position_value / *qty);
-                let (value_after_costs, _price_after_costs) =
-                    self.calc_trade_impact(&position_value, &price, false);
-                return Some(value_after_costs);
-            }
-        }
-        None
-    }
-
-    pub fn get_total_value(&self) -> CashValue {
-        let assets = self.get_positions();
-        let mut value = self.get_cash_balance();
-        for a in assets {
-            if let Some(position_value) = self.get_position_value(&a) {
-                value = CashValue::from(*value + *position_value);
-            }
-        }
-        value
-    }
-
-    pub fn get_liquidation_value(&self) -> CashValue {
-        let mut value = self.get_cash_balance();
-        for asset in self.get_positions() {
-            if let Some(asset_value) = self.get_position_liquidation_value(&asset) {
-                value = CashValue::from(*value + *asset_value);
-            }
-        }
-        value
-    }
-
-    fn get_values(&self) -> PortfolioValues {
-        let mut holdings = PortfolioValues::new();
-        let assets = self.get_positions();
-        for a in assets {
-            if let Some(_qty) = self.get_position_qty(&a) {
-                if let Some(value) = self.get_position_value(&a) {
-                    holdings.insert(&a, &value);
-                }
-            }
-        }
-        holdings
-    }
-
-    fn get_position_qty(&self, symbol: &str) -> Option<PortfolioQty> {
-        self.get_holdings().get(symbol).to_owned()
-    }
-
-    fn get_position_value(&self, symbol: &str) -> Option<CashValue> {
-        if let Some(quote) = self.get_quote(symbol) {
-            //We only have long positions so we only need to look at the bid
-            let price = quote.get_bid();
-            if let Some(qty) = self.get_position_qty(symbol) {
-                let val = price * *qty;
-                return Some(CashValue::from(val));
-            }
-        }
-        //This should only occur in cases when the client erroneously asks for a security with no
-        //current or historical prices
-        //Likely represents an error in client code but we don't panic here in case data for this
-        //symbol appears later
-        None
-    }
-
-    fn get_positions(&self) -> Vec<String> {
-        self.get_holdings().keys()
-    }
-    pub fn cost_basis(&self, symbol: &str) -> Option<Price> {
-        self.log.cost_basis(symbol)
-    }
-
-    pub fn get_holdings_with_pending(&self) -> PortfolioHoldings {
-        let mut merged_holdings = PortfolioHoldings::new();
-        for (key, value) in self.holdings.0.iter() {
-            if merged_holdings.0.contains_key(key) {
-                if let Some(val) = merged_holdings.get(key) {
-                    let new_val = PortfolioQty::from(*val + **value);
-                    merged_holdings.insert(key, &new_val);
-                }
-            } else {
-                merged_holdings.insert(key, value);
-            }
-        }
-
-        for (key, value) in self.pending_orders.0.iter() {
-            if merged_holdings.0.contains_key(key) {
-                if let Some(val) = merged_holdings.get(key) {
-                    let new_val = PortfolioQty::from(*val + **value);
-                    merged_holdings.insert(key, &new_val);
-                }
-            } else {
-                merged_holdings.insert(key, value);
-            }
-        }
-
-        merged_holdings
-    }
-
-    /// Called on every tick of clock to ensure that state is synchronized with other components.
-    ///
-    /// * Calls `check` on exchange
-    /// * Updates last seen prices for exchange tick
-    /// * Reconciles internal state against trades completed on current tick
-    /// * Rebalances cash, which can trigger new trades if broker is in invalid state
-    pub fn check(&mut self) {
-        self.exchange.check();
-
-        //Update prices, these prices are not tradable
-        for quote in &self.exchange.fetch_quotes() {
-            self.latest_quotes
-                .insert(quote.get_symbol().to_string(), quote.clone());
-        }
-
-        //Reconcile broker against executed trades
-        let completed_trades = self.exchange.fetch_trades(self.last_seen_trade).to_owned();
-        for trade in completed_trades {
-            match trade.typ {
-                //Force debit so we can end up with negative cash here
-                UistTradeType::Buy => self.debit_force(&trade.value),
-                UistTradeType::Sell => self.credit(&trade.value),
-            };
-            self.log.record::<UistTrade>(trade.clone());
-
-            let curr_position = self.get_position_qty(&trade.symbol).unwrap_or_default();
-
-            let updated = match trade.typ {
-                UistTradeType::Buy => *curr_position + trade.quantity,
-                UistTradeType::Sell => *curr_position - trade.quantity,
-            };
-            self.update_holdings(&trade.symbol, PortfolioQty::from(updated));
-
-            //Because the order has completed, we should be able to unwrap pending_orders safetly
-            //If this fails then there must be an application bug and panic is required.
-            let pending = self.pending_orders.get(&trade.symbol).unwrap_or_default();
-
-            let updated_pending = match trade.typ {
-                UistTradeType::Buy => *pending - trade.quantity,
-                UistTradeType::Sell => *pending + trade.quantity,
-            };
-            if updated_pending == 0.0 {
-                self.pending_orders.remove(&trade.symbol);
-            } else {
-                self.pending_orders
-                    .insert(&trade.symbol, &PortfolioQty::from(updated_pending));
-            }
-
-            self.last_seen_trade += 1;
-        }
-        //Previous step can cause negative cash balance so we have to rebalance here, this
-        //is not instant so will never balance properly if the series is very volatile
-        self.rebalance_cash();
-    }
-
-    /// If current round of trades have caused broker to run out of cash then this will rebalance.
-    ///
-    /// Has a fixed value buffer, currently set to 1000, to reduce the probability of the broker
-    /// moving into an insufficient cash state.
-    fn rebalance_cash(&mut self) {
-        //Has to be less than, we can have zero value without needing to liquidate if we initialize
-        //the portfolio but exchange doesn't execute any trades. This can happen if we are missing
-        //prices at the start of the series
-        if *self.cash < 0.0 {
-            let shortfall = *self.cash * -1.0;
-            //When we raise cash, we try to raise a small amount more to stop continuous
-            //rebalancing, this amount is arbitrary atm
-            let plus_buffer = shortfall + 1000.0;
-
-            let res = self.withdraw_cash_with_liquidation(&plus_buffer);
-            if let UistBrokerCashEvent::WithdrawFailure(_val) = res {
-                //The broker tried to generate cash required but was unable to do so. Stop all
-                //further mutations, and run out the current portfolio state to return some
-                //value to strategy
-                self.broker_state = BrokerState::Failed;
-            }
-        }
-    }
-
+impl Quote for UistBroker {
     fn get_quote(&self, symbol: &str) -> Option<UistQuote> {
         self.latest_quotes.get(symbol).cloned()
     }
@@ -244,6 +53,28 @@ impl UistBroker {
             tmp.push(quote.clone());
         }
         Some(tmp)
+    }
+}
+
+impl Portfolio for UistBroker {
+    fn get_trade_costs(&self) -> Vec<BrokerCost> {
+        self.trade_costs
+    }
+
+    fn get_holdings(&self) -> PortfolioHoldings {
+        self.holdings.clone()
+    }
+
+    fn get_cash_balance(&self) -> CashValue {
+        self.cash.clone()
+    }
+
+    fn update_cash_balance(&self, cash: CashValue) {
+        self.cash = cash;
+    }
+
+    fn get_position_cost(&self, symbol: &str) -> Option<Price> {
+        self.log.cost_basis(symbol)
     }
 
     fn update_holdings(&mut self, symbol: &str, change: PortfolioQty) {
@@ -261,122 +92,30 @@ impl UistBroker {
         }
     }
 
-    fn get_position_cost(&self, symbol: &str) -> Option<Price> {
-        self.log.cost_basis(symbol)
+    fn get_pending_orders(&self) -> PortfolioHoldings {
+        self.pending_orders
+    }
+}
+
+impl BrokerStates for UistBroker {
+    fn get_broker_state(&self) -> BrokerState {
+        self.broker_state
     }
 
-    pub fn withdraw_cash(&mut self, cash: &f64) -> UistBrokerCashEvent {
-        match self.broker_state {
-            BrokerState::Failed => {
-                info!(
-                    "BROKER: Attempted cash withdraw of {:?} but broker in Failed State",
-                    cash,
-                );
-                UistBrokerCashEvent::OperationFailure(CashValue::from(*cash))
-            }
-            BrokerState::Ready => {
-                if cash > &self.get_cash_balance() {
-                    info!(
-                        "BROKER: Attempted cash withdraw of {:?} but only have {:?}",
-                        cash,
-                        self.get_cash_balance()
-                    );
-                    return UistBrokerCashEvent::WithdrawFailure(CashValue::from(*cash));
-                }
-                info!(
-                    "BROKER: Successful cash withdraw of {:?}, {:?} left in cash",
-                    cash,
-                    self.get_cash_balance()
-                );
-                self.debit(cash);
-                UistBrokerCashEvent::WithdrawSuccess(CashValue::from(*cash))
-            }
-        }
+    fn update_broker_state(&self, state: BrokerState) {
+        self.broker_state = state;
     }
+}
 
-    pub fn deposit_cash(&mut self, cash: &f64) -> UistBrokerCashEvent {
-        match self.broker_state {
-            BrokerState::Failed => {
-                info!(
-                    "BROKER: Attempted cash deposit of {:?} but broker in Failed State",
-                    cash,
-                );
-                UistBrokerCashEvent::OperationFailure(CashValue::from(*cash))
-            }
-            BrokerState::Ready => {
-                info!(
-                    "BROKER: Deposited {:?} cash, current balance of {:?}",
-                    cash,
-                    self.get_cash_balance()
-                );
-                self.credit(cash);
-                UistBrokerCashEvent::DepositSuccess(CashValue::from(*cash))
-            }
-        }
-    }
+impl CashOperations for UistBroker {}
 
-    //Identical to deposit_cash but is seperated to distinguish internal cash
-    //transactions from external with no value returned to client
-    fn credit(&mut self, value: &f64) -> UistBrokerCashEvent {
-        info!(
-            "BROKER: Credited {:?} cash, current balance of {:?}",
-            value, self.cash
-        );
-        self.cash = CashValue::from(*value + *self.cash);
-        UistBrokerCashEvent::DepositSuccess(CashValue::from(*value))
-    }
+impl BrokerOperations for UistBroker {}
 
-    //Looks similar to withdraw_cash but distinguished because it represents
-    //failure of an internal transaction with no value returned to clients
-    fn debit(&mut self, value: &f64) -> UistBrokerCashEvent {
-        if value > &self.cash {
-            info!(
-                "BROKER: Debit failed of {:?} cash, current balance of {:?}",
-                value, self.cash
-            );
-            return UistBrokerCashEvent::WithdrawFailure(CashValue::from(*value));
-        }
-        info!(
-            "BROKER: Debited {:?} cash, current balance of {:?}",
-            value, self.cash
-        );
-        self.cash = CashValue::from(*self.cash - *value);
-        UistBrokerCashEvent::WithdrawSuccess(CashValue::from(*value))
-    }
-
-    fn debit_force(&mut self, value: &f64) -> UistBrokerCashEvent {
-        info!(
-            "BROKER: Force debt {:?} cash, current balance of {:?}",
-            value, self.cash
-        );
-        self.cash = CashValue::from(*self.cash - *value);
-        UistBrokerCashEvent::WithdrawSuccess(CashValue::from(*value))
-    }
-
-    fn get_cash_balance(&self) -> CashValue {
-        self.cash.clone()
-    }
-
-    fn get_holdings(&self) -> PortfolioHoldings {
-        self.holdings.clone()
-    }
-
-    fn get_trade_costs(&self, trade: &UistTrade) -> CashValue {
-        let mut cost = CashValue::default();
-        for trade_cost in &self.trade_costs {
-            cost = CashValue::from(*cost + *trade_cost.calc(trade.clone()));
-        }
-        cost
-    }
-
-    fn calc_trade_impact(&self, budget: &f64, price: &f64, is_buy: bool) -> (CashValue, Price) {
-        BrokerCost::trade_impact_total(&self.trade_costs, budget, price, is_buy)
-    }
-
-    pub fn send_order(&mut self, order: UistOrder) -> UistBrokerEvent {
+impl SendOrder for UistBroker {
+    fn send_order(&mut self, order: UistOrder) -> UistBrokerEvent {
         //This is an estimate of the cost based on the current price, can still end with negative
         //balance when we reconcile with actuals, may also reject valid orders at the margin
-        match self.broker_state {
+        match self.get_broker_state() {
             BrokerState::Failed => {
                 info!(
                     "BROKER: Unable to send {:?} order for {:?} shares of {:?} to exchange as broker in Failed state",
@@ -467,7 +206,7 @@ impl UistBroker {
         }
     }
 
-    pub fn send_orders(&mut self, orders: &[UistOrder]) -> Vec<UistBrokerEvent> {
+    fn send_orders(&mut self, orders: &[UistOrder]) -> Vec<UistBrokerEvent> {
         let mut res = Vec::new();
         for o in orders {
             let trade = self.send_order(o.clone());
@@ -475,209 +214,67 @@ impl UistBroker {
         }
         res
     }
+}
 
-    /// Withdrawing with liquidation will queue orders to generate the expected amount of cash. No
-    /// ordering to the assets that are sold, the broker is responsible for managing cash but not
-    /// re-aligning to a target portfolio.
+impl UistBroker {
+    /// Called on every tick of clock to ensure that state is synchronized with other components.
     ///
-    /// Because orders are not executed instaneously this method can be the source of significant
-    /// divergences in performance from the underlying in certain cases. For example, if prices are
-    /// volatile, in the case of low-frequency data, then the broker will end up continuously
-    /// re-balancing in a random way under certain price movements.
-    pub fn withdraw_cash_with_liquidation(&mut self, cash: &f64) -> UistBrokerCashEvent {
-        // TODO: is it better to return a sequence of orders to achieve a cash balance? Because
-        // of the linkage with execution, we need seperate methods for sync/async.
-        info!("BROKER: Withdrawing {:?} with liquidation", cash);
-        let value = self.get_liquidation_value();
-        if cash > &value {
-            //There is no way for the portfolio to recover, we leave the portfolio in an invalid
-            //state because the client may be able to recover later
-            self.debit(cash);
-            info!(
-                "BROKER: Failed to withdraw {:?} with liquidation. Deducting value from cash.",
-                cash
-            );
-            UistBrokerCashEvent::WithdrawFailure(CashValue::from(*cash))
-        } else {
-            //This holds how much we have left to generate from the portfolio to produce the cash
-            //required
-            let mut total_sold = *cash;
+    /// * Calls `check` on exchange
+    /// * Updates last seen prices for exchange tick
+    /// * Reconciles internal state against trades completed on current tick
+    /// * Rebalances cash, which can trigger new trades if broker is in invalid state
+    pub fn check(&mut self) {
+        self.exchange.check();
 
-            let positions = self.get_positions();
-            let mut sell_orders: Vec<UistOrder> = Vec::new();
-            for ticker in positions {
-                let position_value = self
-                    .get_position_value(&ticker)
-                    .unwrap_or(CashValue::from(0.0));
-                //Position won't generate enough cash to fulfill total order
-                //Create orders for selling 100% of position, continue
-                //to next position to see if we can generate enough cash
-                //
-                //Sell 100% of position
-                if *position_value <= total_sold {
-                    //Cannot be called without qty existing
-                    if let Some(qty) = self.get_position_qty(&ticker) {
-                        let order = UistOrder::market_sell(ticker, *qty);
-                        info!("BROKER: Withdrawing {:?} with liquidation, queueing sale of {:?} shares of {:?}", cash, order.get_shares(), order.get_symbol());
-                        sell_orders.push(order);
-                        total_sold -= *position_value;
-                    }
-                } else {
-                    //Position can generate all the cash we need
-                    //Create orders to sell 100% of position, don't continue to next stock
-                    //
-                    //Cannot be called without quote existing so unwrap
-                    let quote = self.get_quote(&ticker).unwrap();
-                    let price = quote.get_bid();
-                    let shares_req = PortfolioQty::from((total_sold / price).ceil());
-                    let order = UistOrder::market_sell(ticker, *shares_req);
-                    info!("BROKER: Withdrawing {:?} with liquidation, queueing sale of {:?} shares of {:?}", cash, order.get_shares(), order.get_symbol());
-                    sell_orders.push(order);
-                    total_sold = 0.0;
-                    break;
-                }
-            }
-            if (total_sold).eq(&0.0) {
-                //The portfolio can provide enough cash so we can execute the sell orders
-                //We leave the portfolio in the wrong state for the client to deal with
-                self.send_orders(&sell_orders);
-                info!("BROKER: Succesfully withdrew {:?} with liquidation", cash);
-                UistBrokerCashEvent::WithdrawSuccess(CashValue::from(*cash))
-            } else {
-                //For whatever reason, we went through the above process and were unable to find
-                //the cash. Don't send any orders, leave portfolio in invalid state for client to
-                //potentially recover.
-                self.debit(cash);
-                info!(
-                    "BROKER: Failed to withdraw {:?} with liquidation. Deducting value from cash.",
-                    cash
-                );
-                UistBrokerCashEvent::WithdrawFailure(CashValue::from(*cash))
-            }
+        //Update prices, these prices are not tradable
+        for quote in &self.exchange.fetch_quotes() {
+            self.latest_quotes
+                .insert(quote.get_symbol().to_string(), quote.clone());
         }
-    }
 
-    /// Calculates difference between current broker state and a target allocation, the latter
-    /// typically passed from a strategy.
-    ///
-    /// Brokers do not expect target wights, they merely respond to orders so this structure
-    /// is not required to create backtests.
-    pub fn diff_brkr_against_target_weights(
-        &mut self,
-        target_weights: &PortfolioAllocation,
-    ) -> Vec<UistOrder> {
-        //Returns orders so calling function has control over when orders are executed
-        //Requires mutable reference to brkr because it calls get_position_value
-        //Need liquidation value so we definitely have enough money to make all transactions after
-        //costs
-        info!("STRATEGY: Calculating diff of current allocation vs. target");
-        let total_value = self.get_liquidation_value();
-        if (*total_value).eq(&0.0) {
-            panic!("Client is attempting to trade a portfolio with zero value");
-        }
-        let mut orders: Vec<UistOrder> = Vec::new();
-
-        let mut buy_orders: Vec<UistOrder> = Vec::new();
-        let mut sell_orders: Vec<UistOrder> = Vec::new();
-
-        //This returns a positive number for buy and negative for sell, this is necessary because
-        //of calculations made later to find the net position of orders on the exchange.
-        let calc_required_shares_with_costs =
-            |diff_val: &f64, quote: &UistQuote, brkr: &UistBroker| -> f64 {
-                if diff_val.lt(&0.0) {
-                    let price = quote.get_bid();
-                    let costs = brkr.calc_trade_impact(&diff_val.abs(), &price, false);
-                    let total = (*costs.0 / *costs.1).floor();
-                    -total
-                } else {
-                    let price = quote.get_ask();
-                    let costs = brkr.calc_trade_impact(&diff_val.abs(), &price, true);
-                    (*costs.0 / *costs.1).floor()
-                }
+        //Reconcile broker against executed trades
+        let completed_trades = self.exchange.fetch_trades(self.last_seen_trade).to_owned();
+        for trade in completed_trades {
+            match trade.typ {
+                //Force debit so we can end up with negative cash here
+                UistTradeType::Buy => self.debit_force(&trade.value),
+                UistTradeType::Sell => self.credit(&trade.value),
             };
+            self.log.record::<UistTrade>(trade.clone());
 
-        for symbol in target_weights.keys() {
-            let curr_val = self
-                .get_position_value(&symbol)
-                .unwrap_or(CashValue::from(0.0));
-            //Iterating over target_weights so will always find value
-            let target_val = CashValue::from(*total_value * **target_weights.get(&symbol).unwrap());
-            let diff_val = CashValue::from(*target_val - *curr_val);
-            if (*diff_val).eq(&0.0) {
-                break;
+            let curr_position = self.get_position_qty(&trade.symbol).unwrap_or_default();
+
+            let updated = match trade.typ {
+                UistTradeType::Buy => *curr_position + trade.quantity,
+                UistTradeType::Sell => *curr_position - trade.quantity,
+            };
+            self.update_holdings(&trade.symbol, PortfolioQty::from(updated));
+
+            //Because the order has completed, we should be able to unwrap pending_orders safetly
+            //If this fails then there must be an application bug and panic is required.
+            let pending = self.pending_orders.get(&trade.symbol).unwrap_or_default();
+
+            let updated_pending = match trade.typ {
+                UistTradeType::Buy => *pending - trade.quantity,
+                UistTradeType::Sell => *pending + trade.quantity,
+            };
+            if updated_pending == 0.0 {
+                self.pending_orders.remove(&trade.symbol);
+            } else {
+                self.pending_orders
+                    .insert(&trade.symbol, &PortfolioQty::from(updated_pending));
             }
 
-            //We do not throw an error here, we just proceed assuming that the client has passed in data that will
-            //eventually prove correct if we are missing quotes for the current time.
-            if let Some(quote) = self.get_quote(&symbol) {
-                //This will be negative if the net is selling
-                let required_shares = calc_required_shares_with_costs(&diff_val, &quote, self);
-                //TODO: must be able to clear pending orders
-                //Clear any pending orders on the exchange
-                //self.clear_pending_market_orders_by_symbol(&symbol);
-                if required_shares.ne(&0.0) {
-                    if required_shares.gt(&0.0) {
-                        buy_orders.push(UistOrder::market_buy(symbol.clone(), required_shares));
-                    } else {
-                        sell_orders.push(UistOrder::market_sell(
-                            symbol.clone(),
-                            //Order stores quantity as non-negative
-                            required_shares.abs(),
-                        ));
-                    }
-                }
-            }
+            self.last_seen_trade += 1;
         }
-        //Sell orders have to be executed before buy orders
-        orders.extend(sell_orders);
-        orders.extend(buy_orders);
-        orders
+        //Previous step can cause negative cash balance so we have to rebalance here, this
+        //is not instant so will never balance properly if the series is very volatile
+        self.rebalance_cash();
     }
 
-    pub fn client_has_sufficient_cash(
-        &self,
-        order: &UistOrder,
-        price: &Price,
-    ) -> Result<(), InsufficientCashError> {
-        let shares = order.get_shares();
-        let value = CashValue::from(shares * **price);
-        match order.get_order_type() {
-            UistOrderType::MarketBuy => {
-                if self.get_cash_balance() > value {
-                    return Ok(());
-                }
-                Err(InsufficientCashError)
-            }
-            UistOrderType::MarketSell => Ok(()),
-            _ => unreachable!("Shouldn't hit unless something has gone wrong"),
-        }
-    }
-
-    pub fn client_has_sufficient_holdings_for_sale(
-        &self,
-        order: &UistOrder,
-    ) -> Result<(), UnexecutableOrderError> {
-        if let UistOrderType::MarketSell = order.get_order_type() {
-            if let Some(holding) = self.get_position_qty(order.get_symbol()) {
-                if *holding >= order.get_shares() {
-                    return Ok(());
-                } else {
-                    return Err(UnexecutableOrderError);
-                }
-            }
-        }
-        Ok(())
-    }
-
-    pub fn client_is_issuing_nonsense_order(
-        &self,
-        order: &UistOrder,
-    ) -> Result<(), UnexecutableOrderError> {
-        let shares = order.get_shares();
-        if shares == 0.0 {
-            return Err(UnexecutableOrderError);
-        }
-        Ok(())
+   
+    pub fn cost_basis(&self, symbol: &str) -> Option<Price> {
+        self.log.cost_basis(symbol)
     }
 
     pub fn trades_between(&self, start: &i64, stop: &i64) -> Vec<UistTrade> {
