@@ -1,5 +1,5 @@
-use alator::broker::BrokerCost;
 use alator::broker::uist::UistBrokerBuilder;
+use alator::broker::BrokerCost;
 use rand::distributions::{Distribution, Uniform};
 use rand::thread_rng;
 use rotala::clock::Frequency;

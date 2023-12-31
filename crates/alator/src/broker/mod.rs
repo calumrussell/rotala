@@ -41,12 +41,17 @@
 //! Keeps an internal log of trades executed and dividends received/paid. This is distinct from
 //! performance calculations.
 
-use std::{error::Error, fmt::{Display, Formatter}};
+use std::{
+    error::Error,
+    fmt::{Display, Formatter},
+};
 
 use log::info;
-use rotala::exchange::uist::{UistTrade, UistOrderType, UistQuote, UistOrder};
+use rotala::exchange::uist::{UistOrder, UistOrderType, UistQuote, UistTrade};
 
-use crate::types::{CashValue, Price, PortfolioValues, PortfolioQty, PortfolioHoldings, PortfolioAllocation};
+use crate::types::{
+    CashValue, PortfolioAllocation, PortfolioHoldings, PortfolioQty, PortfolioValues, Price,
+};
 
 pub mod uist;
 
@@ -246,7 +251,6 @@ impl BrokerCost {
         res
     }
 }
-
 
 pub trait Quote<Q: BrokerQuote> {
     fn get_quote(&self, symbol: &str) -> Option<Q>;
@@ -450,7 +454,8 @@ pub trait CashOperations<Q: BrokerQuote>: Portfolio<Q> + BrokerStates {
     fn credit(&mut self, value: &f64) -> BrokerCashEvent {
         info!(
             "BROKER: Credited {:?} cash, current balance of {:?}",
-            value, self.get_cash_balance()
+            value,
+            self.get_cash_balance()
         );
         self.update_cash_balance(CashValue::from(*value + *self.get_cash_balance()));
         BrokerCashEvent::DepositSuccess(CashValue::from(*value))
@@ -462,13 +467,15 @@ pub trait CashOperations<Q: BrokerQuote>: Portfolio<Q> + BrokerStates {
         if value > &self.get_cash_balance() {
             info!(
                 "BROKER: Debit failed of {:?} cash, current balance of {:?}",
-                value, self.get_cash_balance()
+                value,
+                self.get_cash_balance()
             );
             return BrokerCashEvent::WithdrawFailure(CashValue::from(*value));
         }
         info!(
             "BROKER: Debited {:?} cash, current balance of {:?}",
-            value, self.get_cash_balance()
+            value,
+            self.get_cash_balance()
         );
         self.update_cash_balance(CashValue::from(*self.get_cash_balance() - *value));
         BrokerCashEvent::WithdrawSuccess(CashValue::from(*value))
@@ -477,14 +484,17 @@ pub trait CashOperations<Q: BrokerQuote>: Portfolio<Q> + BrokerStates {
     fn debit_force(&mut self, value: &f64) -> BrokerCashEvent {
         info!(
             "BROKER: Force debt {:?} cash, current balance of {:?}",
-            value, self.get_cash_balance()
+            value,
+            self.get_cash_balance()
         );
         self.update_cash_balance(CashValue::from(*self.get_cash_balance() - *value));
         BrokerCashEvent::WithdrawSuccess(CashValue::from(*value))
     }
 }
 
-pub trait BrokerOperations<O: BrokerOrder, Q: BrokerQuote>: Portfolio<Q> + BrokerStates + SendOrder<O> + CashOperations<Q> {
+pub trait BrokerOperations<O: BrokerOrder, Q: BrokerQuote>:
+    Portfolio<Q> + BrokerStates + SendOrder<O> + CashOperations<Q>
+{
     /// If current round of trades have caused broker to run out of cash then this will rebalance.
     ///
     /// Has a fixed value buffer, currently set to 1000, to reduce the probability of the broker
@@ -625,10 +635,7 @@ pub trait BrokerOperations<O: BrokerOrder, Q: BrokerQuote>: Portfolio<Q> + Broke
         Ok(())
     }
 
-    fn client_is_issuing_nonsense_order(
-        &self,
-        order: &O,
-    ) -> Result<(), UnexecutableOrderError> {
+    fn client_is_issuing_nonsense_order(&self, order: &O) -> Result<(), UnexecutableOrderError> {
         let shares = order.get_shares();
         if shares == 0.0 {
             return Err(UnexecutableOrderError);
@@ -641,10 +648,7 @@ pub trait BrokerOperations<O: BrokerOrder, Q: BrokerQuote>: Portfolio<Q> + Broke
     ///
     /// Brokers do not expect target wights, they merely respond to orders so this structure
     /// is not required to create backtests.
-    fn diff_brkr_against_target_weights(
-        &mut self,
-        target_weights: &PortfolioAllocation,
-    ) -> Vec<O> {
+    fn diff_brkr_against_target_weights(&mut self, target_weights: &PortfolioAllocation) -> Vec<O> {
         //Returns orders so calling function has control over when orders are executed
         //Requires mutable reference to brkr because it calls get_position_value
         //Need liquidation value so we definitely have enough money to make all transactions after
@@ -661,19 +665,18 @@ pub trait BrokerOperations<O: BrokerOrder, Q: BrokerQuote>: Portfolio<Q> + Broke
 
         //This returns a positive number for buy and negative for sell, this is necessary because
         //of calculations made later to find the net position of orders on the exchange.
-        let calc_required_shares_with_costs =
-            |diff_val: &f64, quote: &Q, brkr: &Self| -> f64 {
-                if diff_val.lt(&0.0) {
-                    let price = quote.get_bid();
-                    let costs = brkr.calc_trade_impact(&diff_val.abs(), &price, false);
-                    let total = (*costs.0 / *costs.1).floor();
-                    -total
-                } else {
-                    let price = quote.get_ask();
-                    let costs = brkr.calc_trade_impact(&diff_val.abs(), &price, true);
-                    (*costs.0 / *costs.1).floor()
-                }
-            };
+        let calc_required_shares_with_costs = |diff_val: &f64, quote: &Q, brkr: &Self| -> f64 {
+            if diff_val.lt(&0.0) {
+                let price = quote.get_bid();
+                let costs = brkr.calc_trade_impact(&diff_val.abs(), &price, false);
+                let total = (*costs.0 / *costs.1).floor();
+                -total
+            } else {
+                let price = quote.get_ask();
+                let costs = brkr.calc_trade_impact(&diff_val.abs(), &price, true);
+                (*costs.0 / *costs.1).floor()
+            }
+        };
 
         for symbol in target_weights.keys() {
             let curr_val = self

@@ -2,7 +2,7 @@ use log::info;
 use rotala::exchange::uist::UistTrade;
 
 use crate::broker::uist::UistBroker;
-use crate::broker::{Portfolio, BrokerOperations, SendOrder, CashOperations, BrokerCashEvent};
+use crate::broker::{BrokerCashEvent, BrokerOperations, CashOperations, Portfolio, SendOrder};
 use crate::schedule::{DefaultTradingSchedule, TradingSchedule};
 use crate::strategy::{Audit, History, Strategy, StrategyEvent, TransferFrom, TransferTo};
 use crate::types::{CashValue, PortfolioAllocation, StrategySnapshot};

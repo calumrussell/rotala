@@ -257,9 +257,9 @@ mod tests {
     use rotala::exchange::uist::Uist;
     use rotala::input::penelope::PenelopeBuilder;
 
-    use crate::broker::BrokerCost;
     use crate::broker::uist::UistBroker;
     use crate::broker::uist::UistBrokerBuilder;
+    use crate::broker::BrokerCost;
     use crate::perf::StrategySnapshot;
     use crate::strategy::staticweight::StaticWeightStrategyBuilder;
     use crate::strategy::{History, Strategy};

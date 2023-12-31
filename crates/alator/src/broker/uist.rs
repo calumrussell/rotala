@@ -13,8 +13,10 @@ use crate::types::{
     CashValue, PortfolioAllocation, PortfolioHoldings, PortfolioQty, PortfolioValues, Price,
 };
 
-use super::{BrokerCost, BrokerStates, CashOperations, BrokerOperations, SendOrder, Quote, Portfolio, BrokerEvent, BrokerState};
-
+use super::{
+    BrokerCost, BrokerEvent, BrokerOperations, BrokerState, BrokerStates, CashOperations,
+    Portfolio, Quote, SendOrder,
+};
 
 #[derive(Debug)]
 pub struct UistBroker {
@@ -139,7 +141,9 @@ impl SendOrder<UistOrder> for UistBroker {
                     | UistOrderType::StopSell => quote.get_bid(),
                 };
 
-                if let Err(_err) = self.client_has_sufficient_cash::<UistOrderType>(&order, &Price::from(price)) {
+                if let Err(_err) =
+                    self.client_has_sufficient_cash::<UistOrderType>(&order, &Price::from(price))
+                {
                     info!(
                         "BROKER: Unable to send {:?} order for {:?} shares of {:?} to exchange",
                         order.get_order_type(),
@@ -148,7 +152,9 @@ impl SendOrder<UistOrder> for UistBroker {
                     );
                     return UistBrokerEvent::OrderInvalid(order.clone());
                 }
-                if let Err(_err) = self.client_has_sufficient_holdings_for_sale::<UistOrderType>(&order) {
+                if let Err(_err) =
+                    self.client_has_sufficient_holdings_for_sale::<UistOrderType>(&order)
+                {
                     info!(
                         "BROKER: Unable to send {:?} order for {:?} shares of {:?} to exchange",
                         order.get_order_type(),
@@ -268,7 +274,6 @@ impl UistBroker {
         self.rebalance_cash();
     }
 
-   
     pub fn cost_basis(&self, symbol: &str) -> Option<Price> {
         self.log.cost_basis(symbol)
     }
@@ -425,11 +430,12 @@ impl Default for UistBrokerLog {
     }
 }
 
-
 #[cfg(test)]
 mod tests {
 
-    use crate::broker::{BrokerCost, BrokerCashEvent, CashOperations, SendOrder, Portfolio, BrokerOperations};
+    use crate::broker::{
+        BrokerCashEvent, BrokerCost, BrokerOperations, CashOperations, Portfolio, SendOrder,
+    };
     use crate::types::{CashValue, PortfolioAllocation, PortfolioQty};
     use rotala::clock::{ClockBuilder, Frequency};
     use rotala::exchange::uist::{
@@ -437,9 +443,7 @@ mod tests {
     };
     use rotala::input::penelope::PenelopeBuilder;
 
-    use super::{
-        UistBroker, UistBrokerBuilder, UistBrokerEvent, UistBrokerLog,
-    };
+    use super::{UistBroker, UistBrokerBuilder, UistBrokerEvent, UistBrokerLog};
 
     fn setup() -> UistBroker {
         let mut source_builder = PenelopeBuilder::new();
