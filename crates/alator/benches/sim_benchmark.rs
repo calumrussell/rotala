@@ -1,4 +1,4 @@
-use alator::broker::types::BrokerCost;
+use alator::broker::{BrokerCost, CashOperations, SendOrder};
 use alator::broker::uist::UistBrokerBuilder;
 use criterion::{criterion_group, criterion_main, Criterion};
 use rand::thread_rng;

@@ -1,7 +1,8 @@
 use log::info;
 use rotala::exchange::uist::UistTrade;
 
-use crate::broker::uist::{UistBroker, UistBrokerCashEvent};
+use crate::broker::uist::UistBroker;
+use crate::broker::{Portfolio, BrokerOperations, SendOrder, CashOperations, BrokerCashEvent};
 use crate::schedule::{DefaultTradingSchedule, TradingSchedule};
 use crate::strategy::{Audit, History, Strategy, StrategyEvent, TransferFrom, TransferTo};
 use crate::types::{CashValue, PortfolioAllocation, StrategySnapshot};
@@ -125,7 +126,7 @@ impl TransferTo for StaticWeightStrategy {
 
 impl TransferFrom for StaticWeightStrategy {
     fn withdraw_cash(&mut self, cash: &f64) -> StrategyEvent {
-        if let UistBrokerCashEvent::WithdrawSuccess(withdrawn) = self.brkr.withdraw_cash(cash) {
+        if let BrokerCashEvent::WithdrawSuccess(withdrawn) = self.brkr.withdraw_cash(cash) {
             info!("STRATEGY: Succesfully withdrew {:?} from strategy", cash);
             self.net_cash_flow = CashValue::from(*self.net_cash_flow - *withdrawn);
             return StrategyEvent::WithdrawSuccess(CashValue::from(*cash));
@@ -135,7 +136,7 @@ impl TransferFrom for StaticWeightStrategy {
     }
 
     fn withdraw_cash_with_liquidation(&mut self, cash: &f64) -> StrategyEvent {
-        if let UistBrokerCashEvent::WithdrawSuccess(withdrawn) =
+        if let BrokerCashEvent::WithdrawSuccess(withdrawn) =
             //No logging here because the implementation is fully logged due to the greater
             //complexity of this task vs standard withdraw
             self.brkr.withdraw_cash_with_liquidation(cash)

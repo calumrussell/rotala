@@ -1,4 +1,4 @@
-use alator::broker::types::BrokerCost;
+use alator::broker::BrokerCost;
 use alator::broker::uist::UistBrokerBuilder;
 use rand::distributions::{Distribution, Uniform};
 use rand::thread_rng;

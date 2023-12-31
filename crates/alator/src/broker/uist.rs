@@ -13,14 +13,8 @@ use crate::types::{
     CashValue, PortfolioAllocation, PortfolioHoldings, PortfolioQty, PortfolioValues, Price,
 };
 
-use super::{types::BrokerCost, BrokerStates, CashOperations, BrokerOperations, SendOrder, Quote, Portfolio};
+use super::{BrokerCost, BrokerStates, CashOperations, BrokerOperations, SendOrder, Quote, Portfolio, BrokerEvent, BrokerState};
 
-
-#[derive(Debug)]
-enum BrokerState {
-    Ready,
-    Failed,
-}
 
 #[derive(Debug)]
 pub struct UistBroker {
@@ -38,7 +32,7 @@ pub struct UistBroker {
     broker_state: BrokerState,
 }
 
-impl Quote for UistBroker {
+impl Quote<UistQuote> for UistBroker {
     fn get_quote(&self, symbol: &str) -> Option<UistQuote> {
         self.latest_quotes.get(symbol).cloned()
     }
@@ -56,9 +50,9 @@ impl Quote for UistBroker {
     }
 }
 
-impl Portfolio for UistBroker {
+impl Portfolio<UistQuote> for UistBroker {
     fn get_trade_costs(&self) -> Vec<BrokerCost> {
-        self.trade_costs
+        self.trade_costs.clone()
     }
 
     fn get_holdings(&self) -> PortfolioHoldings {
@@ -69,7 +63,7 @@ impl Portfolio for UistBroker {
         self.cash.clone()
     }
 
-    fn update_cash_balance(&self, cash: CashValue) {
+    fn update_cash_balance(&mut self, cash: CashValue) {
         self.cash = cash;
     }
 
@@ -93,25 +87,27 @@ impl Portfolio for UistBroker {
     }
 
     fn get_pending_orders(&self) -> PortfolioHoldings {
-        self.pending_orders
+        self.pending_orders.clone()
     }
 }
 
 impl BrokerStates for UistBroker {
     fn get_broker_state(&self) -> BrokerState {
-        self.broker_state
+        self.broker_state.clone()
     }
 
-    fn update_broker_state(&self, state: BrokerState) {
+    fn update_broker_state(&mut self, state: BrokerState) {
         self.broker_state = state;
     }
 }
 
-impl CashOperations for UistBroker {}
+impl CashOperations<UistQuote> for UistBroker {}
 
-impl BrokerOperations for UistBroker {}
+impl BrokerOperations<UistOrder, UistQuote> for UistBroker {}
 
-impl SendOrder for UistBroker {
+type UistBrokerEvent = BrokerEvent<UistOrder>;
+
+impl SendOrder<UistOrder> for UistBroker {
     fn send_order(&mut self, order: UistOrder) -> UistBrokerEvent {
         //This is an estimate of the cost based on the current price, can still end with negative
         //balance when we reconcile with actuals, may also reject valid orders at the margin
@@ -143,7 +139,7 @@ impl SendOrder for UistBroker {
                     | UistOrderType::StopSell => quote.get_bid(),
                 };
 
-                if let Err(_err) = self.client_has_sufficient_cash(&order, &Price::from(price)) {
+                if let Err(_err) = self.client_has_sufficient_cash::<UistOrderType>(&order, &Price::from(price)) {
                     info!(
                         "BROKER: Unable to send {:?} order for {:?} shares of {:?} to exchange",
                         order.get_order_type(),
@@ -152,7 +148,7 @@ impl SendOrder for UistBroker {
                     );
                     return UistBrokerEvent::OrderInvalid(order.clone());
                 }
-                if let Err(_err) = self.client_has_sufficient_holdings_for_sale(&order) {
+                if let Err(_err) = self.client_has_sufficient_holdings_for_sale::<UistOrderType>(&order) {
                     info!(
                         "BROKER: Unable to send {:?} order for {:?} shares of {:?} to exchange",
                         order.get_order_type(),
@@ -429,53 +425,11 @@ impl Default for UistBrokerLog {
     }
 }
 
-#[derive(Clone, Debug)]
-pub enum UistBrokerEvent {
-    OrderSentToExchange(UistOrder),
-    OrderInvalid(UistOrder),
-    OrderCreated(UistOrder),
-    OrderFailure(UistOrder),
-}
-
-#[derive(Clone, Debug)]
-pub enum UistBrokerCashEvent {
-    //Removed from [UistBrokerEvent] because there are situations when we want to handle these events
-    //specifically and seperately
-    WithdrawSuccess(CashValue),
-    WithdrawFailure(CashValue),
-    DepositSuccess(CashValue),
-    OperationFailure(CashValue),
-}
-
-/// Broker has attempted to execute an order which cannot be completed due to insufficient cash.
-#[derive(Debug, Clone)]
-pub struct InsufficientCashError;
-
-impl Error for InsufficientCashError {}
-
-impl Display for InsufficientCashError {
-    fn fmt(&self, f: &mut Formatter) -> std::fmt::Result {
-        write!(f, "Client has insufficient cash to execute order")
-    }
-}
-
-#[derive(Debug, Clone)]
-/// Broker has attempted to execute an order which cannot be completed due to a problem with the
-/// order.
-pub struct UnexecutableOrderError;
-
-impl Error for UnexecutableOrderError {}
-
-impl Display for UnexecutableOrderError {
-    fn fmt(&self, f: &mut Formatter) -> std::fmt::Result {
-        write!(f, "Client has passed unexecutable order")
-    }
-}
 
 #[cfg(test)]
 mod tests {
 
-    use crate::broker::types::BrokerCost;
+    use crate::broker::{BrokerCost, BrokerCashEvent, CashOperations, SendOrder, Portfolio, BrokerOperations};
     use crate::types::{CashValue, PortfolioAllocation, PortfolioQty};
     use rotala::clock::{ClockBuilder, Frequency};
     use rotala::exchange::uist::{
@@ -484,7 +438,7 @@ mod tests {
     use rotala::input::penelope::PenelopeBuilder;
 
     use super::{
-        UistBroker, UistBrokerBuilder, UistBrokerCashEvent, UistBrokerEvent, UistBrokerLog,
+        UistBroker, UistBrokerBuilder, UistBrokerEvent, UistBrokerLog,
     };
 
     fn setup() -> UistBroker {
@@ -524,29 +478,29 @@ mod tests {
         //Test cash
         assert!(matches!(
             brkr.withdraw_cash(&50.0),
-            UistBrokerCashEvent::WithdrawSuccess(..)
+            BrokerCashEvent::WithdrawSuccess(..)
         ));
         assert!(matches!(
             brkr.withdraw_cash(&51.0),
-            UistBrokerCashEvent::WithdrawFailure(..)
+            BrokerCashEvent::WithdrawFailure(..)
         ));
         assert!(matches!(
             brkr.deposit_cash(&50.0),
-            UistBrokerCashEvent::DepositSuccess(..)
+            BrokerCashEvent::DepositSuccess(..)
         ));
 
         //Test transactions
         assert!(matches!(
             brkr.debit(&50.0),
-            UistBrokerCashEvent::WithdrawSuccess(..)
+            BrokerCashEvent::WithdrawSuccess(..)
         ));
         assert!(matches!(
             brkr.debit(&51.0),
-            UistBrokerCashEvent::WithdrawFailure(..)
+            BrokerCashEvent::WithdrawFailure(..)
         ));
         assert!(matches!(
             brkr.credit(&50.0),
-            UistBrokerCashEvent::DepositSuccess(..)
+            BrokerCashEvent::DepositSuccess(..)
         ));
     }
 
@@ -804,11 +758,11 @@ mod tests {
 
         assert!(matches!(
             brkr.deposit_cash(&100_000.0),
-            UistBrokerCashEvent::OperationFailure { .. }
+            BrokerCashEvent::OperationFailure { .. }
         ));
         assert!(matches!(
             brkr.withdraw_cash(&100_000.0),
-            UistBrokerCashEvent::OperationFailure { .. }
+            BrokerCashEvent::OperationFailure { .. }
         ));
     }
 

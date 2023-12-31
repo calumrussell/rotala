@@ -55,7 +55,7 @@
 //!
 //! ```
 //!     use alator::broker::uist::UistBrokerBuilder;
-//!     use alator::broker::types::BrokerCost;
+//!     use alator::broker::BrokerCost;
 //!     use alator::strategy::staticweight::StaticWeightStrategyBuilder;
 //!     use alator::simcontext::SimContextBuilder;
 //!     use alator::types::{ CashValue, PortfolioAllocation };

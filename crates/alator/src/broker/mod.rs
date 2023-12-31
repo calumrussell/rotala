@@ -44,27 +44,102 @@
 use std::{error::Error, fmt::{Display, Formatter}};
 
 use log::info;
+use rotala::exchange::uist::{UistTrade, UistOrderType, UistQuote, UistOrder};
 
 use crate::types::{CashValue, Price, PortfolioValues, PortfolioQty, PortfolioHoldings, PortfolioAllocation};
 
-use self::types::BrokerCost;
-pub mod types;
 pub mod uist;
 
-#[derive(Debug)]
-enum BrokerState {
+#[derive(Clone, Debug)]
+pub enum BrokerState {
     Ready,
     Failed,
 }
 
+pub enum BrokerOrderType {
+    MarketBuy,
+    MarketSell,
+    LimitBuy,
+    LimitSell,
+    StopBuy,
+    StopSell,
+}
+
+impl From<UistOrderType> for BrokerOrderType {
+    fn from(value: UistOrderType) -> Self {
+        match value {
+            UistOrderType::MarketBuy => BrokerOrderType::MarketBuy,
+            UistOrderType::MarketSell => BrokerOrderType::MarketSell,
+            UistOrderType::LimitBuy => BrokerOrderType::LimitBuy,
+            UistOrderType::LimitSell => BrokerOrderType::LimitSell,
+            UistOrderType::StopBuy => BrokerOrderType::StopBuy,
+            UistOrderType::StopSell => BrokerOrderType::StopSell,
+        }
+    }
+}
+
+pub trait BrokerTrade: Clone {
+    fn get_quantity(&self) -> f64;
+    fn get_value(&self) -> f64;
+}
+
+impl BrokerTrade for UistTrade {
+    fn get_quantity(&self) -> f64 {
+        self.quantity
+    }
+    fn get_value(&self) -> f64 {
+        self.value
+    }
+}
+
+pub trait BrokerQuote {
+    fn get_bid(&self) -> f64;
+    fn get_ask(&self) -> f64;
+}
+
+impl BrokerQuote for UistQuote {
+    fn get_bid(&self) -> f64 {
+        self.bid
+    }
+
+    fn get_ask(&self) -> f64 {
+        self.ask
+    }
+}
+
+pub trait BrokerOrder {
+    fn get_order_type<T: Into<BrokerOrderType>>(&self) -> BrokerOrderType;
+    fn get_shares(&self) -> f64;
+    fn get_symbol(&self) -> String;
+    fn market_buy(symbol: String, shares: f64) -> Self;
+    fn market_sell(symbol: String, shares: f64) -> Self;
+}
+
+impl BrokerOrder for UistOrder {
+    fn get_order_type<UistOrderType>(&self) -> BrokerOrderType {
+        self.order_type.into()
+    }
+    fn get_shares(&self) -> f64 {
+        self.shares
+    }
+    fn get_symbol(&self) -> String {
+        self.symbol.clone()
+    }
+    fn market_buy(symbol: String, shares: f64) -> Self {
+        UistOrder::market_buy(symbol, shares)
+    }
+    fn market_sell(symbol: String, shares: f64) -> Self {
+        UistOrder::market_sell(symbol, shares)
+    }
+}
+
 #[derive(Clone, Debug)]
-pub enum BrokerEvent<O> {
+pub enum BrokerEvent<O: BrokerOrder> {
     OrderSentToExchange(O),
     OrderInvalid(O),
     OrderCreated(O),
     OrderFailure(O),
 }
-
 
 #[derive(Clone, Debug)]
 pub enum BrokerCashEvent {
@@ -75,7 +150,6 @@ pub enum BrokerCashEvent {
     DepositSuccess(CashValue),
     OperationFailure(CashValue),
 }
-
 
 /// Broker has attempted to execute an order which cannot be completed due to insufficient cash.
 #[derive(Debug, Clone)]
@@ -102,21 +176,89 @@ impl Display for UnexecutableOrderError {
     }
 }
 
-trait Quote {
-    type Value;
-
-    fn get_quote(&self, symbol: &str) -> Option<Self::Value>;
-    fn get_quotes(&self) -> Option<Vec<Self::Value>>;
+///Implementation of various cost models for brokers. Broker implementations would either define or
+///cost model or would provide the user the option of intializing one; the broker impl would then
+///call the variant's calculation methods as trades are executed.
+#[derive(Clone, Debug)]
+pub enum BrokerCost {
+    PerShare(Price),
+    PctOfValue(f64),
+    Flat(CashValue),
 }
 
-trait SendOrder {
-    type Value;
+impl BrokerCost {
+    pub fn per_share(val: f64) -> Self {
+        BrokerCost::PerShare(Price::from(val))
+    }
 
-    fn send_order(&mut self, order: Self::Value) -> BrokerEvent;
-    fn send_orders(&mut self, orders: &[Self::Value]) -> Vec<BrokerEvent>;
+    pub fn pct_of_value(val: f64) -> Self {
+        BrokerCost::PctOfValue(val)
+    }
+
+    pub fn flat(val: f64) -> Self {
+        BrokerCost::Flat(CashValue::from(val))
+    }
+
+    pub fn calc(&self, trade: impl BrokerTrade) -> CashValue {
+        match self {
+            BrokerCost::PerShare(cost) => CashValue::from(*cost.clone() * trade.get_quantity()),
+            BrokerCost::PctOfValue(pct) => CashValue::from(trade.get_value() * *pct),
+            BrokerCost::Flat(val) => val.clone(),
+        }
+    }
+
+    //Returns a valid trade given trading costs given a current budget
+    //and price of security
+    pub fn trade_impact(
+        &self,
+        gross_budget: &f64,
+        gross_price: &f64,
+        is_buy: bool,
+    ) -> (CashValue, Price) {
+        let mut net_budget = *gross_budget;
+        let mut net_price = *gross_price;
+        match self {
+            BrokerCost::PerShare(val) => {
+                if is_buy {
+                    net_price += *val.clone();
+                } else {
+                    net_price -= *val.clone();
+                }
+            }
+            BrokerCost::PctOfValue(pct) => {
+                net_budget *= 1.0 - pct;
+            }
+            BrokerCost::Flat(val) => net_budget -= *val.clone(),
+        }
+        (CashValue::from(net_budget), Price::from(net_price))
+    }
+
+    pub fn trade_impact_total(
+        trade_costs: &[BrokerCost],
+        gross_budget: &f64,
+        gross_price: &f64,
+        is_buy: bool,
+    ) -> (CashValue, Price) {
+        let mut res = (CashValue::from(*gross_budget), Price::from(*gross_price));
+        for cost in trade_costs {
+            res = cost.trade_impact(&res.0, &res.1, is_buy);
+        }
+        res
+    }
 }
 
-trait Portfolio: Quote {
+
+pub trait Quote<Q: BrokerQuote> {
+    fn get_quote(&self, symbol: &str) -> Option<Q>;
+    fn get_quotes(&self) -> Option<Vec<Q>>;
+}
+
+pub trait SendOrder<O: BrokerOrder> {
+    fn send_order(&mut self, order: O) -> BrokerEvent<O>;
+    fn send_orders(&mut self, orders: &[O]) -> Vec<BrokerEvent<O>>;
+}
+
+pub trait Portfolio<Q: BrokerQuote>: Quote<Q> {
     fn get_position_profit(&self, symbol: &str) -> Option<CashValue> {
         if let Some(cost) = self.get_position_cost(symbol) {
             if let Some(qty) = self.get_position_qty(symbol) {
@@ -226,7 +368,7 @@ trait Portfolio: Quote {
         merged_holdings
     }
 
-    fn calculate_trade_costs(&self, trade: &UistTrade) -> CashValue {
+    fn calculate_trade_costs(&self, trade: impl BrokerTrade) -> CashValue {
         let mut cost = CashValue::default();
         for trade_cost in &self.get_trade_costs() {
             cost = CashValue::from(*cost + *trade_cost.calc(trade.clone()));
@@ -239,7 +381,7 @@ trait Portfolio: Quote {
     }
 
     fn get_cash_balance(&self) -> CashValue;
-    fn update_cash_balance(&self, cash: CashValue);
+    fn update_cash_balance(&mut self, cash: CashValue);
     fn get_holdings(&self) -> PortfolioHoldings;
     fn update_holdings(&mut self, symbol: &str, change: PortfolioQty);
     fn get_position_cost(&self, symbol: &str) -> Option<Price>;
@@ -247,12 +389,12 @@ trait Portfolio: Quote {
     fn get_trade_costs(&self) -> Vec<BrokerCost>;
 }
 
-trait BrokerStates {
+pub trait BrokerStates {
     fn get_broker_state(&self) -> BrokerState;
-    fn update_broker_state(&self, state: BrokerState);
+    fn update_broker_state(&mut self, state: BrokerState);
 }
 
-trait CashOperations: Portfolio + BrokerStates {
+pub trait CashOperations<Q: BrokerQuote>: Portfolio<Q> + BrokerStates {
     fn withdraw_cash(&mut self, cash: &f64) -> BrokerCashEvent {
         match self.get_broker_state() {
             BrokerState::Failed => {
@@ -342,7 +484,7 @@ trait CashOperations: Portfolio + BrokerStates {
     }
 }
 
-trait BrokerOperations: Portfolio + BrokerStates + SendOrder + CashOperations {
+pub trait BrokerOperations<O: BrokerOrder, Q: BrokerQuote>: Portfolio<Q> + BrokerStates + SendOrder<O> + CashOperations<Q> {
     /// If current round of trades have caused broker to run out of cash then this will rebalance.
     ///
     /// Has a fixed value buffer, currently set to 1000, to reduce the probability of the broker
@@ -395,7 +537,7 @@ trait BrokerOperations: Portfolio + BrokerStates + SendOrder + CashOperations {
             let mut total_sold = *cash;
 
             let positions = self.get_positions();
-            let mut sell_orders: Vec<UistOrder> = Vec::new();
+            let mut sell_orders: Vec<O> = Vec::new();
             for ticker in positions {
                 let position_value = self
                     .get_position_value(&ticker)
@@ -408,7 +550,7 @@ trait BrokerOperations: Portfolio + BrokerStates + SendOrder + CashOperations {
                 if *position_value <= total_sold {
                     //Cannot be called without qty existing
                     if let Some(qty) = self.get_position_qty(&ticker) {
-                        let order = UistOrder::market_sell(ticker, *qty);
+                        let order = O::market_sell(ticker, *qty);
                         info!("BROKER: Withdrawing {:?} with liquidation, queueing sale of {:?} shares of {:?}", cash, order.get_shares(), order.get_symbol());
                         sell_orders.push(order);
                         total_sold -= *position_value;
@@ -421,7 +563,7 @@ trait BrokerOperations: Portfolio + BrokerStates + SendOrder + CashOperations {
                     let quote = self.get_quote(&ticker).unwrap();
                     let price = quote.get_bid();
                     let shares_req = PortfolioQty::from((total_sold / price).ceil());
-                    let order = UistOrder::market_sell(ticker, *shares_req);
+                    let order = O::market_sell(ticker, *shares_req);
                     info!("BROKER: Withdrawing {:?} with liquidation, queueing sale of {:?} shares of {:?}", cash, order.get_shares(), order.get_symbol());
                     sell_orders.push(order);
                     total_sold = 0.0;
@@ -448,31 +590,31 @@ trait BrokerOperations: Portfolio + BrokerStates + SendOrder + CashOperations {
         }
     }
 
-    fn client_has_sufficient_cash(
+    fn client_has_sufficient_cash<T: Into<BrokerOrderType>>(
         &self,
-        order: &UistOrder,
+        order: &O,
         price: &Price,
     ) -> Result<(), InsufficientCashError> {
         let shares = order.get_shares();
         let value = CashValue::from(shares * **price);
-        match order.get_order_type() {
-            UistOrderType::MarketBuy => {
+        match order.get_order_type::<T>() {
+            BrokerOrderType::MarketBuy => {
                 if self.get_cash_balance() > value {
                     return Ok(());
                 }
                 Err(InsufficientCashError)
             }
-            UistOrderType::MarketSell => Ok(()),
+            BrokerOrderType::MarketSell => Ok(()),
             _ => unreachable!("Shouldn't hit unless something has gone wrong"),
         }
     }
 
-    fn client_has_sufficient_holdings_for_sale(
+    fn client_has_sufficient_holdings_for_sale<T: Into<BrokerOrderType>>(
         &self,
-        order: &UistOrder,
+        order: &O,
     ) -> Result<(), UnexecutableOrderError> {
-        if let UistOrderType::MarketSell = order.get_order_type() {
-            if let Some(holding) = self.get_position_qty(order.get_symbol()) {
+        if let BrokerOrderType::MarketSell = order.get_order_type::<T>() {
+            if let Some(holding) = self.get_position_qty(&order.get_symbol()) {
                 if *holding >= order.get_shares() {
                     return Ok(());
                 } else {
@@ -485,7 +627,7 @@ trait BrokerOperations: Portfolio + BrokerStates + SendOrder + CashOperations {
 
     fn client_is_issuing_nonsense_order(
         &self,
-        order: &UistOrder,
+        order: &O,
     ) -> Result<(), UnexecutableOrderError> {
         let shares = order.get_shares();
         if shares == 0.0 {
@@ -502,7 +644,7 @@ trait BrokerOperations: Portfolio + BrokerStates + SendOrder + CashOperations {
     fn diff_brkr_against_target_weights(
         &mut self,
         target_weights: &PortfolioAllocation,
-    ) -> Vec<UistOrder> {
+    ) -> Vec<O> {
         //Returns orders so calling function has control over when orders are executed
         //Requires mutable reference to brkr because it calls get_position_value
         //Need liquidation value so we definitely have enough money to make all transactions after
@@ -512,15 +654,15 @@ trait BrokerOperations: Portfolio + BrokerStates + SendOrder + CashOperations {
         if (*total_value).eq(&0.0) {
             panic!("Client is attempting to trade a portfolio with zero value");
         }
-        let mut orders: Vec<UistOrder> = Vec::new();
+        let mut orders: Vec<O> = Vec::new();
 
-        let mut buy_orders: Vec<UistOrder> = Vec::new();
-        let mut sell_orders: Vec<UistOrder> = Vec::new();
+        let mut buy_orders: Vec<O> = Vec::new();
+        let mut sell_orders: Vec<O> = Vec::new();
 
         //This returns a positive number for buy and negative for sell, this is necessary because
         //of calculations made later to find the net position of orders on the exchange.
         let calc_required_shares_with_costs =
-            |diff_val: &f64, quote: &UistQuote, brkr: &Self| -> f64 {
+            |diff_val: &f64, quote: &Q, brkr: &Self| -> f64 {
                 if diff_val.lt(&0.0) {
                     let price = quote.get_bid();
                     let costs = brkr.calc_trade_impact(&diff_val.abs(), &price, false);
@@ -554,9 +696,9 @@ trait BrokerOperations: Portfolio + BrokerStates + SendOrder + CashOperations {
                 //self.clear_pending_market_orders_by_symbol(&symbol);
                 if required_shares.ne(&0.0) {
                     if required_shares.gt(&0.0) {
-                        buy_orders.push(UistOrder::market_buy(symbol.clone(), required_shares));
+                        buy_orders.push(O::market_buy(symbol.clone(), required_shares));
                     } else {
-                        sell_orders.push(UistOrder::market_sell(
+                        sell_orders.push(O::market_sell(
                             symbol.clone(),
                             //Order stores quantity as non-negative
                             required_shares.abs(),
