@@ -73,7 +73,7 @@ impl Uist {
         self.orderbook.delete_order(order_id);
     }
 
-    pub fn check(&mut self) -> Vec<UistTrade> {
+    pub fn check(&mut self) -> bool {
         //To eliminate lookahead bias, we only start executing orders on the next
         //tick.
         self.clock.tick();
@@ -84,13 +84,11 @@ impl Uist {
 
         let now = self.clock.now();
         let executed_trades = self.orderbook.execute_orders(*now, &self.price_source);
-        let mut executed_trades_internal_format = Vec::new();
         for executed_trade in executed_trades {
             self.trade_log.push(executed_trade.clone());
-            executed_trades_internal_format.push(executed_trade.clone());
         }
         self.order_buffer.clear();
-        executed_trades_internal_format
+        self.clock.has_next()
     }
 }
 

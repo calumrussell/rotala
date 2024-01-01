@@ -56,8 +56,8 @@
 //! ```
 //!     use alator::broker::uist::UistBrokerBuilder;
 //!     use alator::broker::BrokerCost;
+//!     use alator::strategy::Strategy;
 //!     use alator::strategy::staticweight::StaticWeightStrategyBuilder;
-//!     use alator::simcontext::SimContextBuilder;
 //!     use alator::types::{ CashValue, PortfolioAllocation };
 //!     use rotala::exchange::uist::random_uist_generator;
 //!
@@ -72,18 +72,14 @@
 //!     weights.insert("ABC", 0.5);
 //!     weights.insert("BCD", 0.5);
 //!
-//!     let strat = StaticWeightStrategyBuilder::new()
+//!     let mut strat = StaticWeightStrategyBuilder::new()
 //!         .with_brkr(brkr)
 //!         .with_weights(weights)
 //!         .with_clock(clock.clone())
 //!         .default();
 //!
-//!     let mut sim = SimContextBuilder::new()
-//!         .with_clock(clock.clone())
-//!         .with_strategy(strat)
-//!         .init(&initial_cash);
-//!
-//!     sim.run();
+//!     strat.init(&initial_cash);
+//!     strat.run();
 //!
 //! ```
 //! Alator comes with a `StaticWeightStrategy` and clients will typically need to implement the
