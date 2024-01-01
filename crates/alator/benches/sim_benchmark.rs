@@ -1,10 +1,10 @@
 use alator::broker::uist::UistBrokerBuilder;
 use alator::broker::{BrokerCost, CashOperations, SendOrder};
+use alator::strategy::Strategy;
 use criterion::{criterion_group, criterion_main, Criterion};
 use rand::thread_rng;
 use rand_distr::{Distribution, Uniform};
 
-use alator::simcontext::SimContextBuilder;
 use alator::strategy::staticweight::StaticWeightStrategyBuilder;
 use alator::types::{CashValue, PortfolioAllocation};
 use rotala::exchange::uist::{Uist, UistOrder};
@@ -45,18 +45,14 @@ fn full_backtest_random_data() {
         .with_trade_costs(vec![BrokerCost::Flat(1.0.into())])
         .build();
 
-    let strat = StaticWeightStrategyBuilder::new()
+    let mut strat = StaticWeightStrategyBuilder::new()
         .with_brkr(simbrkr)
         .with_weights(weights)
         .with_clock(clock.clone())
         .default();
 
-    let mut sim = SimContextBuilder::new()
-        .with_clock(clock.clone())
-        .with_strategy(strat)
-        .init(&initial_cash);
-
-    sim.run();
+    strat.init(&initial_cash);
+    strat.run();
 }
 
 fn trade_execution_logic() {

@@ -3,10 +3,11 @@ use rotala::exchange::uist::UistTrade;
 
 use crate::broker::uist::UistBroker;
 use crate::broker::{BrokerCashEvent, BrokerOperations, CashOperations, Portfolio, SendOrder};
+use crate::perf::{BacktestOutput, PerformanceCalculator};
 use crate::schedule::{DefaultTradingSchedule, TradingSchedule};
 use crate::strategy::{Audit, History, Strategy, StrategyEvent, TransferFrom, TransferTo};
 use crate::types::{CashValue, PortfolioAllocation, StrategySnapshot};
-use rotala::clock::Clock;
+use rotala::clock::{Clock, Frequency};
 
 pub struct StaticWeightStrategyBuilder {
     //If missing either field, we cannot run this strategy
@@ -73,6 +74,18 @@ pub struct StaticWeightStrategy {
 }
 
 impl StaticWeightStrategy {
+    pub fn run(&mut self) {
+        while self.clock.has_next() {
+            self.update();
+        }
+    }
+
+    pub fn perf(&self, freq: Frequency) -> BacktestOutput {
+        //Intended to be called at end of simulation
+        let hist = self.get_history();
+        PerformanceCalculator::calculate(freq, hist)
+    }
+
     pub fn get_snapshot(&mut self) -> StrategySnapshot {
         // Defaults to zero inflation because most users probably aren't looking
         // for real returns calcs

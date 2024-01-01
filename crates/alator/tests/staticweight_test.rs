@@ -1,10 +1,10 @@
 use alator::broker::uist::UistBrokerBuilder;
 use alator::broker::BrokerCost;
+use alator::strategy::Strategy;
 use rand::distributions::{Distribution, Uniform};
 use rand::thread_rng;
 use rotala::clock::Frequency;
 
-use alator::simcontext::SimContextBuilder;
 use alator::strategy::staticweight::StaticWeightStrategyBuilder;
 use alator::types::{CashValue, PortfolioAllocation};
 use rotala::exchange::uist::Uist;
@@ -53,18 +53,14 @@ fn staticweight_integration_test() {
         .with_exchange(exchange)
         .build();
 
-    let strat = StaticWeightStrategyBuilder::new()
+    let mut strat = StaticWeightStrategyBuilder::new()
         .with_brkr(brkr)
         .with_weights(weights)
         .with_clock(clock.clone())
         .default();
 
-    let mut sim = SimContextBuilder::new()
-        .with_clock(clock.clone())
-        .with_strategy(strat)
-        .init(&initial_cash);
+    strat.init(&initial_cash);
+    strat.run();
 
-    sim.run();
-
-    let _perf = sim.perf(Frequency::Daily);
+    let _perf = strat.perf(Frequency::Daily);
 }

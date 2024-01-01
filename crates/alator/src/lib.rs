@@ -121,6 +121,5 @@
 pub mod broker;
 pub mod perf;
 pub mod schedule;
-pub mod simcontext;
 pub mod strategy;
 pub mod types;
