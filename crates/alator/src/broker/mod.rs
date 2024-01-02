@@ -1,15 +1,15 @@
 //! Issues orders to exchange and tracks changes as exchange executes orders. Contains a set of
 //! traits that represent common operations, and a full test implementation of a broker.
-//! 
+//!
 //! ### Traits
-//! 
+//!
 //! In order to use the traits, exchange common types must implement broker traits:
 //! - [BrokerTrade](crate::broker::BrokerTrade)
 //! - [BrokerQuote](crate::broker::BrokerQuote)
 //! - [BrokerEvent](crate::broker::BrokerEvent)
-//! 
+//!
 //! It is also assumed that any exchange supports at least the order types in [BrokerOrderType](crate::broker::BrokerOrderType).
-//! 
+//!
 //! The traits have been created to provide code for operations that are common across brokers. It
 //! is likely that the traits that touch some of the order logic (for example, [BrokerOperations](crate::broker::BrokerOperations)
 //! ) are too tightly bound to the exchange implementation to be useful across brokers.
@@ -30,19 +30,19 @@
 //! If a portfolio has a negative value, the current behaviour is to continue trading potentially
 //! producing unexpected results. Previous versions would exit early when this happened but this
 //! behaviour was removed.
-//! 
+//!
 //! Cash balances are held in single currency which is assumed to be the same currency used across
 //! the simulation.
-//! 
+//!
 //! Certain calculations, for example cost basis, require keeping an internal log of trades. This is
 //! distinct from performance calculations.
-//! 
+//!
 //! ### Uist
-//! 
+//!
 //! Broker using non-networked [Uist](rotala::exchange::uist::Uist) exchange. Uses the [Penelope](rotala::input::penelope::Penelope)
 //! input format and requires a reference to the [Clock](rotala::clock::Clock) that is shared with
 //! exchange (this can be created with input using builders).
-//! 
+//!
 //! Should use [UistBrokerBuilder](crate::broker::uist::UistBrokerBuilder) to create. Can create
 //! with optional [BrokerCost](crate::broker::BrokerCost).
 
@@ -144,7 +144,7 @@ impl BrokerQuote for UistQuote {
 
 /// Implicit in this trait is that the underlying exchange supports at least as many order types
 /// as [BrokerOrderType](crate::broker::BrokerOrderType).
-/// 
+///
 /// `market_buy` and `market_sell` operations are necessary for internally triggered orders i.e.
 /// rebalancing due to a cash shortfall.
 pub trait BrokerOrder {
@@ -216,9 +216,9 @@ impl Display for UnexecutableOrderError {
     }
 }
 
-/// Implementation of cost models for brokers. 
+/// Implementation of cost models for brokers.
 /// Broker implementations would either define cost model or would provide the user the option of
-/// intializing one; the broker impl would then call the variant's calculation methods as trades 
+/// intializing one; the broker impl would then call the variant's calculation methods as trades
 /// are executed.
 #[derive(Clone, Debug)]
 pub enum BrokerCost {
@@ -291,7 +291,7 @@ impl BrokerCost {
 /// Producing quotes may not necessarily be the responsibility of broker in many implementations.
 /// The exchange should be the source of price data but it is quite possible that, whilst the
 /// broker holds the ability to retrieve prices itself, the strategy code does not call the broker.
-/// 
+///
 /// This design choice was made because the strategy may depend on profit calculations or similar
 /// from the broker so it made sense to guarantee a consolidated source (in the presence of missing
 /// quotes) but brokers may choose not to act as a source of prices for clients.
@@ -306,11 +306,11 @@ pub trait SendOrder<O: BrokerOrder> {
 }
 
 /// Set of operations common to portfolios.
-/// 
+///
 /// The assumption inherent in this choice is that, whilst strategies can share an exchange, they
 /// should have their own broker where calculations like profit can be calculated on a per-strategy
 /// basis.
-/// 
+///
 /// Note that `update_holdings` and `update_cash_balance` mutate state, these are not purely
 /// immutable calculations but operations that can change the portfolio.
 pub trait Portfolio<Q: BrokerQuote>: Quote<Q> {
@@ -455,7 +455,7 @@ pub trait BrokerStates {
 /// Operations that modify cash balances. Tightly bound to [BrokerStates](crate::broker::BrokerStates)
 /// as the result of these operations has to be guarded so that the broker doesn't move into a
 /// permanently bad state that produces bad values for clients.
-/// 
+///
 /// Overlapping withdraw/deposit methods because `debit`/`credit` should only be called internally.
 /// This was more relevant in historical code, which had more functionality requiring internal
 /// transactions such as dividends, so may change over time. Clients should depend on `withdraw_cash`
