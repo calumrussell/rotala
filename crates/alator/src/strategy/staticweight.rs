@@ -161,7 +161,7 @@ impl TransferFrom for StaticWeightStrategy {
     }
 }
 
-impl Audit for StaticWeightStrategy {
+impl Audit<UistTrade> for StaticWeightStrategy {
     fn trades_between(&self, start: &i64, end: &i64) -> Vec<UistTrade> {
         self.brkr.trades_between(start, end)
     }

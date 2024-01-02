@@ -1,22 +1,20 @@
-//! Issues orders to exchange and tracks changes as exchange executes orders.
-//!
-//! ### Single-threaded detail
-//!
-//! [single::SingleBroker] holds a reference to an exchange to which orders are passed for
-//! execution. Orders are not executed until the next tick so broker state has to be synchronized
-//! with the exchange on every tick. Clients can trigger this synchronization by calling `check`.
-//!
-//! Exchange is expected to implement [alator_exchange::ExchangeSync] and the single-threaded impl
-//! should be the only owner of the exchange during a backtest.
-//!
-//! Broker should be the only owner of a [crate::input::DefaultCorporateEventsSource] in a backtest.
-//!
-//! Trade costs are optional. If no trade costs are passed to the broker then no costs will be
-//! taken when orders execute.
-//!
-//! ### General comments
-//!
-//! The broker can hold negative cash values due to the non-immediate execution of trades. Once a
+//! Issues orders to exchange and tracks changes as exchange executes orders. Contains a set of
+//! traits that represent common operations, and a full test implementation of a broker.
+//! 
+//! ### Traits
+//! 
+//! In order to use the traits, exchange common types must implement broker traits:
+//! - [BrokerTrade](crate::broker::BrokerTrade)
+//! - [BrokerQuote](crate::broker::BrokerQuote)
+//! - [BrokerEvent](crate::broker::BrokerEvent)
+//! 
+//! It is also assumed that any exchange supports at least the order types in [BrokerOrderType](crate::broker::BrokerOrderType).
+//! 
+//! The traits have been created to provide code for operations that are common across brokers. It
+//! is likely that the traits that touch some of the order logic (for example, [BrokerOperations](crate::broker::BrokerOperations)
+//! ) are too tightly bound to the exchange implementation to be useful across brokers.
+//!  
+//! Broker can hold negative cash values due to the non-immediate execution of trades. Once a
 //! broker has received the notification of completed trades and finds a negative value then
 //! re-balancing is triggered automatically. Responsibility for moving the portfolio back to the
 //! correct state is left with owner, broker implementations take responsibility for correcting
@@ -32,14 +30,21 @@
 //! If a portfolio has a negative value, the current behaviour is to continue trading potentially
 //! producing unexpected results. Previous versions would exit early when this happened but this
 //! behaviour was removed.
-//!
-//! Default implementations support multiple [BrokerCost] models: Flat, PerShare, and PctOfValue.
-//!
+//! 
 //! Cash balances are held in single currency which is assumed to be the same currency used across
 //! the simulation.
-//!
-//! Keeps an internal log of trades executed and dividends received/paid. This is distinct from
-//! performance calculations.
+//! 
+//! Certain calculations, for example cost basis, require keeping an internal log of trades. This is
+//! distinct from performance calculations.
+//! 
+//! ### Uist
+//! 
+//! Broker using non-networked [Uist](rotala::exchange::uist::Uist) exchange. Uses the [Penelope](rotala::input::penelope::Penelope)
+//! input format and requires a reference to the [Clock](rotala::clock::Clock) that is shared with
+//! exchange (this can be created with input using builders).
+//! 
+//! Should use [UistBrokerBuilder](crate::broker::uist::UistBrokerBuilder) to create. Can create
+//! with optional [BrokerCost](crate::broker::BrokerCost).
 
 use std::{
     error::Error,
@@ -55,12 +60,37 @@ use crate::types::{
 
 pub mod uist;
 
+/// Once the broker moves into Failed state then all operations that mutate state are rejected.
+///
+/// This flag is intended to cover any situation where the broker moves into a state where it is
+/// unclear how to move the state foward. In most cases, and contrary to the intuition with this
+/// kind of error, this will be due to errors with the strategy code and the interaction with
+/// external state (i.e. price source).
+///
+/// Once this happens, the broker will stop performing cash transactions and issuing orders. The
+/// broker won't throw an error once this happens and will continue reading from exchange to
+/// reconcile trades/liquidate current position in order to return a correct cash balance to the
+/// strategy. If the price source is missing data after a liquidation is triggered then it is
+/// possible for incorrect results to be returned.
+///
+/// The most common scenario for this state to be triggered is due to bad strategy code triggering
+/// the liquidation process and the broker being unable to find sufficient cash (plus a buffer of
+/// 1000, currently hardcoded).
+///
+/// A less common scenario contrived to demonstrate how this can occur due to external data: we
+/// have a portfolio with cash of 100, the strategy issues a market order for 100 shares @ 1,
+/// the market price doubles on the next tick, and so the exchange asks for 200 in cash to settle
+/// the trade. Once this happens, it is unclear what the broker should do so we move into an error
+/// condition and stop mutating more state.
+///
+/// Broker should be in Ready state on creation.
 #[derive(Clone, Debug)]
 pub enum BrokerState {
     Ready,
     Failed,
 }
 
+#[derive(Clone, Debug)]
 pub enum BrokerOrderType {
     MarketBuy,
     MarketSell,
@@ -112,6 +142,11 @@ impl BrokerQuote for UistQuote {
     }
 }
 
+/// Implicit in this trait is that the underlying exchange supports at least as many order types
+/// as [BrokerOrderType](crate::broker::BrokerOrderType).
+/// 
+/// `market_buy` and `market_sell` operations are necessary for internally triggered orders i.e.
+/// rebalancing due to a cash shortfall.
 pub trait BrokerOrder {
     fn get_order_type<T: Into<BrokerOrderType>>(&self) -> BrokerOrderType;
     fn get_shares(&self) -> f64;
@@ -157,7 +192,7 @@ pub enum BrokerCashEvent {
 }
 
 /// Broker has attempted to execute an order which cannot be completed due to insufficient cash.
-#[derive(Debug, Clone)]
+#[derive(Clone, Debug)]
 pub struct InsufficientCashError;
 
 impl Error for InsufficientCashError {}
@@ -181,9 +216,10 @@ impl Display for UnexecutableOrderError {
     }
 }
 
-///Implementation of various cost models for brokers. Broker implementations would either define or
-///cost model or would provide the user the option of intializing one; the broker impl would then
-///call the variant's calculation methods as trades are executed.
+/// Implementation of cost models for brokers. 
+/// Broker implementations would either define cost model or would provide the user the option of
+/// intializing one; the broker impl would then call the variant's calculation methods as trades 
+/// are executed.
 #[derive(Clone, Debug)]
 pub enum BrokerCost {
     PerShare(Price),
@@ -252,6 +288,13 @@ impl BrokerCost {
     }
 }
 
+/// Producing quotes may not necessarily be the responsibility of broker in many implementations.
+/// The exchange should be the source of price data but it is quite possible that, whilst the
+/// broker holds the ability to retrieve prices itself, the strategy code does not call the broker.
+/// 
+/// This design choice was made because the strategy may depend on profit calculations or similar
+/// from the broker so it made sense to guarantee a consolidated source (in the presence of missing
+/// quotes) but brokers may choose not to act as a source of prices for clients.
 pub trait Quote<Q: BrokerQuote> {
     fn get_quote(&self, symbol: &str) -> Option<Q>;
     fn get_quotes(&self) -> Option<Vec<Q>>;
@@ -262,6 +305,14 @@ pub trait SendOrder<O: BrokerOrder> {
     fn send_orders(&mut self, orders: &[O]) -> Vec<BrokerEvent<O>>;
 }
 
+/// Set of operations common to portfolios.
+/// 
+/// The assumption inherent in this choice is that, whilst strategies can share an exchange, they
+/// should have their own broker where calculations like profit can be calculated on a per-strategy
+/// basis.
+/// 
+/// Note that `update_holdings` and `update_cash_balance` mutate state, these are not purely
+/// immutable calculations but operations that can change the portfolio.
 pub trait Portfolio<Q: BrokerQuote>: Quote<Q> {
     fn get_position_profit(&self, symbol: &str) -> Option<CashValue> {
         if let Some(cost) = self.get_position_cost(symbol) {
@@ -393,11 +444,22 @@ pub trait Portfolio<Q: BrokerQuote>: Quote<Q> {
     fn get_trade_costs(&self) -> Vec<BrokerCost>;
 }
 
+/// Tightly bound to [BrokerState](crate::broker::BrokerState) and with [CashOperations](crate::broker::CashOperations)
+/// making the assumption that we have a structure that can move into an invalid state with code
+/// to handle that situation.
 pub trait BrokerStates {
     fn get_broker_state(&self) -> BrokerState;
     fn update_broker_state(&mut self, state: BrokerState);
 }
 
+/// Operations that modify cash balances. Tightly bound to [BrokerStates](crate::broker::BrokerStates)
+/// as the result of these operations has to be guarded so that the broker doesn't move into a
+/// permanently bad state that produces bad values for clients.
+/// 
+/// Overlapping withdraw/deposit methods because `debit`/`credit` should only be called internally.
+/// This was more relevant in historical code, which had more functionality requiring internal
+/// transactions such as dividends, so may change over time. Clients should depend on `withdraw_cash`
+/// and `deposit_cash`.
 pub trait CashOperations<Q: BrokerQuote>: Portfolio<Q> + BrokerStates {
     fn withdraw_cash(&mut self, cash: &f64) -> BrokerCashEvent {
         match self.get_broker_state() {
@@ -492,6 +554,9 @@ pub trait CashOperations<Q: BrokerQuote>: Portfolio<Q> + BrokerStates {
     }
 }
 
+/// These operations were historically separated into implementations but have been moved into
+/// traits to see whether they can be made common across brokers. It is likely that this may
+/// change as some parts are closely bound to exchanges.
 pub trait BrokerOperations<O: BrokerOrder, Q: BrokerQuote>:
     Portfolio<Q> + BrokerStates + SendOrder<O> + CashOperations<Q>
 {

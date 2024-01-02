@@ -18,6 +18,9 @@ use super::{
     Portfolio, Quote, SendOrder,
 };
 
+type UistBrokerEvent = BrokerEvent<UistOrder>;
+
+/// Implementation of broker that uses the [Uist](rotala::exchange::uist::Uist) exchange.
 #[derive(Debug)]
 pub struct UistBroker {
     cash: CashValue,
@@ -106,8 +109,6 @@ impl BrokerStates for UistBroker {
 impl CashOperations<UistQuote> for UistBroker {}
 
 impl BrokerOperations<UistOrder, UistQuote> for UistBroker {}
-
-type UistBrokerEvent = BrokerEvent<UistOrder>;
 
 impl SendOrder<UistOrder> for UistBroker {
     fn send_order(&mut self, order: UistOrder) -> UistBrokerEvent {
