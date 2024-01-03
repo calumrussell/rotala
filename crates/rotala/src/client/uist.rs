@@ -1,6 +1,6 @@
 use reqwest::Result;
 
-use crate::api::uist::{
+use crate::server::uist::{
     CheckResponse, DeleteOrderRequest, FetchQuotesResponse, FetchTradesRequest,
     FetchTradesResponse, InsertOrderRequest,
 };

@@ -83,7 +83,7 @@ impl PenelopeBuilder {
     }
 
     pub fn build_with_frequency(&self, frequency: Frequency) -> (Penelope, Clock) {
-        // FIX: there is a clone of the underlying hashmap/dates which is very expensive, need to std::move
+        // TODO: there is a clone of the underlying hashmap/dates which is very expensive, need to std::move
         match frequency {
             Frequency::Fixed => (
                 Penelope::from_hashmap(self.inner.clone()),
@@ -115,7 +115,7 @@ impl PenelopeBuilder {
     }
 
     pub fn build(&self) -> (Penelope, Clock) {
-        // FIX: there is a clone of the underlying hashmap/dates which is very expensive, need to std::move
+        // TODO: there is a clone of the underlying hashmap/dates which is very expensive, need to std::move
         (
             Penelope::from_hashmap(self.inner.clone()),
             Clock::from_fixed(Vec::from_iter(self.dates.clone())),

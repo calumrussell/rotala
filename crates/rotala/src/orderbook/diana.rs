@@ -138,9 +138,8 @@ impl DianaOrder {
     }
 }
 
-#[doc(hidden)]
 #[derive(Debug)]
-pub(crate) struct Diana {
+pub struct Diana {
     inner: HashMap<u64, DianaOrder>,
     last: u64,
 }

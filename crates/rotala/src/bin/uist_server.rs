@@ -2,7 +2,7 @@ use std::env;
 use std::sync::Mutex;
 
 use actix_web::{web, App, HttpServer};
-use rotala::api::uist::{check, delete_order, fetch_quotes, fetch_trades, init, insert_order};
+use rotala::server::uist::{check, delete_order, fetch_quotes, fetch_trades, init, insert_order};
 use rotala::exchange::uist::random_uist_generator;
 
 #[actix_web::main]

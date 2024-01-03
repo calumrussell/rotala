@@ -17,5 +17,5 @@ env_logger = "0.10.0"
 tokio = { version = "1.35.1", features = ["full"] }
 
 [[bin]]
-name = "uist_server_test"
-path = "./src/bin/uist_server_test.rs"
+name = "uist_server"
+path = "./src/bin/uist_server.rs"
