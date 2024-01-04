@@ -5,6 +5,10 @@ use serde::{Deserialize, Serialize};
 
 use crate::exchange::uist::{UistOrder, UistOrderId, UistQuote, UistTrade, UistV1};
 
+pub struct AppState {
+    pub exchange: Mutex<UistV1>,
+}
+
 #[derive(Debug, Deserialize, Serialize)]
 pub struct TickResponse {
     pub has_next: bool,
@@ -12,8 +16,8 @@ pub struct TickResponse {
     pub inserted_orders: Vec<UistOrder>,
 }
 
-pub async fn tick(exchange: web::Data<Mutex<UistV1>>) -> web::Json<TickResponse> {
-    let mut ex = exchange.lock().unwrap();
+pub async fn tick(app: web::Data<AppState>) -> web::Json<TickResponse> {
+    let mut ex = app.exchange.lock().unwrap();
 
     let tick = ex.tick();
     web::Json(TickResponse {
@@ -29,10 +33,10 @@ pub struct DeleteOrderRequest {
 }
 
 pub async fn delete_order(
-    exchange: web::Data<Mutex<UistV1>>,
+    app: web::Data<AppState>,
     delete_order: web::Json<DeleteOrderRequest>,
 ) -> web::Json<()> {
-    let mut ex = exchange.lock().unwrap();
+    let mut ex = app.exchange.lock().unwrap();
     ex.delete_order(delete_order.order_id);
     web::Json(())
 }
@@ -43,10 +47,11 @@ pub struct InsertOrderRequest {
 }
 
 pub async fn insert_order(
-    exchange: web::Data<Mutex<UistV1>>,
+    app: web::Data<AppState>,
     insert_order: web::Json<InsertOrderRequest>,
 ) -> web::Json<()> {
-    let mut ex = exchange.lock().unwrap();
+    dbg!(&insert_order);
+    let mut ex = app.exchange.lock().unwrap();
     ex.insert_order(insert_order.order.clone());
     web::Json(())
 }
@@ -61,8 +66,8 @@ pub struct FetchQuotesResponse {
     pub quotes: Vec<UistQuote>,
 }
 
-pub async fn fetch_quotes(exchange: web::Data<Mutex<UistV1>>) -> web::Json<FetchQuotesResponse> {
-    let ex = exchange.lock().unwrap();
+pub async fn fetch_quotes(app: web::Data<AppState>) -> web::Json<FetchQuotesResponse> {
+    let ex = app.exchange.lock().unwrap();
     web::Json(FetchQuotesResponse {
         quotes: ex.fetch_quotes(),
     })
@@ -74,8 +79,8 @@ pub struct InitResponse {
     pub frequency: u8,
 }
 
-pub async fn init(exchange: web::Data<Mutex<UistV1>>) -> web::Json<InitResponse> {
-    let ex = exchange.lock().unwrap();
+pub async fn init(app: web::Data<AppState>) -> web::Json<InitResponse> {
+    let ex = app.exchange.lock().unwrap();
     let init = ex.init();
     web::Json(InitResponse {
         start: init.start,
@@ -89,8 +94,8 @@ pub struct InfoResponse {
     pub dataset: String,
 }
 
-pub async fn info(exchange: web::Data<Mutex<UistV1>>) -> web::Json<InfoResponse> {
-    let ex = exchange.lock().unwrap();
+pub async fn info(app: web::Data<AppState>) -> web::Json<InfoResponse> {
+    let ex = app.exchange.lock().unwrap();
     let info = ex.info();
     web::Json(InfoResponse {
         version: info.version,
