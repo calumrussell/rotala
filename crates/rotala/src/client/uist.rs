@@ -7,6 +7,7 @@ use crate::server::uist::{
 
 pub struct UistClient {
     pub path: String,
+    pub client: reqwest::Client,
 }
 
 impl UistClient {
@@ -19,8 +20,7 @@ impl UistClient {
 
     pub async fn delete_order(&self, order_id: UistOrderId) -> Result<()> {
         let req = DeleteOrderRequest { order_id };
-        let client = reqwest::Client::new();
-        client
+        self.client
             .post(self.path.clone() + "/delete_order")
             .json(&req)
             .send()
@@ -31,8 +31,7 @@ impl UistClient {
 
     pub async fn insert_order(&self, order: UistOrder) -> Result<()> {
         let req = InsertOrderRequest { order };
-        let client = reqwest::Client::new();
-        client
+        self.client
             .post(self.path.clone() + "/insert_order")
             .json(&req)
             .send()
@@ -56,6 +55,9 @@ impl UistClient {
     }
 
     pub fn new(path: String) -> Self {
-        Self { path }
+        Self {
+            path,
+            client: reqwest::Client::new(),
+        }
     }
 }
