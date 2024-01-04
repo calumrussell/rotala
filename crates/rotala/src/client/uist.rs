@@ -5,12 +5,12 @@ use crate::server::uist::{
     DeleteOrderRequest, FetchQuotesResponse, InsertOrderRequest, TickResponse,
 };
 
-pub struct UistClient {
+pub struct UistV1Client {
     pub path: String,
     pub client: reqwest::Client,
 }
 
-impl UistClient {
+impl UistV1Client {
     pub async fn tick(&self) -> Result<TickResponse> {
         reqwest::get(self.path.clone() + "/tick")
             .await?

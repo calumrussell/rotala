@@ -1,10 +1,10 @@
 use std::io::Result;
 
-use rotala::{client::uist::UistClient, exchange::uist::UistOrder};
+use rotala::{client::uist::UistV1Client, exchange::uist::UistOrder};
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    let client = UistClient::new("http://127.0.0.1:8080".to_string());
+    let client = UistV1Client::new("http://127.0.0.1:8080".to_string());
     let _ = client.init().await.unwrap();
     if let Ok(check) = client.tick().await {
         if check.has_next {

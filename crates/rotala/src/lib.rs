@@ -21,7 +21,7 @@
 //! varies in a distinct way from the interface presented to clients.
 //! - An exchange implementation, [Uist](crate::exchange::uist::Uist) is an example. In terms of
 //! code, this ends up being a fairly thin wrapper depending more on the kind of clients than
-//! the actual execution logic used by the orderbook. To explain a bit more from above, the
+//! the actual execution logic used by the orderbook. To explain more from above, the
 //! exchange is the external interface that provides a set of possible operations to users and does
 //! not concern itself too closely with how things are implemented (but it does have to bind to s
 //! single orderbook implementation). Uist, for example, has a lot of additional methods concerning
@@ -60,7 +60,7 @@
 //! once it is passed into the orderbook.
 //!
 //! ``
-//! cargo run --bin uist_server [ipv4_address] [port]
+//! cargo run --bin uist_server_v1 [ipv4_address] [port]
 //! ``
 //!
 //! # Development priorities
