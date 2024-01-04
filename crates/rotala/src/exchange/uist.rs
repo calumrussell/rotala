@@ -21,8 +21,21 @@ pub struct InitMessage {
     pub frequency: u8,
 }
 
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct InfoMessage {
+    pub version: String,
+    pub dataset: String,
+}
+
+impl InfoMessage {
+    fn v1(dataset: String) -> InfoMessage {
+        InfoMessage { version: "1.0".to_string(), dataset }
+    }
+}
+
 #[derive(Debug)]
-pub struct Uist {
+pub struct UistV1 {
+    dataset: String,
     clock: Clock,
     price_source: Penelope,
     orderbook: Diana,
@@ -31,14 +44,15 @@ pub struct Uist {
     order_buffer: Vec<UistOrder>,
 }
 
-impl Uist {
+impl UistV1 {
     pub fn from_binance() -> Self {
         let (penelope, clock) = Penelope::from_binance();
-        Self::new(clock, penelope)
+        Self::new(clock, penelope, "BINANCE")
     }
 
-    pub fn new(clock: Clock, price_source: Penelope) -> Self {
+    pub fn new(clock: Clock, price_source: Penelope, dataset: &str) -> Self {
         Self {
+            dataset: dataset.into(),
             clock,
             price_source,
             orderbook: Diana::default(),
@@ -54,6 +68,10 @@ impl Uist {
             }
             _ => std::cmp::Ordering::Greater,
         })
+    }
+
+    pub fn info(&self) -> InfoMessage {
+        InfoMessage::v1(self.dataset.clone())
     }
 
     pub fn init(&self) -> InitMessage {
@@ -103,7 +121,7 @@ impl Uist {
 }
 
 /// Generates random [Uist] for use in tests that don't depend on prices.
-pub fn random_uist_generator(length: i64) -> (Uist, Clock) {
+pub fn random_uist_generator(length: i64) -> (UistV1, Clock) {
     let price_dist = Uniform::new(90.0, 100.0);
     let mut rng = thread_rng();
 
@@ -125,17 +143,17 @@ pub fn random_uist_generator(length: i64) -> (Uist, Clock) {
     }
 
     let (penelope, clock) = source_builder.build_with_frequency(crate::clock::Frequency::Second);
-    (Uist::new(clock.clone(), penelope), clock)
+    (UistV1::new(clock.clone(), penelope, "RANDOM"), clock)
 }
 
 #[cfg(test)]
 mod tests {
-    use super::Uist;
+    use super::UistV1;
     use crate::exchange::uist::UistOrder;
     use crate::input::penelope::PenelopeBuilder;
     use crate::orderbook::diana::DianaTradeType;
 
-    fn setup() -> Uist {
+    fn setup() -> UistV1 {
         let mut source_builder = PenelopeBuilder::new();
         source_builder.add_quote(101.00, 102.00, 100, "ABC".to_owned());
         source_builder.add_quote(102.00, 103.00, 101, "ABC".to_owned());
@@ -143,7 +161,7 @@ mod tests {
 
         let (source, clock) = source_builder.build_with_frequency(crate::clock::Frequency::Second);
 
-        let exchange = Uist::new(clock, source);
+        let exchange = UistV1::new(clock, source, "FAKE");
         exchange
     }
 
@@ -244,7 +262,7 @@ mod tests {
 
         let (source, clock) = source_builder.build_with_frequency(crate::clock::Frequency::Second);
 
-        let mut exchange = Uist::new(clock, source);
+        let mut exchange = UistV1::new(clock, source, "FAKE");
 
         exchange.insert_order(UistOrder::market_buy("ABC", 100.0));
         exchange.tick();

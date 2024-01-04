@@ -1,6 +1,6 @@
 use reqwest::Result;
 
-use crate::exchange::uist::{InitMessage, UistOrder, UistOrderId};
+use crate::exchange::uist::{InitMessage, UistOrder, UistOrderId, InfoMessage};
 use crate::server::uist::{
     DeleteOrderRequest, FetchQuotesResponse, InsertOrderRequest, TickResponse,
 };
@@ -51,6 +51,13 @@ impl UistClient {
         reqwest::get(self.path.clone() + "/init")
             .await?
             .json::<InitMessage>()
+            .await
+    }
+
+    pub async fn info(&self) -> Result<InfoMessage> {
+        reqwest::get(self.path.clone() + "/")
+            .await?
+            .json::<InfoMessage>()
             .await
     }
 

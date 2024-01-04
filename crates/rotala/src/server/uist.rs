@@ -3,7 +3,7 @@ use std::sync::Mutex;
 use actix_web::web;
 use serde::{Deserialize, Serialize};
 
-use crate::exchange::uist::{Uist, UistOrder, UistOrderId, UistQuote, UistTrade};
+use crate::exchange::uist::{UistV1, UistOrder, UistOrderId, UistQuote, UistTrade};
 
 #[derive(Debug, Deserialize, Serialize)]
 pub struct TickResponse {
@@ -12,7 +12,7 @@ pub struct TickResponse {
     pub inserted_orders: Vec<UistOrder>,
 }
 
-pub async fn tick(exchange: web::Data<Mutex<Uist>>) -> web::Json<TickResponse> {
+pub async fn tick(exchange: web::Data<Mutex<UistV1>>) -> web::Json<TickResponse> {
     let mut ex = exchange.lock().unwrap();
 
     let tick = ex.tick();
@@ -29,7 +29,7 @@ pub struct DeleteOrderRequest {
 }
 
 pub async fn delete_order(
-    exchange: web::Data<Mutex<Uist>>,
+    exchange: web::Data<Mutex<UistV1>>,
     delete_order: web::Json<DeleteOrderRequest>,
 ) -> web::Json<()> {
     let mut ex = exchange.lock().unwrap();
@@ -43,7 +43,7 @@ pub struct InsertOrderRequest {
 }
 
 pub async fn insert_order(
-    exchange: web::Data<Mutex<Uist>>,
+    exchange: web::Data<Mutex<UistV1>>,
     insert_order: web::Json<InsertOrderRequest>,
 ) -> web::Json<()> {
     let mut ex = exchange.lock().unwrap();
@@ -61,7 +61,7 @@ pub struct FetchQuotesResponse {
     pub quotes: Vec<UistQuote>,
 }
 
-pub async fn fetch_quotes(exchange: web::Data<Mutex<Uist>>) -> web::Json<FetchQuotesResponse> {
+pub async fn fetch_quotes(exchange: web::Data<Mutex<UistV1>>) -> web::Json<FetchQuotesResponse> {
     let ex = exchange.lock().unwrap();
     web::Json(FetchQuotesResponse {
         quotes: ex.fetch_quotes(),
@@ -74,13 +74,25 @@ pub struct InitResponse {
     pub frequency: u8,
 }
 
-pub async fn init(exchange: web::Data<Mutex<Uist>>) -> web::Json<InitResponse> {
+pub async fn init(exchange: web::Data<Mutex<UistV1>>) -> web::Json<InitResponse> {
     let ex = exchange.lock().unwrap();
     let init = ex.init();
     web::Json(InitResponse {
         start: init.start,
         frequency: init.frequency,
     })
+}
+
+#[derive(Debug, Deserialize, Serialize)]
+pub struct InfoResponse {
+    pub version: String,
+    pub dataset: String,
+}
+
+pub async fn info(exchange: web::Data<Mutex<UistV1>>) -> web::Json<InfoResponse> {
+    let ex = exchange.lock().unwrap();
+    let info = ex.info();
+    web::Json(InfoResponse { version: info.version, dataset: info.dataset })
 }
 
 #[cfg(test)]
@@ -96,6 +108,7 @@ mod tests {
         let app = test::init_service(
             App::new()
                 .app_data(web::Data::new(Mutex::new(random_uist_generator(3000).0)))
+                .route("/", web::get().to(info))
                 .route("/init", web::get().to(init))
                 .route("/fetch_quotes", web::get().to(fetch_quotes))
                 .route("/tick", web::get().to(tick))

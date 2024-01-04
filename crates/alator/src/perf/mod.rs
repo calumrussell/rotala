@@ -254,7 +254,7 @@ impl PerformanceCalculator {
 #[cfg(test)]
 mod tests {
     use rotala::clock::Clock;
-    use rotala::exchange::uist::Uist;
+    use rotala::exchange::uist::UistV1;
     use rotala::input::penelope::PenelopeBuilder;
 
     use crate::broker::uist::UistBroker;
@@ -283,7 +283,7 @@ mod tests {
 
         let (price_source, clock) =
             source_builder.build_with_frequency(rotala::clock::Frequency::Second);
-        let uist = Uist::new(clock.clone(), price_source);
+        let uist = UistV1::new(clock.clone(), price_source, "FAKE");
 
         let brkr = UistBrokerBuilder::new()
             .with_trade_costs(vec![BrokerCost::PctOfValue(0.01)])

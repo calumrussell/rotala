@@ -7,7 +7,7 @@ use std::{
 
 use log::info;
 use rotala::clock::DateTime;
-use rotala::exchange::uist::{Uist, UistOrder, UistOrderType, UistQuote, UistTrade, UistTradeType};
+use rotala::exchange::uist::{UistV1, UistOrder, UistOrderType, UistQuote, UistTrade, UistTradeType};
 
 use crate::types::{
     CashValue, PortfolioAllocation, PortfolioHoldings, PortfolioQty, PortfolioValues, Price,
@@ -24,7 +24,7 @@ type UistBrokerEvent = BrokerEvent<UistOrder>;
 #[derive(Debug)]
 pub struct UistBroker {
     cash: CashValue,
-    exchange: Uist,
+    exchange: UistV1,
     holdings: PortfolioHoldings,
     //Kept distinct from holdings because some perf calculations may need to distinguish between
     //trades that we know are booked vs ones that we think should get booked
@@ -284,7 +284,7 @@ impl UistBroker {
 
 pub struct UistBrokerBuilder {
     trade_costs: Vec<BrokerCost>,
-    exchange: Option<Uist>,
+    exchange: Option<UistV1>,
 }
 
 impl UistBrokerBuilder {
@@ -321,7 +321,7 @@ impl UistBrokerBuilder {
         }
     }
 
-    pub fn with_exchange(&mut self, exchange: Uist) -> &mut Self {
+    pub fn with_exchange(&mut self, exchange: UistV1) -> &mut Self {
         self.exchange = Some(exchange);
         self
     }
@@ -438,7 +438,7 @@ mod tests {
     use crate::types::{CashValue, PortfolioAllocation, PortfolioQty};
     use rotala::clock::{ClockBuilder, Frequency};
     use rotala::exchange::uist::{
-        random_uist_generator, Uist, UistOrder, UistOrderType, UistTrade, UistTradeType,
+        random_uist_generator, UistV1, UistOrder, UistOrderType, UistTrade, UistTradeType,
     };
     use rotala::input::penelope::PenelopeBuilder;
 
@@ -461,7 +461,7 @@ mod tests {
 
         let (price_source, clock) =
             source_builder.build_with_frequency(rotala::clock::Frequency::Second);
-        let uist = Uist::new(clock, price_source);
+        let uist = UistV1::new(clock, price_source, "FAKE");
 
         let brkr = UistBrokerBuilder::new()
             .with_exchange(uist)
@@ -621,7 +621,7 @@ mod tests {
 
         let (price_source, clock) =
             source_builder.build_with_frequency(rotala::clock::Frequency::Second);
-        let uist = Uist::new(clock, price_source);
+        let uist = UistV1::new(clock, price_source, "FAKE");
 
         let _brkr = UistBrokerBuilder::new()
             .with_exchange(uist)
@@ -653,7 +653,7 @@ mod tests {
 
         let (price_source, clock) =
             source_builder.build_with_frequency(rotala::clock::Frequency::Second);
-        let uist = Uist::new(clock, price_source);
+        let uist = UistV1::new(clock, price_source, "FAKE");
 
         let mut brkr = UistBrokerBuilder::new()
             .with_exchange(uist)
@@ -702,7 +702,7 @@ mod tests {
 
         let (price_source, clock) =
             source_builder.build_with_frequency(rotala::clock::Frequency::Second);
-        let uist = Uist::new(clock, price_source);
+        let uist = UistV1::new(clock, price_source, "FAKE");
 
         let mut brkr = UistBrokerBuilder::new()
             .with_exchange(uist)
@@ -737,7 +737,7 @@ mod tests {
 
         let (price_source, clock) =
             source_builder.build_with_frequency(rotala::clock::Frequency::Second);
-        let uist = Uist::new(clock, price_source);
+        let uist = UistV1::new(clock, price_source, "FAKE");
 
         let mut brkr = UistBrokerBuilder::new()
             .with_exchange(uist)
@@ -988,7 +988,7 @@ mod tests {
 
         let (price_source, clock) =
             source_builder.build_with_frequency(rotala::clock::Frequency::Second);
-        let uist = Uist::new(clock, price_source);
+        let uist = UistV1::new(clock, price_source, "FAKE");
 
         let mut brkr = UistBrokerBuilder::new().with_exchange(uist).build();
 
@@ -1030,7 +1030,7 @@ mod tests {
 
         let (price_source, clock) =
             source_builder.build_with_frequency(rotala::clock::Frequency::Second);
-        let uist = Uist::new(clock, price_source);
+        let uist = UistV1::new(clock, price_source, "FAKE");
 
         let mut brkr = UistBrokerBuilder::new().with_exchange(uist).build();
 

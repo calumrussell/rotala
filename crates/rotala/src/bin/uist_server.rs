@@ -3,7 +3,7 @@ use std::sync::Mutex;
 
 use actix_web::{web, App, HttpServer};
 use rotala::exchange::uist::random_uist_generator;
-use rotala::server::uist::{delete_order, fetch_quotes, init, insert_order, tick};
+use rotala::server::uist::{delete_order, fetch_quotes, info, init, insert_order, tick};
 
 #[actix_web::main]
 async fn main() -> std::io::Result<()> {
@@ -15,6 +15,7 @@ async fn main() -> std::io::Result<()> {
     HttpServer::new(|| {
         App::new()
             .app_data(web::Data::new(Mutex::new(random_uist_generator(3000).0)))
+            .route("/", web::get().to(info))
             .route("/init", web::get().to(init))
             .route("/fetch_quotes", web::get().to(fetch_quotes))
             .route("/tick", web::get().to(tick))

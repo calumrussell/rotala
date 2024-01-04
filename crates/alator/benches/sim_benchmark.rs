@@ -7,7 +7,7 @@ use rand_distr::{Distribution, Uniform};
 
 use alator::strategy::staticweight::StaticWeightStrategyBuilder;
 use alator::types::{CashValue, PortfolioAllocation};
-use rotala::exchange::uist::{Uist, UistOrder};
+use rotala::exchange::uist::{UistV1, UistOrder};
 use rotala::input::penelope::PenelopeBuilder;
 
 fn full_backtest_random_data() {
@@ -39,7 +39,7 @@ fn full_backtest_random_data() {
     weights.insert("ABC", 0.5);
     weights.insert("BCD", 0.5);
 
-    let uist = Uist::new(clock.clone(), price_source);
+    let uist = UistV1::new(clock.clone(), price_source, "RANDOM");
     let simbrkr = UistBrokerBuilder::new()
         .with_exchange(uist)
         .with_trade_costs(vec![BrokerCost::Flat(1.0.into())])
@@ -67,7 +67,7 @@ fn trade_execution_logic() {
     source_builder.add_quote(12.00, 13.00, 103, "BCD");
 
     let (price_source, clock) = source_builder.build();
-    let uist = Uist::new(clock, price_source);
+    let uist = UistV1::new(clock, price_source, "FAKE");
     let mut brkr = UistBrokerBuilder::new().with_exchange(uist).build();
 
     brkr.deposit_cash(&100_000.0);

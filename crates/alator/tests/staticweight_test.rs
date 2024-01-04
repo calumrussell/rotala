@@ -7,7 +7,7 @@ use rotala::clock::Frequency;
 
 use alator::strategy::staticweight::StaticWeightStrategyBuilder;
 use alator::types::{CashValue, PortfolioAllocation};
-use rotala::exchange::uist::Uist;
+use rotala::exchange::uist::UistV1;
 use rotala::input::penelope::PenelopeBuilder;
 
 fn build_data(length: i64) -> PenelopeBuilder {
@@ -46,7 +46,7 @@ fn staticweight_integration_test() {
     weights.insert("ABC", 0.5);
     weights.insert("BCD", 0.5);
 
-    let exchange = Uist::new(clock.clone(), source);
+    let exchange = UistV1::new(clock.clone(), source, "RANDOM");
 
     let brkr = UistBrokerBuilder::new()
         .with_trade_costs(vec![BrokerCost::Flat(1.0.into())])
