@@ -13,7 +13,7 @@ pub struct CheckResponse {
 pub async fn check(exchange: web::Data<Mutex<Uist>>) -> web::Json<CheckResponse> {
     let mut ex = exchange.lock().unwrap();
     web::Json(CheckResponse {
-        has_next: ex.check(),
+        has_next: ex.tick(),
     })
 }
 
@@ -47,7 +47,7 @@ pub async fn insert_order(
 
 #[derive(Debug, Deserialize, Serialize)]
 pub struct FetchTradesRequest {
-    pub from: usize,
+    pub from: UistOrderId,
 }
 
 #[derive(Debug, Deserialize, Serialize)]

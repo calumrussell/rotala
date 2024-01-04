@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::VecDeque;
 
 use serde::{Deserialize, Serialize};
 
@@ -6,7 +6,7 @@ use crate::input::penelope::{Penelope, PenelopeQuote};
 
 pub type DianaOrderId = u64;
 
-#[derive(Clone, Debug, Deserialize, Serialize)]
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
 pub enum DianaTradeType {
     Buy,
     Sell,
@@ -56,6 +56,7 @@ impl DianaTrade {
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct DianaOrder {
+    pub order_id: Option<DianaOrderId>,
     pub order_type: DianaOrderType,
     pub symbol: String,
     pub shares: f64,
@@ -90,8 +91,13 @@ impl PartialEq for DianaOrder {
 }
 
 impl DianaOrder {
+    fn set_order_id(&mut self, order_id: u64) {
+        self.order_id = Some(order_id);
+    }
+
     fn market(order_type: DianaOrderType, symbol: impl Into<String>, shares: f64) -> Self {
         Self {
+            order_id: None,
             order_type,
             symbol: symbol.into(),
             shares,
@@ -106,6 +112,7 @@ impl DianaOrder {
         price: f64,
     ) -> Self {
         Self {
+            order_id: None,
             order_type,
             symbol: symbol.into(),
             shares,
@@ -140,8 +147,8 @@ impl DianaOrder {
 
 #[derive(Debug)]
 pub struct Diana {
-    inner: HashMap<u64, DianaOrder>,
-    last: u64,
+    inner: VecDeque<DianaOrder>,
+    last_inserted: u64,
 }
 
 impl Default for Diana {
@@ -153,20 +160,32 @@ impl Default for Diana {
 impl Diana {
     pub fn new() -> Self {
         Self {
-            inner: std::collections::HashMap::new(),
-            last: 0,
+            inner: std::collections::VecDeque::new(),
+            last_inserted: 0,
         }
     }
 
-    pub fn delete_order(&mut self, order_id: u64) {
-        self.inner.remove(&order_id);
+    pub fn delete_order(&mut self, delete_order_id: u64) {
+        let mut delete_position: Option<usize> = None;
+        for (position, order) in self.inner.iter().enumerate() {
+            if let Some(order_id) = order.order_id {
+                if order_id == delete_order_id {
+                    delete_position = Some(position);
+                    break;
+                }
+            }
+        }
+        if let Some(position) = delete_position {
+            self.inner.remove(position);
+        }
     }
 
     pub fn insert_order(&mut self, order: DianaOrder) -> u64 {
-        let last = self.last;
-        self.last = last + 1;
-        self.inner.insert(last, order);
-        last
+        let mut copy = order.clone();
+        copy.set_order_id(self.last_inserted);
+        self.inner.push_back(copy);
+        self.last_inserted += 1;
+        self.last_inserted - 1
     }
 
     pub fn is_empty(&self) -> bool {
@@ -204,8 +223,7 @@ impl Diana {
             return trade_results;
         }
 
-        //Execute orders in the orderbook
-        for (key, order) in self.inner.iter() {
+        for order in self.inner.iter() {
             let security_id = &order.symbol;
             if let Some(quote) = source.get_quote(&date, security_id) {
                 let result = match order.order_type {
@@ -249,7 +267,7 @@ impl Diana {
                     }
                 };
                 if let Some(trade) = &result {
-                    completed_orderids.push(*key);
+                    completed_orderids.push(order.order_id.unwrap());
                     trade_results.push(trade.clone());
                 }
             }
@@ -285,6 +303,7 @@ mod tests {
         let (_clock, source) = setup();
         let mut orderbook = OrderBook::new();
         let order = DianaOrder {
+            order_id: None,
             order_type: DianaOrderType::MarketBuy,
             symbol: "ABC".to_string(),
             shares: 25.0,
@@ -305,6 +324,7 @@ mod tests {
         let (_clock, source) = setup();
         let mut orderbook = OrderBook::new();
         let order = DianaOrder {
+            order_id: None,
             order_type: DianaOrderType::MarketBuy,
             symbol: "ABC".to_string(),
             shares: 100.0,
@@ -326,6 +346,7 @@ mod tests {
         let (_clock, source) = setup();
         let mut orderbook = OrderBook::new();
         let order = DianaOrder {
+            order_id: None,
             order_type: DianaOrderType::MarketSell,
             symbol: "ABC".to_string(),
             shares: 100.0,
@@ -347,12 +368,14 @@ mod tests {
         let (_clock, source) = setup();
         let mut orderbook = OrderBook::new();
         let order = DianaOrder {
+            order_id: None,
             order_type: DianaOrderType::LimitBuy,
             symbol: "ABC".to_string(),
             shares: 100.0,
             price: Some(95.0),
         };
         let order1 = DianaOrder {
+            order_id: None,
             order_type: DianaOrderType::LimitBuy,
             symbol: "ABC".to_string(),
             shares: 100.0,
@@ -376,12 +399,14 @@ mod tests {
         let (_clock, source) = setup();
         let mut orderbook = OrderBook::new();
         let order = DianaOrder {
+            order_id: None,
             order_type: DianaOrderType::LimitSell,
             symbol: "ABC".to_string(),
             shares: 100.0,
             price: Some(95.0),
         };
         let order1 = DianaOrder {
+            order_id: None,
             order_type: DianaOrderType::LimitSell,
             symbol: "ABC".to_string(),
             shares: 100.0,
@@ -409,12 +434,14 @@ mod tests {
         let (_clock, source) = setup();
         let mut orderbook = OrderBook::new();
         let order = DianaOrder {
+            order_id: None,
             order_type: DianaOrderType::StopBuy,
             symbol: "ABC".to_string(),
             shares: 100.0,
             price: Some(95.0),
         };
         let order1 = DianaOrder {
+            order_id: None,
             order_type: DianaOrderType::StopBuy,
             symbol: "ABC".to_string(),
             shares: 100.0,
@@ -441,12 +468,14 @@ mod tests {
         let (_clock, source) = setup();
         let mut orderbook = OrderBook::new();
         let order = DianaOrder {
+            order_id: None,
             order_type: DianaOrderType::StopSell,
             symbol: "ABC".to_string(),
             shares: 100.0,
             price: Some(99.0),
         };
         let order1 = DianaOrder {
+            order_id: None,
             order_type: DianaOrderType::StopSell,
             symbol: "ABC".to_string(),
             shares: 100.0,
@@ -470,6 +499,7 @@ mod tests {
         let (_clock, source) = setup();
         let mut orderbook = OrderBook::new();
         let order = DianaOrder {
+            order_id: None,
             order_type: DianaOrderType::MarketBuy,
             symbol: "XYZ".to_string(),
             shares: 100.0,
@@ -494,6 +524,7 @@ mod tests {
 
         let mut orderbook = OrderBook::new();
         let order = DianaOrder {
+            order_id: None,
             order_type: DianaOrderType::MarketBuy,
             symbol: "ABC".to_string(),
             shares: 100.0,

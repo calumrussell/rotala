@@ -2,8 +2,8 @@ use std::env;
 use std::sync::Mutex;
 
 use actix_web::{web, App, HttpServer};
-use rotala::server::uist::{check, delete_order, fetch_quotes, fetch_trades, init, insert_order};
 use rotala::exchange::uist::random_uist_generator;
+use rotala::server::uist::{check, delete_order, fetch_quotes, fetch_trades, init, insert_order};
 
 #[actix_web::main]
 async fn main() -> std::io::Result<()> {

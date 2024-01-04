@@ -1,10 +1,10 @@
 use reqwest::Result;
 
+use crate::exchange::uist::{InitMessage, UistOrder, UistOrderId};
 use crate::server::uist::{
     CheckResponse, DeleteOrderRequest, FetchQuotesResponse, FetchTradesRequest,
     FetchTradesResponse, InsertOrderRequest,
 };
-use crate::exchange::uist::{InitMessage, UistOrder, UistOrderId};
 
 pub struct UistClient {
     pub path: String,
@@ -42,7 +42,7 @@ impl UistClient {
             .await
     }
 
-    pub async fn fetch_trades(&self, from: usize) -> Result<FetchTradesResponse> {
+    pub async fn fetch_trades(&self, from: UistOrderId) -> Result<FetchTradesResponse> {
         let req = FetchTradesRequest { from };
         let client = reqwest::Client::new();
         client

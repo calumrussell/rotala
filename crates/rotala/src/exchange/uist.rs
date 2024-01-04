@@ -47,6 +47,15 @@ impl Uist {
         }
     }
 
+    fn sort_order_buffer(&mut self) {
+        self.order_buffer.sort_by(|a, _b| match a.get_order_type() {
+            UistOrderType::LimitSell | UistOrderType::StopSell | UistOrderType::MarketSell => {
+                std::cmp::Ordering::Less
+            }
+            _ => std::cmp::Ordering::Greater,
+        })
+    }
+
     pub fn init(&self) -> InitMessage {
         InitMessage {
             start: *self.clock.now(),
@@ -61,11 +70,13 @@ impl Uist {
         vec![]
     }
 
-    pub fn fetch_trades(&self, from: usize) -> Vec<UistTrade> {
-        self.trade_log[from..].to_vec()
+    pub fn fetch_trades(&self, from: UistOrderId) -> Vec<UistTrade> {
+        self.trade_log[from as usize..].to_vec()
     }
 
     pub fn insert_order(&mut self, order: UistOrder) {
+        // Orders are only inserted into the book when tick is called, this is to ensure proper
+        // ordering of trades
         self.order_buffer.push(order);
     }
 
@@ -73,11 +84,12 @@ impl Uist {
         self.orderbook.delete_order(order_id);
     }
 
-    pub fn check(&mut self) -> bool {
+    pub fn tick(&mut self) -> bool {
         //To eliminate lookahead bias, we only start executing orders on the next
         //tick.
         self.clock.tick();
 
+        self.sort_order_buffer();
         for order in &self.order_buffer {
             self.orderbook.insert_order(order.clone());
         }
@@ -123,6 +135,7 @@ mod tests {
     use super::Uist;
     use crate::exchange::uist::UistOrder;
     use crate::input::penelope::PenelopeBuilder;
+    use crate::orderbook::diana::DianaTradeType;
 
     fn setup() -> Uist {
         let mut source_builder = PenelopeBuilder::new();
@@ -141,7 +154,7 @@ mod tests {
         let mut exchange = setup();
 
         exchange.insert_order(UistOrder::market_buy("ABC", 100.0));
-        exchange.check();
+        exchange.tick();
 
         //TODO: no abstraction!
         assert_eq!(exchange.trade_log.len(), 1);
@@ -156,7 +169,7 @@ mod tests {
         exchange.insert_order(UistOrder::market_buy("ABC", 25.0));
         exchange.insert_order(UistOrder::market_buy("ABC", 25.0));
 
-        exchange.check();
+        exchange.tick();
         assert_eq!(exchange.trade_log.len(), 4);
     }
 
@@ -165,11 +178,11 @@ mod tests {
         let mut exchange = setup();
         exchange.insert_order(UistOrder::market_buy("ABC", 25.0));
         exchange.insert_order(UistOrder::market_buy("ABC", 25.0));
-        exchange.check();
+        exchange.tick();
 
         exchange.insert_order(UistOrder::market_buy("ABC", 25.0));
         exchange.insert_order(UistOrder::market_buy("ABC", 25.0));
-        exchange.check();
+        exchange.tick();
 
         assert_eq!(exchange.trade_log.len(), 4);
     }
@@ -180,7 +193,7 @@ mod tests {
         let mut exchange = setup();
 
         exchange.insert_order(UistOrder::market_buy("ABC", 100.0));
-        exchange.check();
+        exchange.tick();
 
         assert_eq!(exchange.trade_log.len(), 1);
         let trade = exchange.trade_log.remove(0);
@@ -195,7 +208,7 @@ mod tests {
         let mut exchange = setup();
 
         exchange.insert_order(UistOrder::market_sell("ABC", 100.0));
-        exchange.check();
+        exchange.tick();
 
         assert_eq!(exchange.trade_log.len(), 1);
         let trade = exchange.trade_log.remove(0);
@@ -209,7 +222,7 @@ mod tests {
         let mut exchange = setup();
 
         exchange.insert_order(UistOrder::market_buy("XYZ", 100.0));
-        exchange.check();
+        exchange.tick();
 
         assert_eq!(exchange.trade_log.len(), 0);
     }
@@ -220,7 +233,7 @@ mod tests {
         let mut exchange = setup();
 
         exchange.insert_order(UistOrder::market_buy("ABC", 100.0));
-        exchange.check();
+        exchange.tick();
 
         assert!(exchange.order_buffer.is_empty());
     }
@@ -236,12 +249,28 @@ mod tests {
         let mut exchange = Uist::new(clock, source);
 
         exchange.insert_order(UistOrder::market_buy("ABC", 100.0));
-        exchange.check();
+        exchange.tick();
         //Orderbook should have one order and trade log has no executed trades
         assert_eq!(exchange.trade_log.len(), 0);
 
-        exchange.check();
+        exchange.tick();
         //Order should execute now
         assert_eq!(exchange.trade_log.len(), 1);
+    }
+
+    #[test]
+    fn test_that_sells_are_executed_before_buy() {
+        let mut exchange = setup();
+
+        exchange.insert_order(UistOrder::market_buy("ABC", 100.0));
+        exchange.insert_order(UistOrder::market_buy("ABC", 100.0));
+        exchange.insert_order(UistOrder::market_sell("ABC", 100.0));
+        exchange.tick();
+
+        assert_eq!(exchange.trade_log.len(), 3);
+        assert_eq!(
+            exchange.fetch_trades(0).get(0).unwrap().typ,
+            DianaTradeType::Sell
+        )
     }
 }
