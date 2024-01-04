@@ -73,6 +73,8 @@ impl Uist {
     pub fn insert_order(&mut self, order: UistOrder) {
         // Orders are only inserted into the book when tick is called, this is to ensure proper
         // ordering of trades
+        // This impacts order_id where an order X can come in before order X+1 but the latter can
+        // have an order_id that is less than the former.
         self.order_buffer.push(order);
     }
 
@@ -80,14 +82,14 @@ impl Uist {
         self.orderbook.delete_order(order_id);
     }
 
-    pub fn tick(&mut self) -> (bool, Vec<UistTrade>) {
+    pub fn tick(&mut self) -> (bool, Vec<UistTrade>, Vec<UistOrder>) {
         //To eliminate lookahead bias, we only start executing orders on the next
         //tick.
         self.clock.tick();
 
         self.sort_order_buffer();
-        for order in &self.order_buffer {
-            self.orderbook.insert_order(order.clone());
+        for order in self.order_buffer.iter_mut() {
+            self.orderbook.insert_order(order);
         }
 
         let now = self.clock.now();
@@ -95,8 +97,8 @@ impl Uist {
         for executed_trade in &executed_trades {
             self.trade_log.push(executed_trade.clone());
         }
-        self.order_buffer.clear();
-        (self.clock.has_next(), executed_trades)
+        let inserted_orders = std::mem::take(&mut self.order_buffer);
+        (self.clock.has_next(), executed_trades, inserted_orders)
     }
 }
 

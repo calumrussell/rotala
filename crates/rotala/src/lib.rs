@@ -35,16 +35,29 @@
 //!
 //! The proliferation of abstractions is to offer users the most flexibility but this is going to be
 //! subject to change as I learn more about this application.
-//!
+//! 
 //! # Uist
-//!
+//! 
 //! Interface to Uist is defined in [UistClient](crate::client::uist::UistClient).
-//!
-//! Uist contains no native synchronization features and provides no guarantees about ordering (even
-//! though the exchange is wrapped in a Mutex on the server). Therefore, strategies can run concurrently
-//! but it is not advised as Uist does not synchronize calls to `check` itself and does not return
-//! client-specific information (i.e. the order issued by strategy X will get mixed with orders for
-//! strategy Y).
+//! 
+//! The flow of Uist is:
+//! - init called at start, this returns some information about the dataset
+//! - loop
+//!     - fetch_quotes, returns price information for current date
+//!     - insert_order/delete_order
+//!     - tick, returning whether there is another tick and trades executed on the last tick
+//! 
+//! Uist has no client identifiers. It is possible to run more than one strategy against Uist but
+//! it is not advisable as it will be difficult to work out which trades are allocated to each
+//! strategy. The server does support concurrent execution but without client identifiers it isn't
+//! possible to return a properly synchronized result.
+//! 
+//! Order_id is only set once order is passed into the orderbook. Exchange only passes trades to
+//! orderbook once tick is called and these pending orders will be re-ordered so that sells are
+//! executed before buys. Order_id does not always reflect execution priority.
+//! 
+//! Once an order is inserted, it cannot be deleted on the same tick as an order only gets an id
+//! once it is passed into the orderbook.
 //!
 //! ``
 //! cargo run --bin uist_server [ipv4_address] [port]

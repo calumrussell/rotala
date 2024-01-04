@@ -8,7 +8,8 @@ use crate::exchange::uist::{Uist, UistOrder, UistOrderId, UistQuote, UistTrade};
 #[derive(Debug, Deserialize, Serialize)]
 pub struct TickResponse {
     pub has_next: bool,
-    pub trades: Vec<UistTrade>,
+    pub executed_trades: Vec<UistTrade>,
+    pub inserted_orders: Vec<UistOrder>,
 }
 
 pub async fn tick(exchange: web::Data<Mutex<Uist>>) -> web::Json<TickResponse> {
@@ -16,7 +17,8 @@ pub async fn tick(exchange: web::Data<Mutex<Uist>>) -> web::Json<TickResponse> {
 
     let tick = ex.tick();
     web::Json(TickResponse {
-        trades: tick.1,
+        inserted_orders: tick.2,
+        executed_trades: tick.1,
         has_next: tick.0,
     })
 }
@@ -123,7 +125,7 @@ mod tests {
         let req4 = test::TestRequest::get().uri("/tick").to_request();
         let resp4: TickResponse = test::call_and_read_body_json(&app, req4).await;
 
-        assert!(resp4.trades.len() == 1);
-        assert!(resp4.trades.get(0).unwrap().symbol == "ABC")
+        assert!(resp4.executed_trades.len() == 1);
+        assert!(resp4.executed_trades.get(0).unwrap().symbol == "ABC")
     }
 }

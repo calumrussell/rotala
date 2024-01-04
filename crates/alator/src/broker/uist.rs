@@ -227,7 +227,7 @@ impl UistBroker {
     /// * Reconciles internal state against trades completed on current tick
     /// * Rebalances cash, which can trigger new trades if broker is in invalid state
     pub fn check(&mut self) {
-        let (has_next, completed_trades) = self.exchange.tick();
+        let (has_next, completed_trades, inserted_orders) = self.exchange.tick();
 
         //Update prices, these prices are not tradable
         for quote in &self.exchange.fetch_quotes() {
