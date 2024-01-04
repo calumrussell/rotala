@@ -6,14 +6,18 @@ use serde::{Deserialize, Serialize};
 use crate::exchange::uist::{Uist, UistOrder, UistOrderId, UistQuote, UistTrade};
 
 #[derive(Debug, Deserialize, Serialize)]
-pub struct CheckResponse {
+pub struct TickResponse {
     pub has_next: bool,
+    pub trades: Vec<UistTrade>,
 }
 
-pub async fn check(exchange: web::Data<Mutex<Uist>>) -> web::Json<CheckResponse> {
+pub async fn tick(exchange: web::Data<Mutex<Uist>>) -> web::Json<TickResponse> {
     let mut ex = exchange.lock().unwrap();
-    web::Json(CheckResponse {
-        has_next: ex.tick(),
+
+    let tick = ex.tick();
+    web::Json(TickResponse {
+        trades: tick.1,
+        has_next: tick.0,
     })
 }
 
@@ -48,21 +52,6 @@ pub async fn insert_order(
 #[derive(Debug, Deserialize, Serialize)]
 pub struct FetchTradesRequest {
     pub from: UistOrderId,
-}
-
-#[derive(Debug, Deserialize, Serialize)]
-pub struct FetchTradesResponse {
-    pub trades: Vec<UistTrade>,
-}
-
-pub async fn fetch_trades(
-    exchange: web::Data<Mutex<Uist>>,
-    fetch_trade: web::Json<FetchTradesRequest>,
-) -> web::Json<FetchTradesResponse> {
-    let ex = exchange.lock().unwrap();
-    web::Json(FetchTradesResponse {
-        trades: ex.fetch_trades(fetch_trade.from),
-    })
 }
 
 #[derive(Debug, Deserialize, Serialize)]
@@ -107,8 +96,7 @@ mod tests {
                 .app_data(web::Data::new(Mutex::new(random_uist_generator(3000).0)))
                 .route("/init", web::get().to(init))
                 .route("/fetch_quotes", web::get().to(fetch_quotes))
-                .route("/fetch_trades", web::post().to(fetch_trades))
-                .route("/check", web::get().to(check))
+                .route("/tick", web::get().to(tick))
                 .route("/insert_order", web::post().to(insert_order))
                 .route("/delete_order", web::post().to(delete_order)),
         )
@@ -116,14 +104,13 @@ mod tests {
 
         let req = test::TestRequest::get().uri("/init").to_request();
         let resp: InitResponse = test::call_and_read_body_json(&app, req).await;
-        dbg!(&resp);
         assert!(resp.frequency == 0);
 
         let req1 = test::TestRequest::get().uri("/fetch_quotes").to_request();
         let _resp1: FetchQuotesResponse = test::call_and_read_body_json(&app, req1).await;
 
-        let req2 = test::TestRequest::get().uri("/check").to_request();
-        let _resp2: CheckResponse = test::call_and_read_body_json(&app, req2).await;
+        let req2 = test::TestRequest::get().uri("/tick").to_request();
+        let _resp2: TickResponse = test::call_and_read_body_json(&app, req2).await;
 
         let req3 = test::TestRequest::post()
             .set_json(InsertOrderRequest {
@@ -133,16 +120,10 @@ mod tests {
             .to_request();
         test::call_and_read_body(&app, req3).await;
 
-        let req4 = test::TestRequest::get().uri("/check").to_request();
-        let _resp4: CheckResponse = test::call_and_read_body_json(&app, req4).await;
+        let req4 = test::TestRequest::get().uri("/tick").to_request();
+        let resp4: TickResponse = test::call_and_read_body_json(&app, req4).await;
 
-        let req5 = test::TestRequest::post()
-            .set_json(FetchTradesRequest { from: 0 })
-            .uri("/fetch_trades")
-            .to_request();
-        let resp5: FetchTradesResponse = test::call_and_read_body_json(&app, req5).await;
-
-        assert!(resp5.trades.len() == 1);
-        assert!(resp5.trades.get(0).unwrap().symbol == "ABC")
+        assert!(resp4.trades.len() == 1);
+        assert!(resp4.trades.get(0).unwrap().symbol == "ABC")
     }
 }

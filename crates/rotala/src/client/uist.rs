@@ -2,8 +2,7 @@ use reqwest::Result;
 
 use crate::exchange::uist::{InitMessage, UistOrder, UistOrderId};
 use crate::server::uist::{
-    CheckResponse, DeleteOrderRequest, FetchQuotesResponse, FetchTradesRequest,
-    FetchTradesResponse, InsertOrderRequest,
+    DeleteOrderRequest, FetchQuotesResponse, InsertOrderRequest, TickResponse,
 };
 
 pub struct UistClient {
@@ -11,10 +10,10 @@ pub struct UistClient {
 }
 
 impl UistClient {
-    pub async fn check(&self) -> Result<CheckResponse> {
-        reqwest::get(self.path.clone() + "/check")
+    pub async fn tick(&self) -> Result<TickResponse> {
+        reqwest::get(self.path.clone() + "/tick")
             .await?
-            .json::<CheckResponse>()
+            .json::<TickResponse>()
             .await
     }
 
@@ -39,18 +38,6 @@ impl UistClient {
             .send()
             .await?
             .json::<()>()
-            .await
-    }
-
-    pub async fn fetch_trades(&self, from: UistOrderId) -> Result<FetchTradesResponse> {
-        let req = FetchTradesRequest { from };
-        let client = reqwest::Client::new();
-        client
-            .post(self.path.clone() + "/fetch_tradse")
-            .json(&req)
-            .send()
-            .await?
-            .json::<FetchTradesResponse>()
             .await
     }
 

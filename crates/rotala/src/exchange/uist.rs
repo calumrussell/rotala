@@ -70,10 +70,6 @@ impl Uist {
         vec![]
     }
 
-    pub fn fetch_trades(&self, from: UistOrderId) -> Vec<UistTrade> {
-        self.trade_log[from as usize..].to_vec()
-    }
-
     pub fn insert_order(&mut self, order: UistOrder) {
         // Orders are only inserted into the book when tick is called, this is to ensure proper
         // ordering of trades
@@ -84,7 +80,7 @@ impl Uist {
         self.orderbook.delete_order(order_id);
     }
 
-    pub fn tick(&mut self) -> bool {
+    pub fn tick(&mut self) -> (bool, Vec<UistTrade>) {
         //To eliminate lookahead bias, we only start executing orders on the next
         //tick.
         self.clock.tick();
@@ -96,11 +92,11 @@ impl Uist {
 
         let now = self.clock.now();
         let executed_trades = self.orderbook.execute_orders(*now, &self.price_source);
-        for executed_trade in executed_trades {
+        for executed_trade in &executed_trades {
             self.trade_log.push(executed_trade.clone());
         }
         self.order_buffer.clear();
-        self.clock.has_next()
+        (self.clock.has_next(), executed_trades)
     }
 }
 
@@ -265,12 +261,9 @@ mod tests {
         exchange.insert_order(UistOrder::market_buy("ABC", 100.0));
         exchange.insert_order(UistOrder::market_buy("ABC", 100.0));
         exchange.insert_order(UistOrder::market_sell("ABC", 100.0));
-        exchange.tick();
+        let res = exchange.tick();
 
-        assert_eq!(exchange.trade_log.len(), 3);
-        assert_eq!(
-            exchange.fetch_trades(0).get(0).unwrap().typ,
-            DianaTradeType::Sell
-        )
+        assert_eq!(res.1.len(), 3);
+        assert_eq!(res.1.get(0).unwrap().typ, DianaTradeType::Sell)
     }
 }
