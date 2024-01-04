@@ -1,6 +1,6 @@
 use criterion::{criterion_group, criterion_main, Criterion};
 
-use rotala::exchange::uist::{UistV1, UistOrder};
+use rotala::exchange::uist::{UistOrder, UistV1};
 use rotala::input::penelope::PenelopeBuilder;
 
 fn uist_core_loop_test() {

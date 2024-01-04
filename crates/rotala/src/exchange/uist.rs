@@ -29,7 +29,10 @@ pub struct InfoMessage {
 
 impl InfoMessage {
     fn v1(dataset: String) -> InfoMessage {
-        InfoMessage { version: "1.0".to_string(), dataset }
+        InfoMessage {
+            version: "1.0".to_string(),
+            dataset,
+        }
     }
 }
 

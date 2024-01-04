@@ -7,7 +7,9 @@ use std::{
 
 use log::info;
 use rotala::clock::DateTime;
-use rotala::exchange::uist::{UistV1, UistOrder, UistOrderType, UistQuote, UistTrade, UistTradeType};
+use rotala::exchange::uist::{
+    UistOrder, UistOrderType, UistQuote, UistTrade, UistTradeType, UistV1,
+};
 
 use crate::types::{
     CashValue, PortfolioAllocation, PortfolioHoldings, PortfolioQty, PortfolioValues, Price,
@@ -438,7 +440,7 @@ mod tests {
     use crate::types::{CashValue, PortfolioAllocation, PortfolioQty};
     use rotala::clock::{ClockBuilder, Frequency};
     use rotala::exchange::uist::{
-        random_uist_generator, UistV1, UistOrder, UistOrderType, UistTrade, UistTradeType,
+        random_uist_generator, UistOrder, UistOrderType, UistTrade, UistTradeType, UistV1,
     };
     use rotala::input::penelope::PenelopeBuilder;
 

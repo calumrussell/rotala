@@ -7,7 +7,7 @@ use rand_distr::{Distribution, Uniform};
 
 use alator::strategy::staticweight::StaticWeightStrategyBuilder;
 use alator::types::{CashValue, PortfolioAllocation};
-use rotala::exchange::uist::{UistV1, UistOrder};
+use rotala::exchange::uist::{UistOrder, UistV1};
 use rotala::input::penelope::PenelopeBuilder;
 
 fn full_backtest_random_data() {

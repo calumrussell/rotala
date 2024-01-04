@@ -3,7 +3,7 @@ use std::sync::Mutex;
 use actix_web::web;
 use serde::{Deserialize, Serialize};
 
-use crate::exchange::uist::{UistV1, UistOrder, UistOrderId, UistQuote, UistTrade};
+use crate::exchange::uist::{UistOrder, UistOrderId, UistQuote, UistTrade, UistV1};
 
 #[derive(Debug, Deserialize, Serialize)]
 pub struct TickResponse {
@@ -92,7 +92,10 @@ pub struct InfoResponse {
 pub async fn info(exchange: web::Data<Mutex<UistV1>>) -> web::Json<InfoResponse> {
     let ex = exchange.lock().unwrap();
     let info = ex.info();
-    web::Json(InfoResponse { version: info.version, dataset: info.dataset })
+    web::Json(InfoResponse {
+        version: info.version,
+        dataset: info.dataset,
+    })
 }
 
 #[cfg(test)]

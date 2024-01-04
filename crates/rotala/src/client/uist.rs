@@ -1,6 +1,6 @@
 use reqwest::Result;
 
-use crate::exchange::uist::{InitMessage, UistOrder, UistOrderId, InfoMessage};
+use crate::exchange::uist::{InfoMessage, InitMessage, UistOrder, UistOrderId};
 use crate::server::uist::{
     DeleteOrderRequest, FetchQuotesResponse, InsertOrderRequest, TickResponse,
 };
