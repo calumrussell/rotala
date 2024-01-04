@@ -2,6 +2,11 @@
 name = "rotala"
 version = "0.1.0"
 edition = "2021"
+authors = ["Calum Russell <calum.mj.russell@gmail.com>"]
+license-file = "LICENCE"
+description = "JSON server exchange and library for backtesting trading strategies"
+repository = "https://github.com/calumrussell/alator"
+readme = "README.md"
 
 [dependencies]
 actix-web = "4"
