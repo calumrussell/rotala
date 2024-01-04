@@ -16,6 +16,16 @@ serde_json = "1.0.108"
 env_logger = "0.10.0"
 tokio = { version = "1.35.1", features = ["full"] }
 
+[dev-dependencies]
+criterion = { version="0.5.1", features= ["async_tokio"] }
+
 [[bin]]
 name = "uist_server"
 path = "./src/bin/uist_server.rs"
+
+[lib]
+bench = false
+
+[[bench]]
+name = "sim_orderbook"
+harness = false
