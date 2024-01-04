@@ -1,0 +1,36 @@
+[package]
+name = "rotala"
+version = "0.1.0"
+edition = "2021"
+authors = ["Calum Russell <calum.mj.russell@gmail.com>"]
+license-file = "LICENCE"
+description = "JSON server exchange and library for backtesting trading strategies"
+repository = "https://github.com/calumrussell/alator"
+readme = "README.md"
+
+[dependencies]
+actix-web = "4"
+time = { version = "0.3.17", features = ["macros", "parsing"] }
+rand = "0.8.4"
+rand_distr = "0.4.1"
+reqwest = { version = "0.11.11", features=["blocking", "json"] }
+zip = "0.6.2"
+csv = "1.1.6"
+serde = { version = "1.0.193", features = ["derive"] }
+serde_json = "1.0.108"
+env_logger = "0.10.0"
+tokio = { version = "1.35.1", features = ["full"] }
+
+[dev-dependencies]
+criterion = { version="0.5.1", features= ["async_tokio"] }
+
+[[bin]]
+name = "uist_server_v1"
+path = "./src/bin/uist_server_v1.rs"
+
+[lib]
+bench = false
+
+[[bench]]
+name = "sim_orderbook"
+harness = false

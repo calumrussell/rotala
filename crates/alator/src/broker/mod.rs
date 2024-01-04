@@ -1,22 +1,20 @@
-//! Issues orders to exchange and tracks changes as exchange executes orders.
+//! Issues orders to exchange and tracks changes as exchange executes orders. Contains a set of
+//! traits that represent common operations, and a full test implementation of a broker.
 //!
-//! ### Single-threaded detail
+//! ### Traits
 //!
-//! [single::SingleBroker] holds a reference to an exchange to which orders are passed for
-//! execution. Orders are not executed until the next tick so broker state has to be synchronized
-//! with the exchange on every tick. Clients can trigger this synchronization by calling `check`.
+//! In order to use the traits, exchange common types must implement broker traits:
+//! - [BrokerTrade](crate::broker::BrokerTrade)
+//! - [BrokerQuote](crate::broker::BrokerQuote)
+//! - [BrokerEvent](crate::broker::BrokerEvent)
 //!
-//! Exchange is expected to implement [alator_exchange::ExchangeSync] and the single-threaded impl
-//! should be the only owner of the exchange during a backtest.
+//! It is also assumed that any exchange supports at least the order types in [BrokerOrderType](crate::broker::BrokerOrderType).
 //!
-//! Broker should be the only owner of a [crate::input::DefaultCorporateEventsSource] in a backtest.
-//!
-//! Trade costs are optional. If no trade costs are passed to the broker then no costs will be
-//! taken when orders execute.
-//!
-//! ### General comments
-//!
-//! The broker can hold negative cash values due to the non-immediate execution of trades. Once a
+//! The traits have been created to provide code for operations that are common across brokers. It
+//! is likely that the traits that touch some of the order logic (for example, [BrokerOperations](crate::broker::BrokerOperations)
+//! ) are too tightly bound to the exchange implementation to be useful across brokers.
+//!  
+//! Broker can hold negative cash values due to the non-immediate execution of trades. Once a
 //! broker has received the notification of completed trades and finds a negative value then
 //! re-balancing is triggered automatically. Responsibility for moving the portfolio back to the
 //! correct state is left with owner, broker implementations take responsibility for correcting
@@ -33,41 +31,289 @@
 //! producing unexpected results. Previous versions would exit early when this happened but this
 //! behaviour was removed.
 //!
-//! Default implementations support multiple [BrokerCost] models: Flat, PerShare, and PctOfValue.
-//!
 //! Cash balances are held in single currency which is assumed to be the same currency used across
 //! the simulation.
 //!
-//! Keeps an internal log of trades executed and dividends received/paid. This is distinct from
-//! performance calculations.
-mod calculations;
-mod record;
+//! Certain calculations, for example cost basis, require keeping an internal log of trades. This is
+//! distinct from performance calculations.
+//!
+//! ### Uist
+//!
+//! Broker using non-networked [Uist](rotala::exchange::uist::Uist) exchange. Uses the [Penelope](rotala::input::penelope::Penelope)
+//! input format and requires a reference to the [Clock](rotala::clock::Clock) that is shared with
+//! exchange (this can be created with input using builders).
+//!
+//! Should use [UistBrokerBuilder](crate::broker::uist::UistBrokerBuilder) to create. Can create
+//! with optional [BrokerCost](crate::broker::BrokerCost).
 
-pub mod single;
-mod types;
-
-use alator_exchange::{ExchangeSync, Quote};
-pub use calculations::BrokerCalculations;
-#[doc(hidden)]
-pub use record::BrokerLog;
-pub use types::{
-    BrokerCashEvent, BrokerCost, BrokerEvent, BrokerRecordedEvent, Dividend, DividendPayment,
-    Order, OrderType, Trade, TradeType,
+use std::{
+    error::Error,
+    fmt::{Display, Formatter},
 };
 
-use async_trait::async_trait;
-use std::error::Error;
-use std::fmt::Display;
-use std::fmt::Formatter;
-use std::sync::Arc;
+use log::info;
+use rotala::exchange::uist::{UistOrder, UistOrderType, UistQuote, UistTrade};
 
-use crate::types::{CashValue, PortfolioHoldings, PortfolioQty, PortfolioValues, Price};
+use crate::types::{
+    CashValue, PortfolioAllocation, PortfolioHoldings, PortfolioQty, PortfolioValues, Price,
+};
 
-/// Essential traits for standard library definition of a broker.
+pub mod uist;
+
+/// Once the broker moves into Failed state then all operations that mutate state are rejected.
 ///
-/// Functionality for brokers is spread across multiple traits, these traits are the functions
-/// that seem to be necessary for any backtest.
-pub trait BacktestBroker: GetsQuote {
+/// This flag is intended to cover any situation where the broker moves into a state where it is
+/// unclear how to move the state foward. In most cases, and contrary to the intuition with this
+/// kind of error, this will be due to errors with the strategy code and the interaction with
+/// external state (i.e. price source).
+///
+/// Once this happens, the broker will stop performing cash transactions and issuing orders. The
+/// broker won't throw an error once this happens and will continue reading from exchange to
+/// reconcile trades/liquidate current position in order to return a correct cash balance to the
+/// strategy. If the price source is missing data after a liquidation is triggered then it is
+/// possible for incorrect results to be returned.
+///
+/// The most common scenario for this state to be triggered is due to bad strategy code triggering
+/// the liquidation process and the broker being unable to find sufficient cash (plus a buffer of
+/// 1000, currently hardcoded).
+///
+/// A less common scenario contrived to demonstrate how this can occur due to external data: we
+/// have a portfolio with cash of 100, the strategy issues a market order for 100 shares @ 1,
+/// the market price doubles on the next tick, and so the exchange asks for 200 in cash to settle
+/// the trade. Once this happens, it is unclear what the broker should do so we move into an error
+/// condition and stop mutating more state.
+///
+/// Broker should be in Ready state on creation.
+#[derive(Clone, Debug)]
+pub enum BrokerState {
+    Ready,
+    Failed,
+}
+
+#[derive(Clone, Debug)]
+pub enum BrokerOrderType {
+    MarketBuy,
+    MarketSell,
+    LimitBuy,
+    LimitSell,
+    StopBuy,
+    StopSell,
+}
+
+impl From<UistOrderType> for BrokerOrderType {
+    fn from(value: UistOrderType) -> Self {
+        match value {
+            UistOrderType::MarketBuy => BrokerOrderType::MarketBuy,
+            UistOrderType::MarketSell => BrokerOrderType::MarketSell,
+            UistOrderType::LimitBuy => BrokerOrderType::LimitBuy,
+            UistOrderType::LimitSell => BrokerOrderType::LimitSell,
+            UistOrderType::StopBuy => BrokerOrderType::StopBuy,
+            UistOrderType::StopSell => BrokerOrderType::StopSell,
+        }
+    }
+}
+
+pub trait BrokerTrade: Clone {
+    fn get_quantity(&self) -> f64;
+    fn get_value(&self) -> f64;
+}
+
+impl BrokerTrade for UistTrade {
+    fn get_quantity(&self) -> f64 {
+        self.quantity
+    }
+    fn get_value(&self) -> f64 {
+        self.value
+    }
+}
+
+pub trait BrokerQuote {
+    fn get_bid(&self) -> f64;
+    fn get_ask(&self) -> f64;
+}
+
+impl BrokerQuote for UistQuote {
+    fn get_bid(&self) -> f64 {
+        self.bid
+    }
+
+    fn get_ask(&self) -> f64 {
+        self.ask
+    }
+}
+
+/// Implicit in this trait is that the underlying exchange supports at least as many order types
+/// as [BrokerOrderType](crate::broker::BrokerOrderType).
+///
+/// `market_buy` and `market_sell` operations are necessary for internally triggered orders i.e.
+/// rebalancing due to a cash shortfall.
+pub trait BrokerOrder {
+    fn get_order_type<T: Into<BrokerOrderType>>(&self) -> BrokerOrderType;
+    fn get_shares(&self) -> f64;
+    fn get_symbol(&self) -> String;
+    fn market_buy(symbol: String, shares: f64) -> Self;
+    fn market_sell(symbol: String, shares: f64) -> Self;
+}
+
+impl BrokerOrder for UistOrder {
+    fn get_order_type<UistOrderType>(&self) -> BrokerOrderType {
+        self.order_type.into()
+    }
+    fn get_shares(&self) -> f64 {
+        self.shares
+    }
+    fn get_symbol(&self) -> String {
+        self.symbol.clone()
+    }
+    fn market_buy(symbol: String, shares: f64) -> Self {
+        UistOrder::market_buy(symbol, shares)
+    }
+    fn market_sell(symbol: String, shares: f64) -> Self {
+        UistOrder::market_sell(symbol, shares)
+    }
+}
+
+#[derive(Clone, Debug)]
+pub enum BrokerEvent<O: BrokerOrder> {
+    OrderSentToExchange(O),
+    OrderInvalid(O),
+    OrderCreated(O),
+    OrderFailure(O),
+}
+
+#[derive(Clone, Debug)]
+pub enum BrokerCashEvent {
+    //Removed from [BrokerEvent] because there are situations when we want to handle these events
+    //specifically and seperately
+    WithdrawSuccess(CashValue),
+    WithdrawFailure(CashValue),
+    DepositSuccess(CashValue),
+    OperationFailure(CashValue),
+}
+
+/// Broker has attempted to execute an order which cannot be completed due to insufficient cash.
+#[derive(Clone, Debug)]
+pub struct InsufficientCashError;
+
+impl Error for InsufficientCashError {}
+
+impl Display for InsufficientCashError {
+    fn fmt(&self, f: &mut Formatter) -> std::fmt::Result {
+        write!(f, "Client has insufficient cash to execute order")
+    }
+}
+
+#[derive(Debug, Clone)]
+/// Broker has attempted to execute an order which cannot be completed due to a problem with the
+/// order.
+pub struct UnexecutableOrderError;
+
+impl Error for UnexecutableOrderError {}
+
+impl Display for UnexecutableOrderError {
+    fn fmt(&self, f: &mut Formatter) -> std::fmt::Result {
+        write!(f, "Client has passed unexecutable order")
+    }
+}
+
+/// Implementation of cost models for brokers.
+/// Broker implementations would either define cost model or would provide the user the option of
+/// intializing one; the broker impl would then call the variant's calculation methods as trades
+/// are executed.
+#[derive(Clone, Debug)]
+pub enum BrokerCost {
+    PerShare(Price),
+    PctOfValue(f64),
+    Flat(CashValue),
+}
+
+impl BrokerCost {
+    pub fn per_share(val: f64) -> Self {
+        BrokerCost::PerShare(Price::from(val))
+    }
+
+    pub fn pct_of_value(val: f64) -> Self {
+        BrokerCost::PctOfValue(val)
+    }
+
+    pub fn flat(val: f64) -> Self {
+        BrokerCost::Flat(CashValue::from(val))
+    }
+
+    pub fn calc(&self, trade: impl BrokerTrade) -> CashValue {
+        match self {
+            BrokerCost::PerShare(cost) => CashValue::from(*cost.clone() * trade.get_quantity()),
+            BrokerCost::PctOfValue(pct) => CashValue::from(trade.get_value() * *pct),
+            BrokerCost::Flat(val) => val.clone(),
+        }
+    }
+
+    //Returns a valid trade given trading costs given a current budget
+    //and price of security
+    pub fn trade_impact(
+        &self,
+        gross_budget: &f64,
+        gross_price: &f64,
+        is_buy: bool,
+    ) -> (CashValue, Price) {
+        let mut net_budget = *gross_budget;
+        let mut net_price = *gross_price;
+        match self {
+            BrokerCost::PerShare(val) => {
+                if is_buy {
+                    net_price += *val.clone();
+                } else {
+                    net_price -= *val.clone();
+                }
+            }
+            BrokerCost::PctOfValue(pct) => {
+                net_budget *= 1.0 - pct;
+            }
+            BrokerCost::Flat(val) => net_budget -= *val.clone(),
+        }
+        (CashValue::from(net_budget), Price::from(net_price))
+    }
+
+    pub fn trade_impact_total(
+        trade_costs: &[BrokerCost],
+        gross_budget: &f64,
+        gross_price: &f64,
+        is_buy: bool,
+    ) -> (CashValue, Price) {
+        let mut res = (CashValue::from(*gross_budget), Price::from(*gross_price));
+        for cost in trade_costs {
+            res = cost.trade_impact(&res.0, &res.1, is_buy);
+        }
+        res
+    }
+}
+
+/// Producing quotes may not necessarily be the responsibility of broker in many implementations.
+/// The exchange should be the source of price data but it is quite possible that, whilst the
+/// broker holds the ability to retrieve prices itself, the strategy code does not call the broker.
+///
+/// This design choice was made because the strategy may depend on profit calculations or similar
+/// from the broker so it made sense to guarantee a consolidated source (in the presence of missing
+/// quotes) but brokers may choose not to act as a source of prices for clients.
+pub trait Quote<Q: BrokerQuote> {
+    fn get_quote(&self, symbol: &str) -> Option<Q>;
+    fn get_quotes(&self) -> Option<Vec<Q>>;
+}
+
+pub trait SendOrder<O: BrokerOrder> {
+    fn send_order(&mut self, order: O) -> BrokerEvent<O>;
+    fn send_orders(&mut self, orders: &[O]) -> Vec<BrokerEvent<O>>;
+}
+
+/// Set of operations common to portfolios.
+///
+/// The assumption inherent in this choice is that, whilst strategies can share an exchange, they
+/// should have their own broker where calculations like profit can be calculated on a per-strategy
+/// basis.
+///
+/// Note that `update_holdings` and `update_cash_balance` mutate state, these are not purely
+/// immutable calculations but operations that can change the portfolio.
+pub trait Portfolio<Q: BrokerQuote>: Quote<Q> {
     fn get_position_profit(&self, symbol: &str) -> Option<CashValue> {
         if let Some(cost) = self.get_position_cost(symbol) {
             if let Some(qty) = self.get_position_qty(symbol) {
@@ -151,358 +397,387 @@ pub trait BacktestBroker: GetsQuote {
         self.get_holdings().keys()
     }
 
-    fn update_holdings(&mut self, symbol: &str, change: PortfolioQty);
-    fn withdraw_cash(&mut self, cash: &f64) -> types::BrokerCashEvent;
-    fn deposit_cash(&mut self, cash: &f64) -> types::BrokerCashEvent;
+    fn get_holdings_with_pending(&self) -> PortfolioHoldings {
+        let mut merged_holdings = PortfolioHoldings::new();
+        for (key, value) in self.get_holdings().0.iter() {
+            if merged_holdings.0.contains_key(key) {
+                if let Some(val) = merged_holdings.get(key) {
+                    let new_val = PortfolioQty::from(*val + **value);
+                    merged_holdings.insert(key, &new_val);
+                }
+            } else {
+                merged_holdings.insert(key, value);
+            }
+        }
+
+        for (key, value) in self.get_pending_orders().0.iter() {
+            if merged_holdings.0.contains_key(key) {
+                if let Some(val) = merged_holdings.get(key) {
+                    let new_val = PortfolioQty::from(*val + **value);
+                    merged_holdings.insert(key, &new_val);
+                }
+            } else {
+                merged_holdings.insert(key, value);
+            }
+        }
+        merged_holdings
+    }
+
+    fn calculate_trade_costs(&self, trade: impl BrokerTrade) -> CashValue {
+        let mut cost = CashValue::default();
+        for trade_cost in &self.get_trade_costs() {
+            cost = CashValue::from(*cost + *trade_cost.calc(trade.clone()));
+        }
+        cost
+    }
+
+    fn calc_trade_impact(&self, budget: &f64, price: &f64, is_buy: bool) -> (CashValue, Price) {
+        BrokerCost::trade_impact_total(&self.get_trade_costs(), budget, price, is_buy)
+    }
+
     fn get_cash_balance(&self) -> CashValue;
+    fn update_cash_balance(&mut self, cash: CashValue);
     fn get_holdings(&self) -> PortfolioHoldings;
+    fn update_holdings(&mut self, symbol: &str, change: PortfolioQty);
     fn get_position_cost(&self, symbol: &str) -> Option<Price>;
-    //This should only be called internally
-    fn get_trade_costs(&self, trade: &types::Trade) -> CashValue;
-    fn calc_trade_impact(&self, budget: &f64, price: &f64, is_buy: bool) -> (CashValue, Price);
-    fn pay_dividends(&mut self);
-    fn debit(&mut self, value: &f64) -> types::BrokerCashEvent;
-    fn credit(&mut self, value: &f64) -> types::BrokerCashEvent;
-    //Can leave the client with a negative cash balance
-    fn debit_force(&mut self, value: &f64) -> types::BrokerCashEvent;
+    fn get_pending_orders(&self) -> PortfolioHoldings;
+    fn get_trade_costs(&self) -> Vec<BrokerCost>;
 }
 
-/// Broker can receive (and fulfill) orders once the backtest has started.
+/// Tightly bound to [BrokerState](crate::broker::BrokerState) and with [CashOperations](crate::broker::CashOperations)
+/// making the assumption that we have a structure that can move into an invalid state with code
+/// to handle that situation.
+pub trait BrokerStates {
+    fn get_broker_state(&self) -> BrokerState;
+    fn update_broker_state(&mut self, state: BrokerState);
+}
+
+/// Operations that modify cash balances. Tightly bound to [BrokerStates](crate::broker::BrokerStates)
+/// as the result of these operations has to be guarded so that the broker doesn't move into a
+/// permanently bad state that produces bad values for clients.
 ///
-/// This is connected to functionality within [BrokerCalculations]. If this trait is not
-/// implemented then it may not be possible to perform, for example, portfolio liquidations neatly.
-pub trait ReceivesOrders {
-    //TODO: this needs to use another kind of order
-    fn send_order(&mut self, order: types::Order) -> types::BrokerEvent;
-    fn send_orders(&mut self, order: &[types::Order]) -> Vec<types::BrokerEvent>;
-}
+/// Overlapping withdraw/deposit methods because `debit`/`credit` should only be called internally.
+/// This was more relevant in historical code, which had more functionality requiring internal
+/// transactions such as dividends, so may change over time. Clients should depend on `withdraw_cash`
+/// and `deposit_cash`.
+pub trait CashOperations<Q: BrokerQuote>: Portfolio<Q> + BrokerStates {
+    fn withdraw_cash(&mut self, cash: &f64) -> BrokerCashEvent {
+        match self.get_broker_state() {
+            BrokerState::Failed => {
+                info!(
+                    "BROKER: Attempted cash withdraw of {:?} but broker in Failed State",
+                    cash,
+                );
+                BrokerCashEvent::OperationFailure(CashValue::from(*cash))
+            }
+            BrokerState::Ready => {
+                if cash > &self.get_cash_balance() {
+                    info!(
+                        "BROKER: Attempted cash withdraw of {:?} but only have {:?}",
+                        cash,
+                        self.get_cash_balance()
+                    );
+                    return BrokerCashEvent::WithdrawFailure(CashValue::from(*cash));
+                }
+                info!(
+                    "BROKER: Successful cash withdraw of {:?}, {:?} left in cash",
+                    cash,
+                    self.get_cash_balance()
+                );
+                self.debit(cash);
+                BrokerCashEvent::WithdrawSuccess(CashValue::from(*cash))
+            }
+        }
+    }
 
-/// Broker can receive (and fulfill) orders once the backtest has started.
-///
-/// This is connected to functionality within [BrokerCalculations]. If this trait is not
-/// implemented then it may not be possible to perform, for example, portfolio liquidations neatly.
-#[async_trait]
-pub trait ReceivesOrdersAsync {
-    //TODO: this needs to use another kind of order
-    async fn send_order(&mut self, order: types::Order) -> types::BrokerEvent;
-    async fn send_orders(&mut self, order: &[types::Order]) -> Vec<types::BrokerEvent>;
-}
+    fn deposit_cash(&mut self, cash: &f64) -> BrokerCashEvent {
+        match self.get_broker_state() {
+            BrokerState::Failed => {
+                info!(
+                    "BROKER: Attempted cash deposit of {:?} but broker in Failed State",
+                    cash,
+                );
+                BrokerCashEvent::OperationFailure(CashValue::from(*cash))
+            }
+            BrokerState::Ready => {
+                info!(
+                    "BROKER: Deposited {:?} cash, current balance of {:?}",
+                    cash,
+                    self.get_cash_balance()
+                );
+                self.credit(cash);
+                BrokerCashEvent::DepositSuccess(CashValue::from(*cash))
+            }
+        }
+    }
 
-/// Broker produces price data.
-///
-/// Library implementations of brokers can be treated as a source of data equivalent to an
-/// `Exchange`. Calling functions can call `get_quote` and expect to see the same result as
-/// calling the `Exchange` at the same time. However, this requires continous synchronization of
-/// state between `Exchange` and `Broker`. In some cases, for example with several thousand prices,
-/// this won't be performant. This synchronization is used to prevent lookahead bias in multi-
-/// threaded contexts so users with this limitation will need to consider carefully whether broker
-/// should be a data source (and this trait implemented) when re-implementing broker.
-///
-/// In the case of missing data, library implementations store the last-seen price. Strategies
-/// would, therefore, be operating with stale data. This is a consequence of protecting against
-/// lookahead bias.
-pub trait GetsQuote {
-    fn get_quote(&self, symbol: &str) -> Option<Quote>;
-    fn get_quotes(&self) -> Option<Vec<Quote>>;
-}
+    //Identical to deposit_cash but is seperated to distinguish internal cash
+    //transactions from external with no value returned to client
+    fn credit(&mut self, value: &f64) -> BrokerCashEvent {
+        info!(
+            "BROKER: Credited {:?} cash, current balance of {:?}",
+            value,
+            self.get_cash_balance()
+        );
+        self.update_cash_balance(CashValue::from(*value + *self.get_cash_balance()));
+        BrokerCashEvent::DepositSuccess(CashValue::from(*value))
+    }
 
-/// Broker stores completed trades and paid dividends.
-///
-/// Implemented for taxation calculations. Functions are distinct from a performance calculation
-/// as, for a backtest, performance is calculated at the end but this provides a way to query
-/// transactions completed whilst the backtest is ongoing.
-pub trait EventLog {
-    fn trades_between(&self, start: &i64, end: &i64) -> Vec<types::Trade>;
-    fn dividends_between(&self, start: &i64, end: &i64) -> Vec<types::DividendPayment>;
-}
+    //Looks similar to withdraw_cash but distinguished because it represents
+    //failure of an internal transaction with no value returned to clients
+    fn debit(&mut self, value: &f64) -> BrokerCashEvent {
+        if value > &self.get_cash_balance() {
+            info!(
+                "BROKER: Debit failed of {:?} cash, current balance of {:?}",
+                value,
+                self.get_cash_balance()
+            );
+            return BrokerCashEvent::WithdrawFailure(CashValue::from(*value));
+        }
+        info!(
+            "BROKER: Debited {:?} cash, current balance of {:?}",
+            value,
+            self.get_cash_balance()
+        );
+        self.update_cash_balance(CashValue::from(*self.get_cash_balance() - *value));
+        BrokerCashEvent::WithdrawSuccess(CashValue::from(*value))
+    }
 
-/// Broker has attempted to execute an order which cannot be completed due to insufficient cash.
-#[derive(Debug, Clone)]
-pub struct InsufficientCashError;
-
-impl Error for InsufficientCashError {}
-
-impl Display for InsufficientCashError {
-    fn fmt(&self, f: &mut Formatter) -> std::fmt::Result {
-        write!(f, "Client has insufficient cash to execute order")
+    fn debit_force(&mut self, value: &f64) -> BrokerCashEvent {
+        info!(
+            "BROKER: Force debt {:?} cash, current balance of {:?}",
+            value,
+            self.get_cash_balance()
+        );
+        self.update_cash_balance(CashValue::from(*self.get_cash_balance() - *value));
+        BrokerCashEvent::WithdrawSuccess(CashValue::from(*value))
     }
 }
 
-#[derive(Debug, Clone)]
-/// Broker has attempted to execute an order which cannot be completed due to a problem with the
-/// order.
-pub struct UnexecutableOrderError;
+/// These operations were historically separated into implementations but have been moved into
+/// traits to see whether they can be made common across brokers. It is likely that this may
+/// change as some parts are closely bound to exchanges.
+pub trait BrokerOperations<O: BrokerOrder, Q: BrokerQuote>:
+    Portfolio<Q> + BrokerStates + SendOrder<O> + CashOperations<Q>
+{
+    /// If current round of trades have caused broker to run out of cash then this will rebalance.
+    ///
+    /// Has a fixed value buffer, currently set to 1000, to reduce the probability of the broker
+    /// moving into an insufficient cash state.
+    fn rebalance_cash(&mut self) {
+        //Has to be less than, we can have zero value without needing to liquidate if we initialize
+        //the portfolio but exchange doesn't execute any trades. This can happen if we are missing
+        //prices at the start of the series
+        if *self.get_cash_balance() < 0.0 {
+            let shortfall = *self.get_cash_balance() * -1.0;
+            //When we raise cash, we try to raise a small amount more to stop continuous
+            //rebalancing, this amount is arbitrary atm
+            let plus_buffer = shortfall + 1000.0;
 
-impl Error for UnexecutableOrderError {}
-
-impl Display for UnexecutableOrderError {
-    fn fmt(&self, f: &mut Formatter) -> std::fmt::Result {
-        write!(f, "Client has passed unexecutable order")
-    }
-}
-
-#[cfg(test)]
-mod tests {
-
-    use super::{BacktestBroker, BrokerCalculations, BrokerCost, OrderType};
-    use crate::broker::single::{SingleBroker, SingleBrokerBuilder};
-    use crate::broker::{Dividend, ReceivesOrders, ReceivesOrdersAsync};
-
-    use crate::input::{
-        fake_price_source_generator, CorporateEventsSource, DefaultCorporateEventsSource,
-    };
-    use crate::types::PortfolioAllocation;
-
-    use alator_clock::{ClockBuilder, Frequency};
-    use alator_exchange::input::DefaultPriceSource;
-    use alator_exchange::{ExchangeSync, SyncExchangeImpl};
-
-    #[test]
-    fn diff_direction_correct_if_need_to_buy() {
-        let clock = ClockBuilder::with_length_in_days(0, 10)
-            .with_frequency(&Frequency::Daily)
-            .build();
-        let price_source = fake_price_source_generator(clock.clone());
-
-        let mut exchange = SyncExchangeImpl::new(clock.clone(), price_source);
-
-        let mut brkr = SingleBrokerBuilder::new()
-            .with_trade_costs(vec![BrokerCost::flat(1.0)])
-            .with_exchange(exchange)
-            .build();
-
-        let mut weights = PortfolioAllocation::new();
-        weights.insert("ABC", 1.0);
-
-        brkr.deposit_cash(&100_000.0);
-        brkr.check();
-
-        let orders = BrokerCalculations::diff_brkr_against_target_weights(&weights, &mut brkr);
-        println!("{:?}", orders);
-        let first = orders.first().unwrap();
-        assert!(matches!(
-            first.get_order_type(),
-            OrderType::MarketBuy { .. }
-        ));
+            let res = self.withdraw_cash_with_liquidation(&plus_buffer);
+            if let BrokerCashEvent::WithdrawFailure(_val) = res {
+                //The broker tried to generate cash required but was unable to do so. Stop all
+                //further mutations, and run out the current portfolio state to return some
+                //value to strategy
+                self.update_broker_state(BrokerState::Failed);
+            }
+        }
     }
 
-    #[test]
-    fn diff_direction_correct_if_need_to_sell() {
-        //This is connected to the previous test, if the above fails then this will never pass.
-        //However, if the above passes this could still fail.
-        let clock = ClockBuilder::with_length_in_days(0, 10)
-            .with_frequency(&Frequency::Daily)
-            .build();
+    /// Withdrawing with liquidation will queue orders to generate the expected amount of cash. No
+    /// ordering to the assets that are sold, the broker is responsible for managing cash but not
+    /// re-aligning to a target portfolio.
+    ///
+    /// Because orders are not executed instaneously this method can be the source of significant
+    /// divergences in performance from the underlying in certain cases. For example, if prices are
+    /// volatile, in the case of low-frequency data, then the broker will end up continuously
+    /// re-balancing in a random way under certain price movements.
+    fn withdraw_cash_with_liquidation(&mut self, cash: &f64) -> BrokerCashEvent {
+        // TODO: is it better to return a sequence of orders to achieve a cash balance? Because
+        // of the linkage with execution, we need seperate methods for sync/async.
+        info!("BROKER: Withdrawing {:?} with liquidation", cash);
+        let value = self.get_liquidation_value();
+        if cash > &value {
+            //There is no way for the portfolio to recover, we leave the portfolio in an invalid
+            //state because the client may be able to recover later
+            self.debit(cash);
+            info!(
+                "BROKER: Failed to withdraw {:?} with liquidation. Deducting value from cash.",
+                cash
+            );
+            BrokerCashEvent::WithdrawFailure(CashValue::from(*cash))
+        } else {
+            //This holds how much we have left to generate from the portfolio to produce the cash
+            //required
+            let mut total_sold = *cash;
 
-        let price_source = fake_price_source_generator(clock.clone());
-
-        let mut exchange = SyncExchangeImpl::new(clock.clone(), price_source);
-
-        let mut brkr = SingleBrokerBuilder::new()
-            .with_trade_costs(vec![BrokerCost::flat(1.0)])
-            .with_exchange(exchange)
-            .build();
-
-        let mut weights = PortfolioAllocation::new();
-        weights.insert("ABC", 1.0);
-
-        brkr.deposit_cash(&100_000.0);
-        let orders = BrokerCalculations::diff_brkr_against_target_weights(&weights, &mut brkr);
-        brkr.send_orders(&orders);
-
-        brkr.check();
-
-        brkr.check();
-
-        let mut weights1 = PortfolioAllocation::new();
-        //This weight needs to very small because it is possible for the data generator to generate
-        //a price that drops significantly meaning that rebalancing requires a buy not a sell. This
-        //is unlikely but seems to happen eventually.
-        weights1.insert("ABC", 0.01);
-        let orders1 = BrokerCalculations::diff_brkr_against_target_weights(&weights1, &mut brkr);
-
-        println!("{:?}", orders1);
-        let first = orders1.first().unwrap();
-        assert!(matches!(
-            first.get_order_type(),
-            OrderType::MarketSell { .. }
-        ));
+            let positions = self.get_positions();
+            let mut sell_orders: Vec<O> = Vec::new();
+            for ticker in positions {
+                let position_value = self
+                    .get_position_value(&ticker)
+                    .unwrap_or(CashValue::from(0.0));
+                //Position won't generate enough cash to fulfill total order
+                //Create orders for selling 100% of position, continue
+                //to next position to see if we can generate enough cash
+                //
+                //Sell 100% of position
+                if *position_value <= total_sold {
+                    //Cannot be called without qty existing
+                    if let Some(qty) = self.get_position_qty(&ticker) {
+                        let order = O::market_sell(ticker, *qty);
+                        info!("BROKER: Withdrawing {:?} with liquidation, queueing sale of {:?} shares of {:?}", cash, order.get_shares(), order.get_symbol());
+                        sell_orders.push(order);
+                        total_sold -= *position_value;
+                    }
+                } else {
+                    //Position can generate all the cash we need
+                    //Create orders to sell 100% of position, don't continue to next stock
+                    //
+                    //Cannot be called without quote existing so unwrap
+                    let quote = self.get_quote(&ticker).unwrap();
+                    let price = quote.get_bid();
+                    let shares_req = PortfolioQty::from((total_sold / price).ceil());
+                    let order = O::market_sell(ticker, *shares_req);
+                    info!("BROKER: Withdrawing {:?} with liquidation, queueing sale of {:?} shares of {:?}", cash, order.get_shares(), order.get_symbol());
+                    sell_orders.push(order);
+                    total_sold = 0.0;
+                    break;
+                }
+            }
+            if (total_sold).eq(&0.0) {
+                //The portfolio can provide enough cash so we can execute the sell orders
+                //We leave the portfolio in the wrong state for the client to deal with
+                self.send_orders(&sell_orders);
+                info!("BROKER: Succesfully withdrew {:?} with liquidation", cash);
+                BrokerCashEvent::WithdrawSuccess(CashValue::from(*cash))
+            } else {
+                //For whatever reason, we went through the above process and were unable to find
+                //the cash. Don't send any orders, leave portfolio in invalid state for client to
+                //potentially recover.
+                self.debit(cash);
+                info!(
+                    "BROKER: Failed to withdraw {:?} with liquidation. Deducting value from cash.",
+                    cash
+                );
+                BrokerCashEvent::WithdrawFailure(CashValue::from(*cash))
+            }
+        }
     }
 
-    #[test]
-    fn diff_continues_if_security_missing() {
-        //In this scenario, the user has inserted incorrect information but this scenario can also occur if there is no quote
-        //for a given security on a certain date. We are interested in the latter case, not the former but it is more
-        //difficult to test for the latter, and the code should be the same.
-        let clock = ClockBuilder::with_length_in_days(0, 10)
-            .with_frequency(&Frequency::Daily)
-            .build();
-
-        let price_source = fake_price_source_generator(clock.clone());
-        let mut exchange = SyncExchangeImpl::new(clock.clone(), price_source);
-
-        let mut brkr = SingleBrokerBuilder::new()
-            .with_trade_costs(vec![BrokerCost::flat(1.0)])
-            .with_exchange(exchange)
-            .build();
-
-        let mut weights = PortfolioAllocation::new();
-        weights.insert("ABC", 0.5);
-        //There is no quote for this security in the underlying data, code should make the assumption (that doesn't apply here)
-        //that there is some quote for this security at a later date and continues to generate order for ABC without throwing
-        //error
-        weights.insert("XYZ", 0.5);
-
-        brkr.deposit_cash(&100_000.0);
-        brkr.check();
-        let orders = BrokerCalculations::diff_brkr_against_target_weights(&weights, &mut brkr);
-        assert!(orders.len() == 1);
+    fn client_has_sufficient_cash<T: Into<BrokerOrderType>>(
+        &self,
+        order: &O,
+        price: &Price,
+    ) -> Result<(), InsufficientCashError> {
+        let shares = order.get_shares();
+        let value = CashValue::from(shares * **price);
+        match order.get_order_type::<T>() {
+            BrokerOrderType::MarketBuy => {
+                if self.get_cash_balance() > value {
+                    return Ok(());
+                }
+                Err(InsufficientCashError)
+            }
+            BrokerOrderType::MarketSell => Ok(()),
+            _ => unreachable!("Shouldn't hit unless something has gone wrong"),
+        }
     }
 
-    #[test]
-    #[should_panic]
-    fn diff_panics_if_brkr_has_no_cash() {
-        //If we get to a point where the client is diffing without cash, we can assume that no further operations are possible
-        //and we should panic
-        let clock = ClockBuilder::with_length_in_days(0, 10)
-            .with_frequency(&Frequency::Daily)
-            .build();
-
-        let price_source = fake_price_source_generator(clock.clone());
-        let mut exchange = SyncExchangeImpl::new(clock.clone(), price_source);
-
-        let mut brkr = SingleBrokerBuilder::new()
-            .with_trade_costs(vec![BrokerCost::flat(1.0)])
-            .with_exchange(exchange)
-            .build();
-
-        let mut weights = PortfolioAllocation::new();
-        weights.insert("ABC", 1.0);
-
-        brkr.check();
-        BrokerCalculations::diff_brkr_against_target_weights(&weights, &mut brkr);
+    fn client_has_sufficient_holdings_for_sale<T: Into<BrokerOrderType>>(
+        &self,
+        order: &O,
+    ) -> Result<(), UnexecutableOrderError> {
+        if let BrokerOrderType::MarketSell = order.get_order_type::<T>() {
+            if let Some(holding) = self.get_position_qty(&order.get_symbol()) {
+                if *holding >= order.get_shares() {
+                    return Ok(());
+                } else {
+                    return Err(UnexecutableOrderError);
+                }
+            }
+        }
+        Ok(())
     }
 
-    #[test]
-    fn can_estimate_trade_costs_of_proposed_trade() {
-        let pershare = BrokerCost::per_share(0.1);
-        let flat = BrokerCost::flat(10.0);
-        let pct = BrokerCost::pct_of_value(0.01);
-
-        let res = pershare.trade_impact(&1000.0, &1.0, true);
-        assert!((*res.1).eq(&1.1));
-
-        let res = pershare.trade_impact(&1000.0, &1.0, false);
-        assert!((*res.1).eq(&0.9));
-
-        let res = flat.trade_impact(&1000.0, &1.0, true);
-        assert!((*res.0).eq(&990.00));
-
-        let res = pct.trade_impact(&100.0, &1.0, true);
-        assert!((*res.0).eq(&99.0));
-
-        let costs = vec![pershare, flat];
-        let initial = BrokerCost::trade_impact_total(&costs, &1000.0, &1.0, true);
-        assert!((*initial.0).eq(&990.00));
-        assert!((*initial.1).eq(&1.1));
+    fn client_is_issuing_nonsense_order(&self, order: &O) -> Result<(), UnexecutableOrderError> {
+        let shares = order.get_shares();
+        if shares == 0.0 {
+            return Err(UnexecutableOrderError);
+        }
+        Ok(())
     }
 
-    #[test]
-    fn diff_handles_sent_but_unexecuted_orders() {
-        //It is possible for the client to issue orders for infinitely increasing numbers of shares
-        //if there is a gap between orders being issued and executed. For example, if we are
-        //missing price data the client could think we need 100 shares, that order doesn't get
-        //executed on the next tick, and the client then issues orders for another 100 shares.
-        //
-        //This is not possible without earlier price data either. If there is no price data then
-        //the diff will be unable to work out how many shares are required. So the test case is
-        //some price but no price for the execution period.
-        let clock = ClockBuilder::with_length_in_seconds(100, 5)
-            .with_frequency(&Frequency::Second)
-            .build();
-        let mut price_source = DefaultPriceSource::new();
-        price_source.add_quotes(100.00, 100.00, 100, "ABC");
-        price_source.add_quotes(100.00, 100.00, 101, "ABC");
-        price_source.add_quotes(100.00, 100.00, 103, "ABC");
+    /// Calculates difference between current broker state and a target allocation, the latter
+    /// typically passed from a strategy.
+    ///
+    /// Brokers do not expect target wights, they merely respond to orders so this structure
+    /// is not required to create backtests.
+    fn diff_brkr_against_target_weights(&mut self, target_weights: &PortfolioAllocation) -> Vec<O> {
+        //Returns orders so calling function has control over when orders are executed
+        //Requires mutable reference to brkr because it calls get_position_value
+        //Need liquidation value so we definitely have enough money to make all transactions after
+        //costs
+        info!("STRATEGY: Calculating diff of current allocation vs. target");
+        let total_value = self.get_liquidation_value();
+        if (*total_value).eq(&0.0) {
+            panic!("Client is attempting to trade a portfolio with zero value");
+        }
+        let mut orders: Vec<O> = Vec::new();
 
-        let mut exchange = SyncExchangeImpl::new(clock.clone(), price_source);
+        let mut buy_orders: Vec<O> = Vec::new();
+        let mut sell_orders: Vec<O> = Vec::new();
 
-        let mut brkr = SingleBrokerBuilder::new().with_exchange(exchange).build();
+        //This returns a positive number for buy and negative for sell, this is necessary because
+        //of calculations made later to find the net position of orders on the exchange.
+        let calc_required_shares_with_costs = |diff_val: &f64, quote: &Q, brkr: &Self| -> f64 {
+            if diff_val.lt(&0.0) {
+                let price = quote.get_bid();
+                let costs = brkr.calc_trade_impact(&diff_val.abs(), &price, false);
+                let total = (*costs.0 / *costs.1).floor();
+                -total
+            } else {
+                let price = quote.get_ask();
+                let costs = brkr.calc_trade_impact(&diff_val.abs(), &price, true);
+                (*costs.0 / *costs.1).floor()
+            }
+        };
 
-        brkr.deposit_cash(&100_000.0);
+        for symbol in target_weights.keys() {
+            let curr_val = self
+                .get_position_value(&symbol)
+                .unwrap_or(CashValue::from(0.0));
+            //Iterating over target_weights so will always find value
+            let target_val = CashValue::from(*total_value * **target_weights.get(&symbol).unwrap());
+            let diff_val = CashValue::from(*target_val - *curr_val);
+            if (*diff_val).eq(&0.0) {
+                break;
+            }
 
-        //No price for security so we haven't diffed correctly
-        brkr.check();
-
-        brkr.check();
-
-        let mut target_weights = PortfolioAllocation::new();
-        target_weights.insert("ABC", 0.9);
-
-        let orders =
-            BrokerCalculations::diff_brkr_against_target_weights(&target_weights, &mut brkr);
-        brkr.send_orders(&orders);
-
-        brkr.check();
-
-        let orders1 =
-            BrokerCalculations::diff_brkr_against_target_weights(&target_weights, &mut brkr);
-
-        brkr.send_orders(&orders1);
-        brkr.check();
-
-        dbg!(brkr.get_position_qty("ABC"));
-        //If the logic isn't correct the orders will have doubled up to 1800
-        assert_eq!(*brkr.get_position_qty("ABC").unwrap(), 900.0);
-    }
-
-    #[tokio::test]
-    async fn diff_handles_case_when_existing_order_requires_sell_to_rebalance() {
-        //Tests similar scenario to previous test but for the situation in which the price is
-        //missing, and we try to rebalance by buying but the pending order is for a significantly
-        //greater amount of shares than we now need (e.g. we have a price of X, we miss a price,
-        //and then it drops 20%).
-        let clock = ClockBuilder::with_length_in_seconds(100, 5)
-            .with_frequency(&Frequency::Second)
-            .build();
-
-        let mut price_source = DefaultPriceSource::new();
-        price_source.add_quotes(100.00, 100.00, 100, "ABC");
-        price_source.add_quotes(75.00, 75.00, 103, "ABC");
-        price_source.add_quotes(75.00, 75.00, 104, "ABC");
-
-        let mut exchange = SyncExchangeImpl::new(clock.clone(), price_source);
-
-        let mut brkr = SingleBrokerBuilder::new().with_exchange(exchange).build();
-
-        brkr.deposit_cash(&100_000.0);
-
-        let mut target_weights = PortfolioAllocation::new();
-        target_weights.insert("ABC", 0.9);
-        let orders =
-            BrokerCalculations::diff_brkr_against_target_weights(&target_weights, &mut brkr);
-        println!("{:?}", orders);
-
-        brkr.send_orders(&orders);
-
-        //No price for security so we haven't diffed correctly
-        brkr.check();
-
-        brkr.check();
-
-        brkr.check();
-
-        let orders1 =
-            BrokerCalculations::diff_brkr_against_target_weights(&target_weights, &mut brkr);
-        println!("{:?}", orders1);
-
-        brkr.send_orders(&orders1);
-
-        brkr.check();
-
-        println!("{:?}", brkr.get_holdings());
-        //If the logic isn't correct then the order will be for less shares than is actually
-        //required by the newest price
-        assert_eq!(*brkr.get_position_qty("ABC").unwrap(), 1200.0);
+            //We do not throw an error here, we just proceed assuming that the client has passed in data that will
+            //eventually prove correct if we are missing quotes for the current time.
+            if let Some(quote) = self.get_quote(&symbol) {
+                //This will be negative if the net is selling
+                let required_shares = calc_required_shares_with_costs(&diff_val, &quote, self);
+                //TODO: must be able to clear pending orders
+                //Clear any pending orders on the exchange
+                //self.clear_pending_market_orders_by_symbol(&symbol);
+                if required_shares.ne(&0.0) {
+                    if required_shares.gt(&0.0) {
+                        buy_orders.push(O::market_buy(symbol.clone(), required_shares));
+                    } else {
+                        sell_orders.push(O::market_sell(
+                            symbol.clone(),
+                            //Order stores quantity as non-negative
+                            required_shares.abs(),
+                        ));
+                    }
+                }
+            }
+        }
+        //Sell orders have to be executed before buy orders
+        orders.extend(sell_orders);
+        orders.extend(buy_orders);
+        orders
     }
 }

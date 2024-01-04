@@ -1,8 +1,8 @@
 //! Generates performance stats for backtest
 
 use crate::types::StrategySnapshot;
-use alator_clock::Frequency;
 use itertools::Itertools;
+use rotala::clock::Frequency;
 
 /// Output for single backtest run.
 #[derive(Clone, Debug)]
@@ -84,18 +84,16 @@ impl PortfolioCalculations {
     fn annualize_returns(ret: f64, periods: i32, frequency: &Frequency) -> f64 {
         match frequency {
             Frequency::Daily => ((1_f64 + ret).powf(365_f64 / periods as f64)) - 1_f64,
-            Frequency::Monthly => ((1_f64 + ret).powf(1_f64 / (periods as f64 / 12_f64))) - 1_f64,
-            Frequency::Yearly => ((1_f64 + ret).powf(1_f64 / (periods as f64 / 1_f64))) - 1_f64,
             Frequency::Second => panic!("No performance stats by second"),
+            Frequency::Fixed => panic!("No performance stats by fixed"),
         }
     }
 
     fn annualize_volatility(vol: f64, frequency: &Frequency) -> f64 {
         match frequency {
             Frequency::Daily => (vol) * (252_f64).sqrt(),
-            Frequency::Monthly => (vol) * (12_f64).sqrt(),
-            Frequency::Yearly => vol,
             Frequency::Second => panic!("No performance stats by second"),
+            Frequency::Fixed => panic!("No performance stats by fixed"),
         }
     }
 
@@ -248,48 +246,48 @@ impl PerformanceCalculator {
             dd_end_date,
             best_return,
             worst_return,
-            frequency: freq.to_str(),
+            frequency: freq.into(),
         }
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use crate::broker::single::{SingleBroker, SingleBrokerBuilder};
+    use rotala::clock::Clock;
+    use rotala::exchange::uist::UistV1;
+    use rotala::input::penelope::PenelopeBuilder;
+
+    use crate::broker::uist::UistBroker;
+    use crate::broker::uist::UistBrokerBuilder;
     use crate::broker::BrokerCost;
     use crate::perf::StrategySnapshot;
     use crate::strategy::staticweight::StaticWeightStrategyBuilder;
     use crate::strategy::{History, Strategy};
     use crate::types::PortfolioAllocation;
-    use alator_clock::{Clock, ClockBuilder};
-    use alator_exchange::input::DefaultPriceSource;
-    use alator_exchange::SyncExchangeImpl;
 
     use super::Frequency;
     use super::PerformanceCalculator;
     use super::PortfolioCalculations;
 
-    fn setup() -> (SingleBroker, Clock) {
-        let clock = ClockBuilder::with_length_in_dates(100, 103)
-            .with_frequency(&Frequency::Second)
-            .build();
+    fn setup() -> (UistBroker, Clock) {
+        let mut source_builder = PenelopeBuilder::new();
+        source_builder.add_quote(101.0, 102.0, 100, "ABC");
+        source_builder.add_quote(102.0, 103.0, 101, "ABC");
+        source_builder.add_quote(97.0, 98.0, 102, "ABC");
+        source_builder.add_quote(105.0, 106.0, 103, "ABC");
 
-        let mut price_source = DefaultPriceSource::new();
-        price_source.add_quotes(101.0, 102.0, 100, "ABC");
-        price_source.add_quotes(102.0, 103.0, 101, "ABC");
-        price_source.add_quotes(97.0, 98.0, 102, "ABC");
-        price_source.add_quotes(105.0, 106.0, 103, "ABC");
+        source_builder.add_quote(501.0, 502.0, 100, "BCD");
+        source_builder.add_quote(503.0, 504.0, 101, "BCD");
+        source_builder.add_quote(498.0, 499.0, 102, "BCD");
+        source_builder.add_quote(495.0, 496.0, 103, "BCD");
 
-        price_source.add_quotes(501.0, 502.0, 100, "BCD");
-        price_source.add_quotes(503.0, 504.0, 101, "BCD");
-        price_source.add_quotes(498.0, 499.0, 102, "BCD");
-        price_source.add_quotes(495.0, 496.0, 103, "BCD");
+        let (price_source, clock) =
+            source_builder.build_with_frequency(rotala::clock::Frequency::Second);
+        let uist = UistV1::new(clock.clone(), price_source, "FAKE");
 
-        let exchange = SyncExchangeImpl::new(clock.clone(), price_source);
-
-        let brkr = SingleBrokerBuilder::new()
+        let brkr = UistBrokerBuilder::new()
             .with_trade_costs(vec![BrokerCost::PctOfValue(0.01)])
-            .with_exchange(exchange)
+            .with_exchange(uist)
             .build();
 
         (brkr, clock)
@@ -303,15 +301,6 @@ mod tests {
             45.0
         );
         assert_eq!(
-            (PortfolioCalculations::annualize_returns(0.10, 4, &Frequency::Monthly) * 100.0)
-                .round(),
-            33.0
-        );
-        assert_eq!(
-            (PortfolioCalculations::annualize_returns(0.30, 3, &Frequency::Yearly) * 100.0).round(),
-            9.0
-        );
-        assert_eq!(
             (PortfolioCalculations::annualize_returns(0.05, 126, &Frequency::Daily) * 100.0)
                 .round(),
             15.0
@@ -320,15 +309,6 @@ mod tests {
         assert_eq!(
             (PortfolioCalculations::annualize_volatility(0.01, &Frequency::Daily) * 100.0).round(),
             16.0
-        );
-        assert_eq!(
-            (PortfolioCalculations::annualize_volatility(0.05, &Frequency::Monthly) * 100.0)
-                .round(),
-            17.0
-        );
-        assert_eq!(
-            (PortfolioCalculations::annualize_volatility(0.27, &Frequency::Yearly) * 100.0).round(),
-            27.0
         );
     }
 
@@ -424,8 +404,8 @@ mod tests {
         };
         let without_cash_flows = vec![snap3, snap4, snap5, snap6];
 
-        let perf0 = PerformanceCalculator::calculate(Frequency::Yearly, with_cash_flows);
-        let perf1 = PerformanceCalculator::calculate(Frequency::Yearly, without_cash_flows);
+        let perf0 = PerformanceCalculator::calculate(Frequency::Daily, with_cash_flows);
+        let perf1 = PerformanceCalculator::calculate(Frequency::Daily, without_cash_flows);
 
         let ret0 = f64::round(perf0.ret * 100.0);
         let ret1 = f64::round(perf1.ret * 100.0);
@@ -458,7 +438,7 @@ mod tests {
 
         let with_inflation = vec![snap1, snap2, snap3];
 
-        let perf = PerformanceCalculator::calculate(Frequency::Yearly, with_inflation);
+        let perf = PerformanceCalculator::calculate(Frequency::Daily, with_inflation);
 
         dbg!(&perf.returns);
         assert!(perf.returns == vec![0.0, 0.0])
@@ -487,7 +467,7 @@ mod tests {
 
         let with_zeros = vec![snap1, snap2, snap3];
 
-        let perf = PerformanceCalculator::calculate(Frequency::Yearly, with_zeros);
+        let perf = PerformanceCalculator::calculate(Frequency::Daily, with_zeros);
 
         dbg!(&perf.returns);
         assert!(perf.returns == vec![0.0, 0.0])
@@ -516,7 +496,7 @@ mod tests {
 
         let snaps = vec![snap1, snap2, snap3];
 
-        let perf = PerformanceCalculator::calculate(Frequency::Yearly, snaps);
+        let perf = PerformanceCalculator::calculate(Frequency::Daily, snaps);
         assert!(perf.best_return > perf.worst_return);
     }
 }

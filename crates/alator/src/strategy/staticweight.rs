@@ -1,18 +1,17 @@
 use log::info;
+use rotala::exchange::uist::UistTrade;
 
-use crate::broker::single::SingleBroker;
-use crate::broker::{
-    BacktestBroker, BrokerCalculations, BrokerCashEvent, DividendPayment, EventLog, ReceivesOrders,
-    Trade,
-};
+use crate::broker::uist::UistBroker;
+use crate::broker::{BrokerCashEvent, BrokerOperations, CashOperations, Portfolio, SendOrder};
+use crate::perf::{BacktestOutput, PerformanceCalculator};
 use crate::schedule::{DefaultTradingSchedule, TradingSchedule};
 use crate::strategy::{Audit, History, Strategy, StrategyEvent, TransferFrom, TransferTo};
 use crate::types::{CashValue, PortfolioAllocation, StrategySnapshot};
-use alator_clock::Clock;
+use rotala::clock::{Clock, Frequency};
 
 pub struct StaticWeightStrategyBuilder {
     //If missing either field, we cannot run this strategy
-    brkr: Option<SingleBroker>,
+    brkr: Option<UistBroker>,
     weights: Option<PortfolioAllocation>,
     clock: Option<Clock>,
 }
@@ -39,7 +38,7 @@ impl StaticWeightStrategyBuilder {
         self
     }
 
-    pub fn with_brkr(&mut self, brkr: SingleBroker) -> &mut Self {
+    pub fn with_brkr(&mut self, brkr: UistBroker) -> &mut Self {
         self.brkr = Some(brkr);
         self
     }
@@ -67,7 +66,7 @@ impl Default for StaticWeightStrategyBuilder {
 ///Basic implementation of an investment strategy which takes a set of fixed-weight allocations and
 ///rebalances over time towards those weights.
 pub struct StaticWeightStrategy {
-    brkr: SingleBroker,
+    brkr: UistBroker,
     target_weights: PortfolioAllocation,
     net_cash_flow: CashValue,
     clock: Clock,
@@ -75,6 +74,18 @@ pub struct StaticWeightStrategy {
 }
 
 impl StaticWeightStrategy {
+    pub fn run(&mut self) {
+        while self.clock.has_next() {
+            self.update();
+        }
+    }
+
+    pub fn perf(&self, freq: Frequency) -> BacktestOutput {
+        //Intended to be called at end of simulation
+        let hist = self.get_history();
+        PerformanceCalculator::calculate(freq, hist)
+    }
+
     pub fn get_snapshot(&mut self) -> StrategySnapshot {
         // Defaults to zero inflation because most users probably aren't looking
         // for real returns calcs
@@ -92,10 +103,9 @@ impl Strategy for StaticWeightStrategy {
     fn init(&mut self, initital_cash: &f64) {
         self.deposit_cash(initital_cash);
         if DefaultTradingSchedule::should_trade(&self.clock.now()) {
-            let orders = BrokerCalculations::diff_brkr_against_target_weights(
-                &self.target_weights,
-                &mut self.brkr,
-            );
+            let orders = self
+                .brkr
+                .diff_brkr_against_target_weights(&self.target_weights);
             if !orders.is_empty() {
                 self.brkr.send_orders(&orders);
             }
@@ -106,10 +116,9 @@ impl Strategy for StaticWeightStrategy {
         self.brkr.check();
         let now = self.clock.now();
         if DefaultTradingSchedule::should_trade(&now) {
-            let orders = BrokerCalculations::diff_brkr_against_target_weights(
-                &self.target_weights,
-                &mut self.brkr,
-            );
+            let orders = self
+                .brkr
+                .diff_brkr_against_target_weights(&self.target_weights);
             if !orders.is_empty() {
                 self.brkr.send_orders(&orders);
             }
@@ -143,7 +152,7 @@ impl TransferFrom for StaticWeightStrategy {
         if let BrokerCashEvent::WithdrawSuccess(withdrawn) =
             //No logging here because the implementation is fully logged due to the greater
             //complexity of this task vs standard withdraw
-            BrokerCalculations::withdraw_cash_with_liquidation(cash, &mut self.brkr)
+            self.brkr.withdraw_cash_with_liquidation(cash)
         {
             self.net_cash_flow = CashValue::from(*self.net_cash_flow - *withdrawn);
             return StrategyEvent::WithdrawSuccess(CashValue::from(*cash));
@@ -152,13 +161,9 @@ impl TransferFrom for StaticWeightStrategy {
     }
 }
 
-impl Audit for StaticWeightStrategy {
-    fn trades_between(&self, start: &i64, end: &i64) -> Vec<Trade> {
+impl Audit<UistTrade> for StaticWeightStrategy {
+    fn trades_between(&self, start: &i64, end: &i64) -> Vec<UistTrade> {
         self.brkr.trades_between(start, end)
-    }
-
-    fn dividends_between(&self, start: &i64, end: &i64) -> Vec<DividendPayment> {
-        self.brkr.dividends_between(start, end)
     }
 }
 

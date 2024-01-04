@@ -1,6 +1,6 @@
 [package]
 name = "alator"
-version = "0.3.3"
+version = "0.4.0"
 authors = ["Calum Russell <calum.mj.russell@gmail.com>"]
 edition = "2021"
 license-file = "LICENCE"
@@ -19,8 +19,7 @@ pyo3 = { version = "0.20.0", optional = true }
 async-trait = "0.1.73"
 tokio = { version = "1.32.0", features = ["full"] }
 futures = "0.3.28"
-alator-clock = { path = "../alator-clock" }
-alator-exchange = { path = "../alator-exchange" }
+rotala = { path = "../rotala" }
 
 [dev-dependencies]
 reqwest = { version = "0.11.11", features=["blocking"] }

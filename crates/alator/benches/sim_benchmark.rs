@@ -1,90 +1,78 @@
-use alator_clock::{ClockBuilder, Frequency};
-use alator_exchange::input::DefaultPriceSource;
-use alator_exchange::SyncExchangeImpl;
+use alator::broker::uist::UistBrokerBuilder;
+use alator::broker::{BrokerCost, CashOperations, SendOrder};
+use alator::strategy::Strategy;
 use criterion::{criterion_group, criterion_main, Criterion};
 use rand::thread_rng;
 use rand_distr::{Distribution, Uniform};
 
-use alator::broker::single::SingleBrokerBuilder;
-use alator::broker::{BacktestBroker, BrokerCost, Order, OrderType, ReceivesOrders};
-use alator::simcontext::SimContextBuilder;
 use alator::strategy::staticweight::StaticWeightStrategyBuilder;
 use alator::types::{CashValue, PortfolioAllocation};
+use rotala::exchange::uist::{UistOrder, UistV1};
+use rotala::input::penelope::PenelopeBuilder;
 
 fn full_backtest_random_data() {
+    let mut source_builder = PenelopeBuilder::new();
+
     let price_dist = Uniform::new(90.0, 100.0);
     let mut rng = thread_rng();
-    let length_in_days: i64 = 100;
-    let start_date: i64 = 1609750800; //Date - 4/1/21 9:00:0000
-    let clock = ClockBuilder::with_length_in_days(start_date, length_in_days)
-        .with_frequency(&Frequency::Daily)
-        .build();
 
-    let initial_cash: CashValue = 100_000.0.into();
-
-    let mut price_source = DefaultPriceSource::new();
-    for date in clock.peek() {
-        price_source.add_quotes(
+    for date in 0..100 {
+        source_builder.add_quote(
             price_dist.sample(&mut rng),
             price_dist.sample(&mut rng),
-            *date,
+            date,
             "ABC",
         );
-        price_source.add_quotes(
+        source_builder.add_quote(
             price_dist.sample(&mut rng),
             price_dist.sample(&mut rng),
-            *date,
+            date,
             "BCD",
         );
     }
+
+    let (price_source, clock) =
+        source_builder.build_with_frequency(rotala::clock::Frequency::Second);
+    let initial_cash: CashValue = 100_000.0.into();
 
     let mut weights: PortfolioAllocation = PortfolioAllocation::new();
     weights.insert("ABC", 0.5);
     weights.insert("BCD", 0.5);
 
-    let exchange = SyncExchangeImpl::new(clock.clone(), price_source);
-
-    let simbrkr = SingleBrokerBuilder::new()
-        .with_exchange(exchange)
+    let uist = UistV1::new(clock.clone(), price_source, "RANDOM");
+    let simbrkr = UistBrokerBuilder::new()
+        .with_exchange(uist)
         .with_trade_costs(vec![BrokerCost::Flat(1.0.into())])
         .build();
 
-    let strat = StaticWeightStrategyBuilder::new()
+    let mut strat = StaticWeightStrategyBuilder::new()
         .with_brkr(simbrkr)
         .with_weights(weights)
         .with_clock(clock.clone())
         .default();
 
-    let mut sim = SimContextBuilder::new()
-        .with_clock(clock.clone())
-        .with_strategy(strat)
-        .init(&initial_cash);
-
-    sim.run();
+    strat.init(&initial_cash);
+    strat.run();
 }
 
 fn trade_execution_logic() {
-    let clock = ClockBuilder::with_length_in_seconds(100, 5)
-        .with_frequency(&Frequency::Second)
-        .build();
+    let mut source_builder = PenelopeBuilder::new();
+    source_builder.add_quote(100.00, 101.00, 100, "ABC");
+    source_builder.add_quote(10.00, 11.00, 100, "BCD");
+    source_builder.add_quote(100.00, 101.00, 101, "ABC");
+    source_builder.add_quote(10.00, 11.00, 101, "BCD");
+    source_builder.add_quote(104.00, 105.00, 102, "ABC");
+    source_builder.add_quote(10.00, 11.00, 102, "BCD");
+    source_builder.add_quote(104.00, 105.00, 103, "ABC");
+    source_builder.add_quote(12.00, 13.00, 103, "BCD");
 
-    let mut price_source = DefaultPriceSource::new();
-    price_source.add_quotes(100.00, 101.00, 100, "ABC");
-    price_source.add_quotes(10.00, 11.00, 100, "BCD");
-    price_source.add_quotes(100.00, 101.00, 101, "ABC");
-    price_source.add_quotes(10.00, 11.00, 101, "BCD");
-    price_source.add_quotes(104.00, 105.00, 102, "ABC");
-    price_source.add_quotes(10.00, 11.00, 102, "BCD");
-    price_source.add_quotes(104.00, 105.00, 103, "ABC");
-    price_source.add_quotes(12.00, 13.00, 103, "BCD");
-
-    let exchange = SyncExchangeImpl::new(clock.clone(), price_source);
-
-    let mut brkr = SingleBrokerBuilder::new().with_exchange(exchange).build();
+    let (price_source, clock) = source_builder.build();
+    let uist = UistV1::new(clock, price_source, "FAKE");
+    let mut brkr = UistBrokerBuilder::new().with_exchange(uist).build();
 
     brkr.deposit_cash(&100_000.0);
-    brkr.send_order(Order::market(OrderType::MarketBuy, "ABC", 100.0));
-    brkr.send_order(Order::market(OrderType::MarketBuy, "BCD", 100.0));
+    brkr.send_order(UistOrder::market_buy("ABC", 100.0));
+    brkr.send_order(UistOrder::market_buy("BCD", 100.0));
 
     brkr.check();
 
