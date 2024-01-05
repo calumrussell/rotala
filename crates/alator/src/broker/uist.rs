@@ -22,7 +22,7 @@ use super::{
 
 type UistBrokerEvent = BrokerEvent<UistOrder>;
 
-/// Implementation of broker that uses the [Uist](rotala::exchange::uist::Uist) exchange.
+/// Implementation of broker that uses the [Uist](rotala::exchange::uist::UistV1) exchange.
 #[derive(Debug)]
 pub struct UistBroker {
     cash: CashValue,

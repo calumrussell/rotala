@@ -4,14 +4,14 @@
 //! ### Traits
 //!
 //! In order to use the traits, exchange common types must implement broker traits:
-//! - [BrokerTrade](crate::broker::BrokerTrade)
-//! - [BrokerQuote](crate::broker::BrokerQuote)
-//! - [BrokerEvent](crate::broker::BrokerEvent)
+//! - [BrokerTrade]
+//! - [BrokerQuote]
+//! - [BrokerEvent]
 //!
-//! It is also assumed that any exchange supports at least the order types in [BrokerOrderType](crate::broker::BrokerOrderType).
+//! It is also assumed that any exchange supports at least the order types in [BrokerOrderType].
 //!
 //! The traits have been created to provide code for operations that are common across brokers. It
-//! is likely that the traits that touch some of the order logic (for example, [BrokerOperations](crate::broker::BrokerOperations)
+//! is likely that the traits that touch some of the order logic (for example, [BrokerOperations]
 //! ) are too tightly bound to the exchange implementation to be useful across brokers.
 //!  
 //! Broker can hold negative cash values due to the non-immediate execution of trades. Once a
@@ -39,12 +39,12 @@
 //!
 //! ### Uist
 //!
-//! Broker using non-networked [Uist](rotala::exchange::uist::Uist) exchange. Uses the [Penelope](rotala::input::penelope::Penelope)
+//! Broker using non-networked [Uist](rotala::exchange::uist::UistV1) exchange. Uses the [Penelope](rotala::input::penelope::Penelope)
 //! input format and requires a reference to the [Clock](rotala::clock::Clock) that is shared with
 //! exchange (this can be created with input using builders).
 //!
 //! Should use [UistBrokerBuilder](crate::broker::uist::UistBrokerBuilder) to create. Can create
-//! with optional [BrokerCost](crate::broker::BrokerCost).
+//! with optional [BrokerCost].
 
 use std::{
     error::Error,
@@ -143,7 +143,7 @@ impl BrokerQuote for UistQuote {
 }
 
 /// Implicit in this trait is that the underlying exchange supports at least as many order types
-/// as [BrokerOrderType](crate::broker::BrokerOrderType).
+/// as [BrokerOrderType].
 ///
 /// `market_buy` and `market_sell` operations are necessary for internally triggered orders i.e.
 /// rebalancing due to a cash shortfall.
@@ -444,7 +444,7 @@ pub trait Portfolio<Q: BrokerQuote>: Quote<Q> {
     fn get_trade_costs(&self) -> Vec<BrokerCost>;
 }
 
-/// Tightly bound to [BrokerState](crate::broker::BrokerState) and with [CashOperations](crate::broker::CashOperations)
+/// Tightly bound to [BrokerState] and with [CashOperations]
 /// making the assumption that we have a structure that can move into an invalid state with code
 /// to handle that situation.
 pub trait BrokerStates {
@@ -452,7 +452,7 @@ pub trait BrokerStates {
     fn update_broker_state(&mut self, state: BrokerState);
 }
 
-/// Operations that modify cash balances. Tightly bound to [BrokerStates](crate::broker::BrokerStates)
+/// Operations that modify cash balances. Tightly bound to [BrokerStates]
 /// as the result of these operations has to be guarded so that the broker doesn't move into a
 /// permanently bad state that produces bad values for clients.
 ///
