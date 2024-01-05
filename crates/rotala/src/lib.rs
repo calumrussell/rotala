@@ -19,7 +19,7 @@
 //! orderbook contains the core execution logic and defines the format of orders and trades. This
 //! is distinct from an exchange as the an orderbook could be LOB, could use candles, etc. And this
 //! varies in a distinct way from the interface presented to clients.
-//! - An exchange implementation, [Uist](crate::exchange::uist::Uist) is an example. In terms of
+//! - An exchange implementation, [Uist](crate::exchange::uist::UistV1) is an example. In terms of
 //! code, this ends up being a fairly thin wrapper depending more on the kind of clients than
 //! the actual execution logic used by the orderbook. To explain more from above, the
 //! exchange is the external interface that provides a set of possible operations to users and does
@@ -38,7 +38,7 @@
 //!
 //! # Uist
 //!
-//! Interface to Uist is defined in [UistClient](crate::client::uist::UistClient).
+//! Interface to Uist is defined in [UistClient](crate::client::uist::UistV1Client).
 //!
 //! The flow of Uist is:
 //! - init called at start, this returns some information about the dataset

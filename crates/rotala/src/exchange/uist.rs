@@ -124,7 +124,7 @@ impl UistV1 {
     }
 }
 
-/// Generates random [Uist] for use in tests that don't depend on prices.
+/// Generates random [Uist](UistV1) for use in tests that don't depend on prices.
 pub fn random_uist_generator(length: i64) -> (UistV1, Clock) {
     let price_dist = Uniform::new(90.0, 100.0);
     let mut rng = thread_rng();
