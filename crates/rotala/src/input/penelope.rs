@@ -4,7 +4,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::{
     clock::{Clock, ClockBuilder, DateTime, Frequency},
-    source::get_binance_1m_klines,
+    source::get_binance_1m_klines, orderbook::diana::{DianaQuote, DianaSource},
 };
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
@@ -30,6 +30,15 @@ impl PenelopeQuote {
 
     pub fn get_date(&self) -> i64 {
         self.date
+    }
+}
+
+impl DianaQuote for PenelopeQuote {
+    fn get_ask(&self) -> f64 {
+        self.ask
+    }
+    fn get_bid(&self) -> f64 {
+        self.bid
     }
 }
 
@@ -66,6 +75,12 @@ impl Penelope {
 
     pub fn from_hashmap(inner: HashMap<i64, HashMap<String, PenelopeQuote>>) -> Self {
         Self { inner }
+    }
+}
+
+impl DianaSource for Penelope {
+    fn get_quote(&self, date: &i64, security: &String) -> Option<impl DianaQuote> {
+        Self::get_quote(&self, date, security).cloned()
     }
 }
 
