@@ -108,7 +108,6 @@ impl UistV1 {
         //tick.
         self.clock.tick();
 
-        dbg!(&self.order_buffer);
         self.sort_order_buffer();
         for order in self.order_buffer.iter_mut() {
             self.orderbook.insert_order(order);

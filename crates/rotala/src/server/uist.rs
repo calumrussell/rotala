@@ -113,9 +113,15 @@ mod tests {
 
     #[actix_web::test]
     async fn test_single_trade_loop() {
+        let app_state = web::Data::new(
+            AppState {
+                exchange: Mutex::new(random_uist_generator(3000).0)
+            }
+        );
+
         let app = test::init_service(
             App::new()
-                .app_data(web::Data::new(Mutex::new(random_uist_generator(3000).0)))
+                .app_data(app_state.clone())
                 .route("/", web::get().to(info))
                 .route("/init", web::get().to(init))
                 .route("/fetch_quotes", web::get().to(fetch_quotes))
