@@ -2,6 +2,7 @@ use std::collections::VecDeque;
 
 use serde::{Deserialize, Serialize};
 
+// Unclear if the right approach is traits but this was the quickest way
 pub trait DianaSource {
     fn get_quote(&self, date: &i64, security: &String) -> Option<impl DianaQuote>;
 }
@@ -216,7 +217,7 @@ impl Diana {
         }
     }
 
-    pub fn execute_orders(&mut self, date: i64, source: impl DianaSource) -> Vec<DianaTrade> {
+    pub fn execute_orders(&mut self, date: i64, source: &impl DianaSource) -> Vec<DianaTrade> {
         let mut completed_orderids = Vec::new();
         let mut trade_results = Vec::new();
         if self.is_empty() {
@@ -335,7 +336,7 @@ mod tests {
         };
         orderbook.insert_order(&mut order3);
 
-        let executed = orderbook.execute_orders(100.into(), source);
+        let executed = orderbook.execute_orders(100.into(), &source);
         assert_eq!(executed.len(), 4);
     }
 
@@ -352,7 +353,7 @@ mod tests {
         };
 
         orderbook.insert_order(&mut order);
-        let mut executed = orderbook.execute_orders(100.into(), source);
+        let mut executed = orderbook.execute_orders(100.into(), &source);
         assert_eq!(executed.len(), 1);
 
         let trade = executed.pop().unwrap();
@@ -374,7 +375,7 @@ mod tests {
         };
 
         orderbook.insert_order(&mut order);
-        let mut executed = orderbook.execute_orders(100.into(), source);
+        let mut executed = orderbook.execute_orders(100.into(), &source);
         assert_eq!(executed.len(), 1);
 
         let trade = executed.pop().unwrap();
@@ -404,7 +405,7 @@ mod tests {
 
         orderbook.insert_order(&mut order);
         orderbook.insert_order(&mut order1);
-        let mut executed = orderbook.execute_orders(100.into(), source);
+        let mut executed = orderbook.execute_orders(100.into(), &source);
         //Only one order should execute on this tick
         assert_eq!(executed.len(), 1);
 
@@ -435,7 +436,7 @@ mod tests {
 
         orderbook.insert_order(&mut order);
         orderbook.insert_order(&mut order1);
-        let mut executed = orderbook.execute_orders(100.into(), source);
+        let mut executed = orderbook.execute_orders(100.into(), &source);
         //Only one order should execute on this tick
         assert_eq!(executed.len(), 1);
 
@@ -470,7 +471,7 @@ mod tests {
 
         orderbook.insert_order(&mut order);
         orderbook.insert_order(&mut order1);
-        let mut executed = orderbook.execute_orders(100.into(), source);
+        let mut executed = orderbook.execute_orders(100.into(), &source);
         //Only one order should execute on this tick
         assert_eq!(executed.len(), 1);
 
@@ -504,7 +505,7 @@ mod tests {
 
         orderbook.insert_order(&mut order);
         orderbook.insert_order(&mut order1);
-        let mut executed = orderbook.execute_orders(100.into(), source);
+        let mut executed = orderbook.execute_orders(100.into(), &source);
         //Only one order should execute on this tick
         assert_eq!(executed.len(), 1);
 
@@ -527,7 +528,7 @@ mod tests {
         };
 
         orderbook.insert_order(&mut order);
-        let executed = orderbook.execute_orders(100.into(), source);
+        let executed = orderbook.execute_orders(100.into(), &source);
         assert_eq!(executed.len(), 0);
     }
 
@@ -551,14 +552,14 @@ mod tests {
             price: None,
         };
         orderbook.insert_order(&mut order);
-        let orders = orderbook.execute_orders(101.into(), price_source);
+        let orders = orderbook.execute_orders(101.into(), &price_source);
         //Trades cannot execute without prices
         assert_eq!(orders.len(), 0);
         assert!(!orderbook.is_empty());
 
         clock.tick();
         //Order executes now with prices
-        let mut orders = orderbook.execute_orders(102.into(), price_source);
+        let mut orders = orderbook.execute_orders(102.into(), &price_source);
         assert_eq!(orders.len(), 1);
 
         let trade = orders.pop().unwrap();
