@@ -114,7 +114,7 @@ impl UistV1 {
         }
 
         let now = self.clock.now();
-        let executed_trades = self.orderbook.execute_orders(*now, self.price_source);
+        let executed_trades = self.orderbook.execute_orders(*now, &self.price_source);
         for executed_trade in &executed_trades {
             self.trade_log.push(executed_trade.clone());
         }
