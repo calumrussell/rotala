@@ -4,7 +4,8 @@ use serde::{Deserialize, Serialize};
 
 use crate::{
     clock::{Clock, ClockBuilder, DateTime, Frequency},
-    source::get_binance_1m_klines, orderbook::diana::{DianaQuote, DianaSource},
+    orderbook::diana::{DianaQuote, DianaSource},
+    source::get_binance_1m_klines,
 };
 
 #[derive(Clone, Debug, Deserialize, Serialize)]

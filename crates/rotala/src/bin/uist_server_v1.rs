@@ -12,11 +12,9 @@ async fn main() -> std::io::Result<()> {
     let address: String = args[1].clone();
     let port: u16 = args[2].parse().unwrap();
 
-    let app_state = web::Data::new(
-        AppState {
-            exchange: Mutex::new(random_uist_generator(3000).0)
-        }
-    );
+    let app_state = web::Data::new(AppState {
+        exchange: Mutex::new(random_uist_generator(3000).0),
+    });
 
     HttpServer::new(move || {
         App::new()

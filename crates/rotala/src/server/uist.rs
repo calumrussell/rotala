@@ -113,11 +113,9 @@ mod tests {
 
     #[actix_web::test]
     async fn test_single_trade_loop() {
-        let app_state = web::Data::new(
-            AppState {
-                exchange: Mutex::new(random_uist_generator(3000).0)
-            }
-        );
+        let app_state = web::Data::new(AppState {
+            exchange: Mutex::new(random_uist_generator(3000).0),
+        });
 
         let app = test::init_service(
             App::new()
