@@ -74,11 +74,11 @@ pub enum TriggerType {
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct FortunaTriggerOrder {
-    // This seems to differ from limit_px in that this price triggers the price that triggers
-    // the entry of this order into the book. This can be different from limit_px which is the
-    // price that the user wants to trade at.
+    // Differs from limit_px as trigger_px is the price that triggers the order, limit_px is the
+    // price that the user wants to trade at but is subject to the same slippage limitations
+    // For some reason this is a number but limit_px is a String?
     trigger_px: f64,
-    // What if trigger_px has value but is_market is true?
+    // If this is true then the order will execute immediately with max slippage of 10%
     is_market: bool,
     tpsl: TriggerType,
 }
@@ -122,14 +122,31 @@ impl FortunaInnerOrder {
     }
 }
 
-/// Fortuna is an implementation of the HyperLiquid API running against a local server. This allows
+/// Fortuna is an implementation of the Hyperliquid API running against a local server. This allows
 /// testing of strategies using the same API/order types/etc.
 ///
 /// Hyperliquid is a derivatives exchange. In order to simplify the implementation it is assumed
 /// that everything is cash/no margin/no leverage.
+/// 
+/// Hyperliquid has two order types: limit and trigger. 
+/// 
+/// A limit order can be set to execute immediately, with [TimeInForce::Ioc], and will execute on
+/// the next tick with slippage of 10%. Slippage is constant to the implementation as this appears
+/// to be the default setting in prod. If this doesn't execute on the next tick then it is
+/// cancelled.
+/// 
+/// A trigger order has distinct trigger_px and limit_px. The trigger_px is the price that triggers
+/// the order to enter the book. Once this occurs, it is treated as a normal limit market order or
+/// limit order that uses the limit_px to determine execution. This will be queued onto the same
+/// tick.
+/// 
+/// After a trade executes a fill is returned to the user, this is substantially different to the
+/// Hyperliquid API due to Hyperliquid performing functions like margin. The differences are
+/// documented in [FortunaFill].
 pub struct Fortuna {
     inner: VecDeque<FortunaInnerOrder>,
     last_inserted: u64,
+    slippage: f64,
 }
 
 impl Default for Fortuna {
@@ -143,6 +160,7 @@ impl Fortuna {
         Self {
             inner: std::collections::VecDeque::new(),
             last_inserted: 0,
+            slippage: 0.1,
         }
     }
 
@@ -230,6 +248,7 @@ impl Fortuna {
                         // Market order code in Python SDK:
                         // https://github.com/hyperliquid-dex/hyperliquid-python-sdk/blob/67864cf979d3bbea2e964a99ecc0a1effb7bb911/hyperliquid/exchange.py#L209
                         match limit.tif {
+                            // Don't support Alo TimeInForce
                             TimeInForce::Ioc => {
                                 // Market orders can only be executed on the next time step
                                 if order.attempted_execution == false {
@@ -245,13 +264,15 @@ impl Fortuna {
                                     let price = str::parse::<f64>(&order.order.limit_px).unwrap();
                                     order.attempted_execution = true;
                                     if order.order.is_buy {
-                                        if price >= quote.get_ask() {
+                                        if price * (1.0 + self.slippage) >= quote.get_ask() {
+                                            should_delete.push((order.order.asset, order.order_id));
                                             Some(Self::execute_buy(quote, order, date))
                                         } else {
                                             None
                                         }
                                     } else {
-                                        if price <= quote.get_bid() {
+                                        if price * (1.0 - self.slippage) <= quote.get_bid() {
+                                            should_delete.push((order.order.asset, order.order_id));
                                             Some(Self::execute_sell(quote, order, date))
                                         } else {
                                             None
@@ -263,11 +284,73 @@ impl Fortuna {
                         }
                     }
                     FortunaOrderType::Trigger(trigger) => {
+                        // If we trigger a market order, execute it here. If the trigger is for a
+                        // limit order then we create another order add it to the queue and return
+                        // the order_id to the client
+
                         // TP/SL market orders have slippage of 10%
                         // If the market price falls below trigger price of stop loss purchase then it
                         // is triggered
                         // https://hyperliquid.gitbook.io/hyperliquid-docs/trading/take-profit-and-stop-loss-orders-tp-sl
-                        None
+                        match trigger.tpsl {
+                            TriggerType::Sl => {
+                                // Closing a short as price goes up
+                                if order.order.is_buy {
+                                    if quote.get_ask() >= trigger.trigger_px {
+                                        if trigger.is_market {
+                                            let triggered_order = FortunaOrder {
+                                                asset: order.order.asset,
+                                                is_buy: order.order.is_buy,
+                                                limit_px: order.order.limit_px.clone(),
+                                                sz: order.order.sz.clone(),
+                                                reduce_only: order.order.reduce_only,
+                                                cloid: order.order.cloid.clone(),
+                                                order_type: FortunaOrderType::Limit(
+                                                    FortunaLimitOrder {
+                                                        tif: TimeInForce::Ioc,
+                                                    }
+                                                )
+                                            };
+                                            self.insert_order(date, triggered_order);
+                                        } else {
+
+                                        }
+
+                                        should_delete.push((order.order.asset, order.order_id));
+                                        Some(Self::execute_buy(quote, order, date))
+                                    } else {
+                                        None
+                                    } 
+                                } else {
+                                    // Closing a long as price goes down
+                                    if quote.get_bid() >= trigger.trigger_px {
+                                        should_delete.push((order.order.asset, order.order_id));
+                                        Some(Self::execute_sell(quote, order, date))
+                                    }  else {
+                                        None
+                                    }
+                                }
+                            },
+                            TriggerType::Tp => {
+                                // Closing a short as price goes down
+                                if order.order.is_buy {
+                                    if quote.get_ask() <= trigger.trigger_px {
+                                        should_delete.push((order.order.asset, order.order_id));
+                                        Some(Self::execute_buy(quote, order, date))
+                                    } else {
+                                        None
+                                    }
+                                } else {
+                                    // Closing a long as price goes up
+                                    if quote.get_bid() <= trigger.trigger_px {
+                                        should_delete.push((order.order.asset, order.order_id));
+                                        Some(Self::execute_sell(quote, order, date))
+                                    }  else {
+                                        None
+                                    }
+                                }
+                            },
+                        }
                     }
                 };
 
@@ -276,6 +359,11 @@ impl Fortuna {
                 }
             }
         }
+
+        for (asset, order_id) in should_delete {
+            self.delete_order(asset, order_id);
+        }
+
         fills
     }
 }
