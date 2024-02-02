@@ -137,12 +137,13 @@ impl FortunaInnerOrder {
 /// 
 /// A trigger order has distinct trigger_px and limit_px. The trigger_px is the price that triggers
 /// the order to enter the book. Once this occurs, it is treated as a normal limit market order or
-/// limit order that uses the limit_px to determine execution. This will be queued onto the same
-/// tick.
+/// limit order that uses the limit_px to determine execution. This will be queued onto the next
+/// tick. This may result in some variance with prod environments because, in theory, a trigger order
+/// isn't going to pay latency and will be executed somewhat instanteously on the exchange.
 /// 
-/// After a trade executes a fill is returned to the user, this is substantially different to the
-/// Hyperliquid API due to Hyperliquid performing functions like margin. The differences are
-/// documented in [FortunaFill].
+/// After a trade executes a fill is returned to the user, the data returned is substantially 
+/// different to the Hyperliquid API due to Hyperliquid performing functions like margin. 
+/// The differences are documented in [FortunaFill].
 pub struct Fortuna {
     inner: VecDeque<FortunaInnerOrder>,
     last_inserted: u64,
@@ -235,6 +236,8 @@ impl Fortuna {
     pub fn execute_orders(&mut self, date: i64, source: impl FortunaSource) -> Vec<FortunaFill> {
         let mut fills: Vec<FortunaFill> = Vec::new();
         let mut should_delete: Vec<(u64, u64)> = Vec::new();
+        // HyperLiquid execution can trigger more orders, we don't execute these immediately.
+        let mut should_insert: Vec<FortunaOrder> = Vec::new();
 
         // We have to have a mutable reference so we can update attempted_execution
         for order in self.inner.iter_mut() {
@@ -251,7 +254,7 @@ impl Fortuna {
                             // Don't support Alo TimeInForce
                             TimeInForce::Ioc => {
                                 // Market orders can only be executed on the next time step
-                                if order.attempted_execution == false {
+                                if order.attempted_execution {
                                     // We have tried to execute this before, return nothing
                                     should_delete.push((order.order.asset, order.order_id));
                                     None
@@ -286,7 +289,7 @@ impl Fortuna {
                     FortunaOrderType::Trigger(trigger) => {
                         // If we trigger a market order, execute it here. If the trigger is for a
                         // limit order then we create another order add it to the queue and return
-                        // the order_id to the client
+                        // the order_id to the client, execution cannot be immediate.
 
                         // TP/SL market orders have slippage of 10%
                         // If the market price falls below trigger price of stop loss purchase then it
@@ -311,7 +314,7 @@ impl Fortuna {
                                                     }
                                                 )
                                             };
-                                            self.insert_order(date, triggered_order);
+                                            should_insert.push(triggered_order);
                                         } else {
 
                                         }
@@ -364,6 +367,10 @@ impl Fortuna {
             self.delete_order(asset, order_id);
         }
 
+        for order in should_insert {
+            self.insert_order(date, order);
+        }
+
         fills
     }
 }
@@ -409,7 +416,7 @@ mod tests {
 
         let trade = executed.pop().unwrap();
         //Trade executes at 100 so trade price should be 102
-        assert_eq!(trade.px,  "102.00".to_string());
+        assert_eq!(trade.px,  "102".to_string());
         assert_eq!(trade.time, 100);
     }
 
