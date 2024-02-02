@@ -4,7 +4,10 @@ use serde::{Deserialize, Serialize};
 
 use crate::{
     clock::{Clock, ClockBuilder, DateTime, Frequency},
-    orderbook::{diana::{DianaQuote, DianaSource}, fortuna::{FortunaSource, FortunaQuote}},
+    orderbook::{
+        diana::{DianaQuote, DianaSource},
+        fortuna::{FortunaQuote, FortunaSource},
+    },
     source::get_binance_1m_klines,
 };
 
@@ -43,7 +46,7 @@ impl DianaQuote for PenelopeQuote {
     }
 }
 
-impl FortunaQuote for PenelopeQuote{
+impl FortunaQuote for PenelopeQuote {
     fn get_ask(&self) -> f64 {
         self.get_ask()
     }

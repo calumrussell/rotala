@@ -127,22 +127,22 @@ impl FortunaInnerOrder {
 ///
 /// Hyperliquid is a derivatives exchange. In order to simplify the implementation it is assumed
 /// that everything is cash/no margin/no leverage.
-/// 
-/// Hyperliquid has two order types: limit and trigger. 
-/// 
+///
+/// Hyperliquid has two order types: limit and trigger.
+///
 /// A limit order can be set to execute immediately, with [TimeInForce::Ioc], and will execute on
 /// the next tick with slippage of 10%. Slippage is constant to the implementation as this appears
 /// to be the default setting in prod. If this doesn't execute on the next tick then it is
 /// cancelled.
-/// 
+///
 /// A trigger order has distinct trigger_px and limit_px. The trigger_px is the price that triggers
 /// the order to enter the book. Once this occurs, it is treated as a normal limit market order or
 /// limit order that uses the limit_px to determine execution. This will be queued onto the next
 /// tick. This may result in some variance with prod environments because, in theory, a trigger order
 /// isn't going to pay latency and will be executed somewhat instanteously on the exchange.
-/// 
-/// After a trade executes a fill is returned to the user, the data returned is substantially 
-/// different to the Hyperliquid API due to Hyperliquid performing functions like margin. 
+///
+/// After a trade executes a fill is returned to the user, the data returned is substantially
+/// different to the Hyperliquid API due to Hyperliquid performing functions like margin.
 /// The differences are documented in [FortunaFill].
 pub struct Fortuna {
     inner: VecDeque<FortunaInnerOrder>,
@@ -323,29 +323,28 @@ impl Fortuna {
                                                 order_type: FortunaOrderType::Limit(
                                                     FortunaLimitOrder {
                                                         tif: TimeInForce::Ioc,
-                                                    }
-                                                )
+                                                    },
+                                                ),
                                             };
                                             should_insert.push(triggered_order);
                                         } else {
-
                                         }
 
                                         should_delete.push((order.order.asset, order.order_id));
                                         Some(Self::execute_buy(quote, order, date))
                                     } else {
                                         None
-                                    } 
+                                    }
                                 } else {
                                     // Closing a long as price goes down
                                     if quote.get_bid() >= trigger.trigger_px {
                                         should_delete.push((order.order.asset, order.order_id));
                                         Some(Self::execute_sell(quote, order, date))
-                                    }  else {
+                                    } else {
                                         None
                                     }
                                 }
-                            },
+                            }
                             TriggerType::Tp => {
                                 // Closing a short as price goes down
                                 if order.order.is_buy {
@@ -360,11 +359,11 @@ impl Fortuna {
                                     if quote.get_bid() <= trigger.trigger_px {
                                         should_delete.push((order.order.asset, order.order_id));
                                         Some(Self::execute_sell(quote, order, date))
-                                    }  else {
+                                    } else {
                                         None
                                     }
                                 }
-                            },
+                            }
                         }
                     }
                 };
@@ -416,11 +415,9 @@ mod tests {
             sz: "100.0".to_string(),
             reduce_only: false,
             cloid: None,
-            order_type: super::FortunaOrderType::Limit(
-                super::FortunaLimitOrder {
-                    tif: super::TimeInForce::Ioc,
-                }
-            )
+            order_type: super::FortunaOrderType::Limit(super::FortunaLimitOrder {
+                tif: super::TimeInForce::Ioc,
+            }),
         };
         orderbook.insert_order(100, order);
         let mut executed = orderbook.execute_orders(100.into(), &source);
@@ -428,7 +425,7 @@ mod tests {
 
         let trade = executed.pop().unwrap();
         //Trade executes at 100 so trade price should be 102
-        assert_eq!(trade.px,  "102".to_string());
+        assert_eq!(trade.px, "102".to_string());
         assert_eq!(trade.time, 100);
     }
 
@@ -443,11 +440,9 @@ mod tests {
             sz: "100.0".to_string(),
             reduce_only: false,
             cloid: None,
-            order_type: super::FortunaOrderType::Limit(
-                super::FortunaLimitOrder {
-                    tif: super::TimeInForce::Ioc,
-                }
-            )
+            order_type: super::FortunaOrderType::Limit(super::FortunaLimitOrder {
+                tif: super::TimeInForce::Ioc,
+            }),
         };
         let oid = orderbook.insert_order(100, order);
         // Should try to execute market order and fail marking the order as attempted
@@ -477,11 +472,9 @@ mod tests {
             sz: "100.0".to_string(),
             reduce_only: false,
             cloid: None,
-            order_type: super::FortunaOrderType::Limit(
-                super::FortunaLimitOrder {
-                    tif: super::TimeInForce::Ioc,
-                }
-            )
+            order_type: super::FortunaOrderType::Limit(super::FortunaLimitOrder {
+                tif: super::TimeInForce::Ioc,
+            }),
         };
         orderbook.insert_order(100, order);
         let mut executed = orderbook.execute_orders(100.into(), &source);
@@ -489,8 +482,7 @@ mod tests {
 
         let trade = executed.pop().unwrap();
         //Trade executes at 100 so trade price should be 102
-        assert_eq!(trade.px,  "102".to_string());
+        assert_eq!(trade.px, "102".to_string());
         assert_eq!(trade.time, 100);
     }
- 
 }
