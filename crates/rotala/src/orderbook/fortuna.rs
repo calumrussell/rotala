@@ -165,6 +165,18 @@ impl Fortuna {
         }
     }
 
+    /// This method runs in O(N) because the underlying representation is [VecDeque]. Clients
+    /// should be performing synchronization themselves so if you are calling this within main
+    /// trade loop then you are doing something wrong. This is included for testing.
+    pub fn get_order(&self, order_id: FortunaOrderId) -> Option<FortunaOrder> {
+        for order in self.inner.iter() {
+            if order_id.eq(&order.order_id) {
+                return Some(order.order.clone());
+            }
+        }
+        None
+    }
+
     // Hyperliquid returns an error if we try to cancel a non-existent order
     pub fn delete_order(&mut self, asset: u64, order_id: u64) -> bool {
         let mut delete_position: Option<usize> = None;
@@ -233,7 +245,7 @@ impl Fortuna {
         }
     }
 
-    pub fn execute_orders(&mut self, date: i64, source: impl FortunaSource) -> Vec<FortunaFill> {
+    pub fn execute_orders(&mut self, date: i64, source: &impl FortunaSource) -> Vec<FortunaFill> {
         let mut fills: Vec<FortunaFill> = Vec::new();
         let mut should_delete: Vec<(u64, u64)> = Vec::new();
         // HyperLiquid execution can trigger more orders, we don't execute these immediately.
@@ -411,7 +423,7 @@ mod tests {
             )
         };
         orderbook.insert_order(100, order);
-        let mut executed = orderbook.execute_orders(100.into(), source);
+        let mut executed = orderbook.execute_orders(100.into(), &source);
         assert_eq!(executed.len(), 1);
 
         let trade = executed.pop().unwrap();
@@ -420,4 +432,65 @@ mod tests {
         assert_eq!(trade.time, 100);
     }
 
+    #[test]
+    fn test_that_buy_market_cancels_itself_if_price_too_high() {
+        let (_clock, source) = setup();
+        let mut orderbook = OrderBook::new();
+        let order = FortunaOrder {
+            asset: 0,
+            is_buy: true,
+            limit_px: "1.00".to_string(),
+            sz: "100.0".to_string(),
+            reduce_only: false,
+            cloid: None,
+            order_type: super::FortunaOrderType::Limit(
+                super::FortunaLimitOrder {
+                    tif: super::TimeInForce::Ioc,
+                }
+            )
+        };
+        let oid = orderbook.insert_order(100, order);
+        // Should try to execute market order and fail marking the order as attempted
+        let executed = orderbook.execute_orders(100.into(), &source);
+        assert_eq!(executed.len(), 0);
+
+        // Should see that the order has been attempted and delete
+        let executed_again = orderbook.execute_orders(101.into(), &source);
+        assert_eq!(executed_again.len(), 0);
+
+        // Should be deleted
+        assert!(orderbook.get_order(oid).is_none());
+    }
+
+    #[test]
+    fn test_that_buy_market_executes_within_slippage() {
+        // Default slippage param is 10%. Price on first tick is 102 so market orders will
+        // execute when limit_px*1.1 > price (not when price*0.9 > limit_px) so 93 is the lowest
+        // price (roughly) that will trigger a market buy with ask of 102.
+
+        let (_clock, source) = setup();
+        let mut orderbook = OrderBook::new();
+        let order = FortunaOrder {
+            asset: 0,
+            is_buy: true,
+            limit_px: "93.00".to_string(),
+            sz: "100.0".to_string(),
+            reduce_only: false,
+            cloid: None,
+            order_type: super::FortunaOrderType::Limit(
+                super::FortunaLimitOrder {
+                    tif: super::TimeInForce::Ioc,
+                }
+            )
+        };
+        orderbook.insert_order(100, order);
+        let mut executed = orderbook.execute_orders(100.into(), &source);
+        assert_eq!(executed.len(), 1);
+
+        let trade = executed.pop().unwrap();
+        //Trade executes at 100 so trade price should be 102
+        assert_eq!(trade.px,  "102".to_string());
+        assert_eq!(trade.time, 100);
+    }
+ 
 }
