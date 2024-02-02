@@ -367,3 +367,50 @@ impl Fortuna {
         fills
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::Fortuna as OrderBook;
+    use super::FortunaOrder;
+    use crate::clock::{Clock, Frequency};
+    use crate::input::penelope::Penelope;
+    use crate::input::penelope::PenelopeBuilder;
+
+    fn setup() -> (Clock, Penelope) {
+        let mut price_source_builder = PenelopeBuilder::new();
+        price_source_builder.add_quote(101.0, 102.00, 100, "0".to_string());
+        price_source_builder.add_quote(102.0, 103.00, 101, "0".to_string());
+        price_source_builder.add_quote(105.0, 106.00, 102, "0".to_string());
+
+        let (penelope, clock) = price_source_builder.build_with_frequency(Frequency::Second);
+        (clock, penelope)
+    }
+
+    #[test]
+    fn test_that_buy_market_executes() {
+        let (_clock, source) = setup();
+        let mut orderbook = OrderBook::new();
+        let order = FortunaOrder {
+            asset: 0,
+            is_buy: true,
+            limit_px: "102.00".to_string(),
+            sz: "100.0".to_string(),
+            reduce_only: false,
+            cloid: None,
+            order_type: super::FortunaOrderType::Limit(
+                super::FortunaLimitOrder {
+                    tif: super::TimeInForce::Ioc,
+                }
+            )
+        };
+        orderbook.insert_order(100, order);
+        let mut executed = orderbook.execute_orders(100.into(), source);
+        assert_eq!(executed.len(), 1);
+
+        let trade = executed.pop().unwrap();
+        //Trade executes at 100 so trade price should be 102
+        assert_eq!(trade.px,  "102.00".to_string());
+        assert_eq!(trade.time, 100);
+    }
+
+}
