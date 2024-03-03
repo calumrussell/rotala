@@ -4,7 +4,7 @@ use serde::{Deserialize, Serialize};
 
 // Unclear if the right approach is traits but this was the quickest way
 pub trait DianaSource {
-    fn get_quote(&self, date: &i64, security: &String) -> Option<impl DianaQuote>;
+    fn get_quote(&self, date: &i64, security: &str) -> Option<impl DianaQuote>;
 }
 
 pub trait DianaQuote {

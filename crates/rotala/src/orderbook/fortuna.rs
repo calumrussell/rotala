@@ -110,7 +110,6 @@ pub struct FortunaOrder {
 #[derive(Debug)]
 struct FortunaInnerOrder {
     pub order_id: FortunaOrderId,
-    pub order_time_received: i64,
     pub order: FortunaOrder,
     pub attempted_execution: bool,
 }
@@ -205,14 +204,13 @@ impl Fortuna {
     // Hyperliquid immediately returns an oid to the user whether the order is resting or filled on
     // the next tick. Because we need to guard against lookahead bias, we cannot execute immediately
     // but we have to return order id here.
-    pub fn insert_order(&mut self, date: i64, order: FortunaOrder) -> FortunaOrderId {
-        let order_id = self.last_inserted.clone();
+    pub fn insert_order(&mut self, _date: i64, order: FortunaOrder) -> FortunaOrderId {
+        let order_id = self.last_inserted;
         // We assume that orders are received instaneously.
         // Latency can be added here when this is implemented.
         let inner_order = FortunaInnerOrder {
             order_id,
             order,
-            order_time_received: date,
             attempted_execution: false,
         };
         self.inner.push_back(inner_order);
@@ -298,13 +296,11 @@ impl Fortuna {
                                         } else {
                                             None
                                         }
+                                    } else if price * (1.0 - self.slippage) <= quote.get_bid() {
+                                        should_delete.push((order.order.asset, order.order_id));
+                                        Some(Self::execute_sell(quote, order, date))
                                     } else {
-                                        if price * (1.0 - self.slippage) <= quote.get_bid() {
-                                            should_delete.push((order.order.asset, order.order_id));
-                                            Some(Self::execute_sell(quote, order, date))
-                                        } else {
-                                            None
-                                        }
+                                        None
                                     }
                                 }
                             }
@@ -317,13 +313,11 @@ impl Fortuna {
                                     } else {
                                         None
                                     }
+                                } else if price <= quote.get_bid() {
+                                    should_delete.push((order.order.asset, order.order_id));
+                                    Some(Self::execute_sell(quote, order, date))
                                 } else {
-                                    if price <= quote.get_bid() {
-                                        should_delete.push((order.order.asset, order.order_id));
-                                        Some(Self::execute_sell(quote, order, date))
-                                    } else {
-                                        None
-                                    }
+                                    None
                                 }
                             }
                             _ => unimplemented!(),

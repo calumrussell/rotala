@@ -93,14 +93,14 @@ impl Penelope {
 }
 
 impl DianaSource for Penelope {
-    fn get_quote(&self, date: &i64, security: &String) -> Option<impl DianaQuote> {
-        Self::get_quote(&self, date, security).cloned()
+    fn get_quote(&self, date: &i64, security: &str) -> Option<impl DianaQuote> {
+        Self::get_quote(self, date, security).cloned()
     }
 }
 
 impl FortunaSource for Penelope {
     fn get_quote(&self, date: &i64, security: &u64) -> Option<impl FortunaQuote> {
-        Self::get_quote(&self, date, &security.to_string()).cloned()
+        Self::get_quote(self, date, &security.to_string()).cloned()
     }
 }
 
