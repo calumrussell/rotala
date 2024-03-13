@@ -448,6 +448,7 @@ mod tests {
         price_source_builder.add_quote(101.0, 102.00, 100, "0".to_string());
         price_source_builder.add_quote(102.0, 103.00, 101, "0".to_string());
         price_source_builder.add_quote(105.0, 106.00, 102, "0".to_string());
+        price_source_builder.add_quote(99.0, 100.00, 103, "0".to_string());
 
         let (penelope, clock) = price_source_builder.build_with_frequency(Frequency::Second);
         (clock, penelope)
@@ -700,6 +701,44 @@ mod tests {
     }
 
     #[test]
+    fn test_that_trigger_order_triggers_stop_loss_long_on_next_tick() {
+        //Currently short, set stop loss to trigger immediately if 103 is hit. Trigger is same as
+        //limit so this functions like a normal SL.
+        //Order inserted on 100 and doesn't trigger as ask is 102, triggers on 101 as ask is 103,
+        //executes on 103 when ask is 106.
+        let (_clock, source) = setup();
+        let mut orderbook = OrderBook::new();
+        let order = FortunaOrder {
+            asset: 0,
+            is_buy: true,
+            limit_px: "103.00".to_string(),
+            sz: "100.0".to_string(),
+            reduce_only: false,
+            cloid: None,
+            order_type: super::FortunaOrderType::Trigger(super::FortunaTriggerOrder {
+                trigger_px: 103.0,
+                is_market: true,
+                tpsl: super::TriggerType::Sl,
+            }),
+        };
+        orderbook.insert_order(100, order);
+        let executed = orderbook.execute_orders(100.into(), &source);
+        assert_eq!(executed.0.len(), 0);
+        assert_eq!(executed.1.len(), 0);
+
+        let executed_next_tick = orderbook.execute_orders(101.into(), &source);
+        assert_eq!(executed_next_tick.0.len(), 0);
+        assert_eq!(executed_next_tick.1.len(), 1);
+
+        let executed_last_tick = orderbook.execute_orders(102.into(), &source);
+        assert_eq!(executed_last_tick.0.len(), 1);
+        let trade = executed_last_tick.0.get(0).unwrap();
+
+        assert_eq!(trade.px, "106".to_string());
+        assert_eq!(trade.time, 102);
+    }
+
+    #[test]
     fn test_that_trigger_order_triggers_stop_loss_short() {
         //Currently long, set stop loss to trigger immediately if 101 is hit. Trigger is same as
         //limit so this functions like a normal SL. Executes on next tick.
@@ -765,7 +804,7 @@ mod tests {
 
     #[test]
     fn test_that_trigger_order_triggers_take_profit_short() {
-        //Current long, set take profit to trigger immediately if 101 is hit. Trigger ijs same as
+        //Current long, set take profit to trigger immediately if 101 is hit. Trigger is same as
         //limit so this functions like a normal TP.
         let (_clock, source) = setup();
         let mut orderbook = OrderBook::new();
