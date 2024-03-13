@@ -138,7 +138,8 @@ impl FortunaInnerOrder {
 ///
 /// Trigger orders are orders that turn into Limit orders when a trigger has been hit. The
 /// trigger_px and limit_px are distinct so this works slightly differently to a normal TP/SL
-/// order.
+/// order. If the trigger_px and limit_px are the same, it is possible for price to gap down
+/// through your order such that it is never executed.
 ///
 /// The latency paid by this order in production is unclear. The assumption made in this
 /// implementation is that it is impossible for orders to be queued instanteously on a on-chain
@@ -252,6 +253,26 @@ impl Fortuna {
         }
     }
 
+    fn create_trigger(order: &FortunaInnerOrder, tif: TimeInForce) -> FortunaOrder {
+        FortunaOrder {
+            asset: order.order.asset,
+            is_buy: order.order.is_buy,
+            limit_px: order.order.limit_px.clone(),
+            sz: order.order.sz.clone(),
+            reduce_only: order.order.reduce_only,
+            cloid: order.order.cloid.clone(),
+            order_type: FortunaOrderType::Limit(FortunaLimitOrder { tif }),
+        }
+    }
+
+    fn create_gtc_trigger(order: &FortunaInnerOrder) -> FortunaOrder {
+        Fortuna::create_trigger(order, TimeInForce::Gtc)
+    }
+
+    fn create_ioc_trigger(order: &FortunaInnerOrder) -> FortunaOrder {
+        Fortuna::create_trigger(order, TimeInForce::Ioc)
+    }
+
     pub fn execute_orders(
         &mut self,
         date: i64,
@@ -338,35 +359,9 @@ impl Fortuna {
                                 if order.order.is_buy {
                                     if quote.get_ask() >= trigger.trigger_px {
                                         if trigger.is_market {
-                                            let triggered_order = FortunaOrder {
-                                                asset: order.order.asset,
-                                                is_buy: order.order.is_buy,
-                                                limit_px: order.order.limit_px.clone(),
-                                                sz: order.order.sz.clone(),
-                                                reduce_only: order.order.reduce_only,
-                                                cloid: order.order.cloid.clone(),
-                                                order_type: FortunaOrderType::Limit(
-                                                    FortunaLimitOrder {
-                                                        tif: TimeInForce::Ioc,
-                                                    },
-                                                ),
-                                            };
-                                            should_insert.push(triggered_order);
+                                            should_insert.push(Self::create_ioc_trigger(order));
                                         } else {
-                                            let triggered_order = FortunaOrder {
-                                                asset: order.order.asset,
-                                                is_buy: order.order.is_buy,
-                                                limit_px: order.order.limit_px.clone(),
-                                                sz: order.order.sz.clone(),
-                                                reduce_only: order.order.reduce_only,
-                                                cloid: order.order.cloid.clone(),
-                                                order_type: FortunaOrderType::Limit(
-                                                    FortunaLimitOrder {
-                                                        tif: TimeInForce::Gtc,
-                                                    },
-                                                ),
-                                            };
-                                            should_insert.push(triggered_order);
+                                            should_insert.push(Self::create_gtc_trigger(order));
                                         }
                                         should_delete.push((order.order.asset, order.order_id));
                                         None
@@ -377,35 +372,9 @@ impl Fortuna {
                                     // Closing a long as price goes down
                                     if quote.get_bid() >= trigger.trigger_px {
                                         if trigger.is_market {
-                                            let triggered_order = FortunaOrder {
-                                                asset: order.order.asset,
-                                                is_buy: order.order.is_buy,
-                                                limit_px: order.order.limit_px.clone(),
-                                                sz: order.order.sz.clone(),
-                                                reduce_only: order.order.reduce_only,
-                                                cloid: order.order.cloid.clone(),
-                                                order_type: FortunaOrderType::Limit(
-                                                    FortunaLimitOrder {
-                                                        tif: TimeInForce::Ioc,
-                                                    },
-                                                ),
-                                            };
-                                            should_insert.push(triggered_order);
+                                            should_insert.push(Self::create_ioc_trigger(order));
                                         } else {
-                                            let triggered_order = FortunaOrder {
-                                                asset: order.order.asset,
-                                                is_buy: order.order.is_buy,
-                                                limit_px: order.order.limit_px.clone(),
-                                                sz: order.order.sz.clone(),
-                                                reduce_only: order.order.reduce_only,
-                                                cloid: order.order.cloid.clone(),
-                                                order_type: FortunaOrderType::Limit(
-                                                    FortunaLimitOrder {
-                                                        tif: TimeInForce::Gtc,
-                                                    },
-                                                ),
-                                            };
-                                            should_insert.push(triggered_order);
+                                            should_insert.push(Self::create_gtc_trigger(order));
                                         }
                                         should_delete.push((order.order.asset, order.order_id));
                                         None
@@ -689,23 +658,24 @@ mod tests {
     }
 
     #[test]
-    fn test_that_trigger_order_triggers_stop_loss_but_delays_trade() {
-        //Currently long, set stop loss to trigger Gtc if 101 is hit. This means that the limit_px
-        //must be different to the trigger_px.
-        //Trigger gets hit on first tick, price moves up to 102 but nothing is triggered because
-        //the limit_px isn't hit.
+    fn test_that_trigger_order_triggers_stop_loss_long() {
+        //Currently short, set stop loss to trigger immediately if 102 is hit. Trigger is same as
+        //limit so this functions like a normal SL.
+        //
+        //Trigger gets hit on first tick, price moves up to 103 on next tick, we set price lower so
+        //that we don't get slippage.
         let (_clock, source) = setup();
         let mut orderbook = OrderBook::new();
         let order = FortunaOrder {
             asset: 0,
-            is_buy: false,
-            limit_px: "105.00".to_string(),
+            is_buy: true,
+            limit_px: "102.00".to_string(),
             sz: "100.0".to_string(),
             reduce_only: false,
             cloid: None,
             order_type: super::FortunaOrderType::Trigger(super::FortunaTriggerOrder {
-                trigger_px: 101.0,
-                is_market: false,
+                trigger_px: 102.0,
+                is_market: true,
                 tpsl: super::TriggerType::Sl,
             }),
         };
@@ -715,16 +685,20 @@ mod tests {
         assert_eq!(executed.1.len(), 1);
 
         let executed_next_tick = orderbook.execute_orders(101.into(), &source);
-        assert_eq!(executed_next_tick.0.len(), 0);
-        assert_eq!(executed_next_tick.1.len(), 0);
+        assert_eq!(executed_next_tick.0.len(), 1);
+        let trade = executed_next_tick.0.get(0).unwrap();
+
+        assert_eq!(trade.px, "103".to_string());
+        assert_eq!(trade.time, 101);
     }
 
     #[test]
-    fn test_that_trigger_order_triggers_stop_loss_on_next_tick() {
+    fn test_that_trigger_order_triggers_stop_loss_short() {
         //Currently long, set stop loss to trigger immediately if 101 is hit. Trigger is same as
         //limit so this functions like a normal SL.
-        //Trigger gets hit on first tick, price moves up to 102 on next tick, this is within 10%
-        //slippage so this executes immediately.
+        //
+        //Trigger gets hit on first tick, price moves up to 102 on next tick, we set price lower so
+        //the trade executes.
         let (_clock, source) = setup();
         let mut orderbook = OrderBook::new();
         let order = FortunaOrder {
