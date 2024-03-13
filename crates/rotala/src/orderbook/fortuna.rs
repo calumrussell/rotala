@@ -387,16 +387,26 @@ impl Fortuna {
                                 // Closing a short as price goes down
                                 if order.order.is_buy {
                                     if quote.get_ask() <= trigger.trigger_px {
+                                        if trigger.is_market {
+                                            should_insert.push(Self::create_ioc_trigger(order))
+                                        } else {
+                                            should_insert.push(Self::create_gtc_trigger(order))
+                                        }
                                         should_delete.push((order.order.asset, order.order_id));
-                                        Some(Self::execute_buy(quote, order, date))
+                                        None
                                     } else {
                                         None
                                     }
                                 } else {
                                     // Closing a long as price goes up
                                     if quote.get_bid() <= trigger.trigger_px {
+                                        if trigger.is_market {
+                                            should_insert.push(Self::create_ioc_trigger(order))
+                                        } else {
+                                            should_insert.push(Self::create_gtc_trigger(order))
+                                        }
                                         should_delete.push((order.order.asset, order.order_id));
-                                        Some(Self::execute_sell(quote, order, date))
+                                        None
                                     } else {
                                         None
                                     }
@@ -660,10 +670,7 @@ mod tests {
     #[test]
     fn test_that_trigger_order_triggers_stop_loss_long() {
         //Currently short, set stop loss to trigger immediately if 102 is hit. Trigger is same as
-        //limit so this functions like a normal SL.
-        //
-        //Trigger gets hit on first tick, price moves up to 103 on next tick, we set price lower so
-        //that we don't get slippage.
+        //limit so this functions like a normal SL. Executs on next tick.
         let (_clock, source) = setup();
         let mut orderbook = OrderBook::new();
         let order = FortunaOrder {
@@ -695,10 +702,7 @@ mod tests {
     #[test]
     fn test_that_trigger_order_triggers_stop_loss_short() {
         //Currently long, set stop loss to trigger immediately if 101 is hit. Trigger is same as
-        //limit so this functions like a normal SL.
-        //
-        //Trigger gets hit on first tick, price moves up to 102 on next tick, we set price lower so
-        //the trade executes.
+        //limit so this functions like a normal SL. Executes on next tick.
         let (_clock, source) = setup();
         let mut orderbook = OrderBook::new();
         let order = FortunaOrder {
@@ -712,6 +716,70 @@ mod tests {
                 trigger_px: 101.0,
                 is_market: true,
                 tpsl: super::TriggerType::Sl,
+            }),
+        };
+        orderbook.insert_order(100, order);
+        let executed = orderbook.execute_orders(100.into(), &source);
+        assert_eq!(executed.0.len(), 0);
+        assert_eq!(executed.1.len(), 1);
+
+        let executed_next_tick = orderbook.execute_orders(101.into(), &source);
+        assert_eq!(executed_next_tick.0.len(), 1);
+        let trade = executed_next_tick.0.get(0).unwrap();
+
+        assert_eq!(trade.px, "102".to_string());
+        assert_eq!(trade.time, 101);
+    }
+
+    #[test]
+    fn test_that_trigger_order_triggers_take_profit_long() {
+        //Current short , set take profit to trigger immediately if 102 is hit. Trigger is same as
+        //limit so this functions like a normal TP. Executes on next tick.
+        let (_clock, source) = setup();
+        let mut orderbook = OrderBook::new();
+        let order = FortunaOrder {
+            asset: 0,
+            is_buy: false,
+            limit_px: "102.00".to_string(),
+            sz: "100.0".to_string(),
+            reduce_only: false,
+            cloid: None,
+            order_type: super::FortunaOrderType::Trigger(super::FortunaTriggerOrder {
+                trigger_px: 102.0,
+                is_market: true,
+                tpsl: super::TriggerType::Tp,
+            }),
+        };
+        orderbook.insert_order(100, order);
+        let executed = orderbook.execute_orders(100.into(), &source);
+        assert_eq!(executed.0.len(), 0);
+        assert_eq!(executed.1.len(), 1);
+
+        let executed_next_tick = orderbook.execute_orders(101.into(), &source);
+        assert_eq!(executed_next_tick.0.len(), 1);
+        let trade = executed_next_tick.0.get(0).unwrap();
+
+        assert_eq!(trade.px, "102".to_string());
+        assert_eq!(trade.time, 101);
+    }
+
+    #[test]
+    fn test_that_trigger_order_triggers_take_profit_short() {
+        //Current long, set take profit to trigger immediately if 101 is hit. Trigger ijs same as
+        //limit so this functions like a normal TP.
+        let (_clock, source) = setup();
+        let mut orderbook = OrderBook::new();
+        let order = FortunaOrder {
+            asset: 0,
+            is_buy: false,
+            limit_px: "101.00".to_string(),
+            sz: "100.0".to_string(),
+            reduce_only: false,
+            cloid: None,
+            order_type: super::FortunaOrderType::Trigger(super::FortunaTriggerOrder {
+                trigger_px: 101.0,
+                is_market: true,
+                tpsl: super::TriggerType::Tp,
             }),
         };
         orderbook.insert_order(100, order);
