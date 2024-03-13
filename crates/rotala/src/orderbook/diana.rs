@@ -2,7 +2,15 @@ use std::collections::VecDeque;
 
 use serde::{Deserialize, Serialize};
 
-use crate::input::penelope::{Penelope, PenelopeQuote};
+// Unclear if the right approach is traits but this was the quickest way
+pub trait DianaSource {
+    fn get_quote(&self, date: &i64, security: &str) -> Option<impl DianaQuote>;
+}
+
+pub trait DianaQuote {
+    fn get_ask(&self) -> f64;
+    fn get_bid(&self) -> f64;
+}
 
 pub type DianaOrderId = u64;
 
@@ -20,11 +28,6 @@ pub enum DianaOrderType {
     LimitBuy,
     StopSell,
     StopBuy,
-}
-
-pub trait DianaQuote {
-    fn get_ask(&self) -> f64;
-    fn get_bid(&self) -> f64;
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
@@ -190,31 +193,31 @@ impl Diana {
         self.inner.is_empty()
     }
 
-    pub fn execute_orders(&mut self, date: i64, source: &Penelope) -> Vec<DianaTrade> {
-        let execute_buy = |quote: &PenelopeQuote, order: &DianaOrder| -> DianaTrade {
-            let trade_price = quote.get_ask();
-            let value = trade_price * order.get_shares();
-            DianaTrade {
-                symbol: order.get_symbol().to_string(),
-                value,
-                quantity: order.get_shares(),
-                date,
-                typ: DianaTradeType::Buy,
-            }
-        };
+    fn execute_buy(quote: impl DianaQuote, order: &DianaOrder, date: i64) -> DianaTrade {
+        let trade_price = quote.get_ask();
+        let value = trade_price * order.get_shares();
+        DianaTrade {
+            symbol: order.get_symbol().to_string(),
+            value,
+            quantity: order.get_shares(),
+            date,
+            typ: DianaTradeType::Buy,
+        }
+    }
 
-        let execute_sell = |quote: &PenelopeQuote, order: &DianaOrder| -> DianaTrade {
-            let trade_price = quote.get_bid();
-            let value = trade_price * order.get_shares();
-            DianaTrade {
-                symbol: order.get_symbol().to_string(),
-                value,
-                quantity: order.get_shares(),
-                date,
-                typ: DianaTradeType::Sell,
-            }
-        };
+    fn execute_sell(quote: impl DianaQuote, order: &DianaOrder, date: i64) -> DianaTrade {
+        let trade_price = quote.get_bid();
+        let value = trade_price * order.get_shares();
+        DianaTrade {
+            symbol: order.get_symbol().to_string(),
+            value,
+            quantity: order.get_shares(),
+            date,
+            typ: DianaTradeType::Sell,
+        }
+    }
 
+    pub fn execute_orders(&mut self, date: i64, source: &impl DianaSource) -> Vec<DianaTrade> {
         let mut completed_orderids = Vec::new();
         let mut trade_results = Vec::new();
         if self.is_empty() {
@@ -225,13 +228,13 @@ impl Diana {
             let security_id = &order.symbol;
             if let Some(quote) = source.get_quote(&date, security_id) {
                 let result = match order.order_type {
-                    DianaOrderType::MarketBuy => Some(execute_buy(quote, order)),
-                    DianaOrderType::MarketSell => Some(execute_sell(quote, order)),
+                    DianaOrderType::MarketBuy => Some(Self::execute_buy(quote, order, date)),
+                    DianaOrderType::MarketSell => Some(Self::execute_sell(quote, order, date)),
                     DianaOrderType::LimitBuy => {
                         //Unwrap is safe because LimitBuy will always have a price
                         let order_price = order.price;
-                        if order_price >= Some(quote.ask) {
-                            Some(execute_buy(quote, order))
+                        if order_price >= Some(quote.get_ask()) {
+                            Some(Self::execute_buy(quote, order, date))
                         } else {
                             None
                         }
@@ -239,8 +242,8 @@ impl Diana {
                     DianaOrderType::LimitSell => {
                         //Unwrap is safe because LimitSell will always have a price
                         let order_price = order.price;
-                        if order_price <= Some(quote.bid) {
-                            Some(execute_sell(quote, order))
+                        if order_price <= Some(quote.get_bid()) {
+                            Some(Self::execute_sell(quote, order, date))
                         } else {
                             None
                         }
@@ -248,8 +251,8 @@ impl Diana {
                     DianaOrderType::StopBuy => {
                         //Unwrap is safe because StopBuy will always have a price
                         let order_price = order.price;
-                        if order_price <= Some(quote.ask) {
-                            Some(execute_buy(quote, order))
+                        if order_price <= Some(quote.get_ask()) {
+                            Some(Self::execute_buy(quote, order, date))
                         } else {
                             None
                         }
@@ -257,8 +260,8 @@ impl Diana {
                     DianaOrderType::StopSell => {
                         //Unwrap is safe because StopSell will always have a price
                         let order_price = order.price;
-                        if order_price >= Some(quote.bid) {
-                            Some(execute_sell(quote, order))
+                        if order_price >= Some(quote.get_bid()) {
+                            Some(Self::execute_sell(quote, order, date))
                         } else {
                             None
                         }
