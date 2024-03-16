@@ -219,7 +219,7 @@ impl JuraV1 {
 
     fn sort_order_buffer(&mut self) {
         self.order_buffer.sort_by(|a, _b| {
-            if a.is_buy == true {
+            if a.is_buy {
                 std::cmp::Ordering::Greater
             } else {
                 std::cmp::Ordering::Less
@@ -257,7 +257,7 @@ impl JuraV1 {
             self.orderbook.insert_order(now.into(), order.clone());
         }
 
-        let (fills, triggered_order_ids) = self.orderbook.execute_orders(*now, &self.price_source);
+        let (fills, _triggered_order_ids) = self.orderbook.execute_orders(*now, &self.price_source);
         for fill in &fills {
             self.trade_log.push(fill.clone());
         }
