@@ -5,20 +5,20 @@ use serde::{Deserialize, Serialize};
 use crate::input::penelope::PenelopeQuote;
 
 #[derive(Clone)]
-pub struct FortunaQuote {
+pub struct JuraQuote {
     bid: f64,
     ask: f64,
     date: i64,
     symbol: String,
 }
 
-impl PenelopeQuote for FortunaQuote {
-    fn get_bid(&self) -> f64 {
-        self.bid
-    }
-
+impl PenelopeQuote for JuraQuote {
     fn get_ask(&self) -> f64 {
         self.ask
+    }
+
+    fn get_bid(&self) -> f64 {
+        self.bid
     }
 
     fn get_date(&self) -> i64 {
@@ -39,21 +39,21 @@ impl PenelopeQuote for FortunaQuote {
     }
 }
 
-pub trait FortunaSource {
-    fn get_quote(&self, date: &i64, security: &u64) -> Option<FortunaQuote>;
+pub trait JuraSource {
+    fn get_quote(&self, date: &i64, security: &u64) -> Option<JuraQuote>;
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
-pub enum FortunaSide {
+pub enum JuraSide {
     Ask,
     Bid,
 }
 
-impl From<FortunaSide> for String {
-    fn from(value: FortunaSide) -> Self {
+impl From<JuraSide> for String {
+    fn from(value: JuraSide) -> Self {
         match value {
-            FortunaSide::Bid => "B".to_string(),
-            FortunaSide::Ask => "A".to_string(),
+            JuraSide::Bid => "B".to_string(),
+            JuraSide::Ask => "A".to_string(),
         }
     }
 }
@@ -70,7 +70,7 @@ impl From<FortunaSide> for String {
 /// * start_position, unimplemented as this relates to overall position which is untracked, will
 /// always be set to false
 #[derive(Clone, Debug, Deserialize, Serialize)]
-pub struct FortunaFill {
+pub struct JuraFill {
     closed_pnl: String,
     coin: String,
     crossed: bool,
@@ -84,7 +84,7 @@ pub struct FortunaFill {
     time: i64,
 }
 
-pub type FortunaOrderId = u64;
+pub type JuraOrderId = u64;
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
 enum TimeInForce {
@@ -94,7 +94,7 @@ enum TimeInForce {
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
-pub struct FortunaLimitOrder {
+pub struct JuraLimitOrder {
     tif: TimeInForce,
 }
 
@@ -105,7 +105,7 @@ pub enum TriggerType {
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
-pub struct FortunaTriggerOrder {
+pub struct JuraTriggerOrder {
     // Differs from limit_px as trigger_px is the price that triggers the order, limit_px is the
     // price that the user wants to trade at but is subject to the same slippage limitations
     // For some reason this is a number but limit_px is a String?
@@ -116,18 +116,18 @@ pub struct FortunaTriggerOrder {
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
-pub enum FortunaOrderType {
-    Limit(FortunaLimitOrder),
-    Trigger(FortunaTriggerOrder),
+pub enum JuraOrderType {
+    Limit(JuraLimitOrder),
+    Trigger(JuraTriggerOrder),
 }
 
 /// The assumed function of the Hyperliquid API is followed as far as possible. A major area of
 /// uncertainty in the API docs concerned what the exchange does when it receives an order that
 /// has some properties set like a market order and some set like a limit order. The assumption
-/// made throughout the implementation is that the is_market field, set on [FortunaTriggerOrder]
+/// made throughout the implementation is that the is_market field, set on [JuraTriggerOrder]
 /// , determines fully whether an order is a market order and everything else is limit.
 #[derive(Clone, Debug, Deserialize, Serialize)]
-pub struct FortunaOrder {
+pub struct JuraOrder {
     asset: u64,
     is_buy: bool,
     // What if limit_px has value but is_market is true?
@@ -136,17 +136,17 @@ pub struct FortunaOrder {
     reduce_only: bool,
     //This is client order id, need to check whether test impl should reasonably use this.
     cloid: Option<String>,
-    order_type: FortunaOrderType,
+    order_type: JuraOrderType,
 }
 
 #[derive(Debug)]
-struct FortunaInnerOrder {
-    pub order_id: FortunaOrderId,
-    pub order: FortunaOrder,
+struct JuraInnerOrder {
+    pub order_id: JuraOrderId,
+    pub order: JuraOrder,
     pub attempted_execution: bool,
 }
 
-impl FortunaInnerOrder {
+impl JuraInnerOrder {
     pub fn get_shares(&self) -> f64 {
         // We unwrap immediately because we can't continue if the client is passing incorrectly
         // sized orders
@@ -154,7 +154,7 @@ impl FortunaInnerOrder {
     }
 }
 
-/// Fortuna is an implementation of the Hyperliquid API running against a local server. This allows
+/// OrderBook is an implementation of the Hyperliquid API running against a local server. This allows
 /// testing of strategies using the same API/order types/etc.
 ///
 /// Hyperliquid is a derivatives exchange. In order to simplify the implementation it is assumed
@@ -184,20 +184,20 @@ impl FortunaInnerOrder {
 ///
 /// After a trade executes a fill is returned to the user, the data returned is substantially
 /// different to the Hyperliquid API due to Hyperliquid performing functions like margin.
-/// The differences are documented in [FortunaFill].
-pub struct Fortuna {
-    inner: VecDeque<FortunaInnerOrder>,
+/// The differences are documented in [JuraFill].
+pub struct OrderBook {
+    inner: VecDeque<JuraInnerOrder>,
     last_inserted: u64,
     slippage: f64,
 }
 
-impl Default for Fortuna {
+impl Default for OrderBook {
     fn default() -> Self {
         Self::new()
     }
 }
 
-impl Fortuna {
+impl OrderBook {
     pub fn new() -> Self {
         Self {
             inner: VecDeque::new(),
@@ -209,7 +209,7 @@ impl Fortuna {
     /// This method runs in O(N) because the underlying representation is [VecDeque]. Clients
     /// should be performing synchronization themselves so if you are calling this within main
     /// trade loop then you are doing something wrong. This is included for testing.
-    pub fn get_order(&self, order_id: FortunaOrderId) -> Option<FortunaOrder> {
+    pub fn get_order(&self, order_id: JuraOrderId) -> Option<JuraOrder> {
         for order in self.inner.iter() {
             if order_id.eq(&order.order_id) {
                 return Some(order.order.clone());
@@ -237,11 +237,11 @@ impl Fortuna {
     // Hyperliquid immediately returns an oid to the user whether the order is resting or filled on
     // the next tick. Because we need to guard against lookahead bias, we cannot execute immediately
     // but we have to return order id here.
-    pub fn insert_order(&mut self, _date: i64, order: FortunaOrder) -> FortunaOrderId {
+    pub fn insert_order(&mut self, _date: i64, order: JuraOrder) -> JuraOrderId {
         let order_id = self.last_inserted;
         // We assume that orders are received instaneously.
         // Latency can be added here when this is implemented.
-        let inner_order = FortunaInnerOrder {
+        let inner_order = JuraInnerOrder {
             order_id,
             order,
             attempted_execution: false,
@@ -251,9 +251,9 @@ impl Fortuna {
         order_id
     }
 
-    fn execute_buy(quote: FortunaQuote, order: &FortunaInnerOrder, date: i64) -> FortunaFill {
+    fn execute_buy(quote: JuraQuote, order: &JuraInnerOrder, date: i64) -> JuraFill {
         let trade_price = quote.get_ask();
-        FortunaFill {
+        JuraFill {
             closed_pnl: "0.0".to_string(),
             coin: order.order.asset.to_string(),
             crossed: false,
@@ -261,16 +261,16 @@ impl Fortuna {
             hash: false,
             oid: order.order_id,
             px: trade_price.to_string(),
-            side: FortunaSide::Ask.into(),
+            side: JuraSide::Ask.into(),
             start_position: false,
             sz: order.get_shares().to_string(),
             time: date,
         }
     }
 
-    fn execute_sell(quote: FortunaQuote, order: &FortunaInnerOrder, date: i64) -> FortunaFill {
+    fn execute_sell(quote: JuraQuote, order: &JuraInnerOrder, date: i64) -> JuraFill {
         let trade_price = quote.get_bid();
-        FortunaFill {
+        JuraFill {
             closed_pnl: "0.0".to_string(),
             coin: order.order.asset.to_string(),
             crossed: false,
@@ -278,49 +278,49 @@ impl Fortuna {
             hash: false,
             oid: order.order_id,
             px: trade_price.to_string(),
-            side: FortunaSide::Bid.into(),
+            side: JuraSide::Bid.into(),
             start_position: false,
             sz: order.get_shares().to_string(),
             time: date,
         }
     }
 
-    fn create_trigger(order: &FortunaInnerOrder, tif: TimeInForce) -> FortunaOrder {
-        FortunaOrder {
+    fn create_trigger(order: &JuraInnerOrder, tif: TimeInForce) -> JuraOrder {
+        JuraOrder {
             asset: order.order.asset,
             is_buy: order.order.is_buy,
             limit_px: order.order.limit_px.clone(),
             sz: order.order.sz.clone(),
             reduce_only: order.order.reduce_only,
             cloid: order.order.cloid.clone(),
-            order_type: FortunaOrderType::Limit(FortunaLimitOrder { tif }),
+            order_type: JuraOrderType::Limit(JuraLimitOrder { tif }),
         }
     }
 
-    fn create_gtc_trigger(order: &FortunaInnerOrder) -> FortunaOrder {
-        Fortuna::create_trigger(order, TimeInForce::Gtc)
+    fn create_gtc_trigger(order: &JuraInnerOrder) -> JuraOrder {
+        Self::create_trigger(order, TimeInForce::Gtc)
     }
 
-    fn create_ioc_trigger(order: &FortunaInnerOrder) -> FortunaOrder {
-        Fortuna::create_trigger(order, TimeInForce::Ioc)
+    fn create_ioc_trigger(order: &JuraInnerOrder) -> JuraOrder {
+        Self::create_trigger(order, TimeInForce::Ioc)
     }
 
     pub fn execute_orders(
         &mut self,
         date: i64,
-        source: &impl FortunaSource,
-    ) -> (Vec<FortunaFill>, Vec<FortunaOrderId>) {
-        let mut fills: Vec<FortunaFill> = Vec::new();
+        source: &impl JuraSource,
+    ) -> (Vec<JuraFill>, Vec<JuraOrderId>) {
+        let mut fills: Vec<JuraFill> = Vec::new();
         let mut should_delete: Vec<(u64, u64)> = Vec::new();
         // HyperLiquid execution can trigger more orders, we don't execute these immediately.
-        let mut should_insert: Vec<FortunaOrder> = Vec::new();
+        let mut should_insert: Vec<JuraOrder> = Vec::new();
 
         // We have to have a mutable reference so we can update attempted_execution
         for order in self.inner.iter_mut() {
             let symbol = order.order.asset;
             if let Some(quote) = source.get_quote(&date, &symbol.clone()) {
                 let result = match &order.order.order_type {
-                    FortunaOrderType::Limit(limit) => {
+                    JuraOrderType::Limit(limit) => {
                         // A market order is a limit order with Ioc time-in-force. The px parameter
                         // on the order is taken from the order and seems to be used to calculate
                         // maximum slippage tolerated on the order.
@@ -376,7 +376,7 @@ impl Fortuna {
                             _ => unimplemented!(),
                         }
                     }
-                    FortunaOrderType::Trigger(trigger) => {
+                    JuraOrderType::Trigger(trigger) => {
                         // If we trigger a market order, execute it here. If the trigger is for a
                         // limit order then we create another order add it to the queue and return
                         // the order_id to the client, execution cannot be immediate.
@@ -469,14 +469,12 @@ impl Fortuna {
 
 #[cfg(test)]
 mod tests {
-    use super::Fortuna as OrderBook;
-    use super::FortunaOrder;
-    use super::FortunaQuote;
+    use super::{JuraOrder, JuraQuote, OrderBook};
     use crate::clock::{Clock, Frequency};
     use crate::input::penelope::Penelope;
     use crate::input::penelope::PenelopeBuilder;
 
-    fn setup() -> (Clock, Penelope<FortunaQuote>) {
+    fn setup() -> (Clock, Penelope<JuraQuote>) {
         let mut price_source_builder = PenelopeBuilder::new();
         price_source_builder.add_quote(101.0, 102.00, 100, "0".to_string());
         price_source_builder.add_quote(102.0, 103.00, 101, "0".to_string());
@@ -491,14 +489,14 @@ mod tests {
     fn test_that_buy_market_ioc_executes() {
         let (_clock, source) = setup();
         let mut orderbook = OrderBook::new();
-        let order = FortunaOrder {
+        let order = JuraOrder {
             asset: 0,
             is_buy: true,
             limit_px: "102.00".to_string(),
             sz: "100.0".to_string(),
             reduce_only: false,
             cloid: None,
-            order_type: super::FortunaOrderType::Limit(super::FortunaLimitOrder {
+            order_type: super::JuraOrderType::Limit(super::JuraLimitOrder {
                 tif: super::TimeInForce::Ioc,
             }),
         };
@@ -516,14 +514,14 @@ mod tests {
     fn test_that_buy_market_gtc_executes() {
         let (_clock, source) = setup();
         let mut orderbook = OrderBook::new();
-        let order = FortunaOrder {
+        let order = JuraOrder {
             asset: 0,
             is_buy: true,
             limit_px: "105.00".to_string(),
             sz: "100.0".to_string(),
             reduce_only: false,
             cloid: None,
-            order_type: super::FortunaOrderType::Limit(super::FortunaLimitOrder {
+            order_type: super::JuraOrderType::Limit(super::JuraLimitOrder {
                 tif: super::TimeInForce::Gtc,
             }),
         };
@@ -541,14 +539,14 @@ mod tests {
     fn test_that_sell_market_gtc_executes() {
         let (_clock, source) = setup();
         let mut orderbook = OrderBook::new();
-        let order = FortunaOrder {
+        let order = JuraOrder {
             asset: 0,
             is_buy: false,
             limit_px: "95.00".to_string(),
             sz: "100.0".to_string(),
             reduce_only: false,
             cloid: None,
-            order_type: super::FortunaOrderType::Limit(super::FortunaLimitOrder {
+            order_type: super::JuraOrderType::Limit(super::JuraLimitOrder {
                 tif: super::TimeInForce::Gtc,
             }),
         };
@@ -566,14 +564,14 @@ mod tests {
     fn test_that_sell_market_ioc_executes() {
         let (_clock, source) = setup();
         let mut orderbook = OrderBook::new();
-        let order = FortunaOrder {
+        let order = JuraOrder {
             asset: 0,
             is_buy: false,
             limit_px: "99.00".to_string(),
             sz: "100.0".to_string(),
             reduce_only: false,
             cloid: None,
-            order_type: super::FortunaOrderType::Limit(super::FortunaLimitOrder {
+            order_type: super::JuraOrderType::Limit(super::JuraLimitOrder {
                 tif: super::TimeInForce::Ioc,
             }),
         };
@@ -591,14 +589,14 @@ mod tests {
     fn test_that_buy_market_cancels_itself_if_price_too_high() {
         let (_clock, source) = setup();
         let mut orderbook = OrderBook::new();
-        let order = FortunaOrder {
+        let order = JuraOrder {
             asset: 0,
             is_buy: true,
             limit_px: "1.00".to_string(),
             sz: "100.0".to_string(),
             reduce_only: false,
             cloid: None,
-            order_type: super::FortunaOrderType::Limit(super::FortunaLimitOrder {
+            order_type: super::JuraOrderType::Limit(super::JuraLimitOrder {
                 tif: super::TimeInForce::Ioc,
             }),
         };
@@ -619,14 +617,14 @@ mod tests {
     fn test_that_sell_market_cancels_itself_if_price_too_high() {
         let (_clock, source) = setup();
         let mut orderbook = OrderBook::new();
-        let order = FortunaOrder {
+        let order = JuraOrder {
             asset: 0,
             is_buy: false,
             limit_px: "999.00".to_string(),
             sz: "100.0".to_string(),
             reduce_only: false,
             cloid: None,
-            order_type: super::FortunaOrderType::Limit(super::FortunaLimitOrder {
+            order_type: super::JuraOrderType::Limit(super::JuraLimitOrder {
                 tif: super::TimeInForce::Ioc,
             }),
         };
@@ -651,14 +649,14 @@ mod tests {
 
         let (_clock, source) = setup();
         let mut orderbook = OrderBook::new();
-        let order = FortunaOrder {
+        let order = JuraOrder {
             asset: 0,
             is_buy: true,
             limit_px: "93.00".to_string(),
             sz: "100.0".to_string(),
             reduce_only: false,
             cloid: None,
-            order_type: super::FortunaOrderType::Limit(super::FortunaLimitOrder {
+            order_type: super::JuraOrderType::Limit(super::JuraLimitOrder {
                 tif: super::TimeInForce::Ioc,
             }),
         };
@@ -680,14 +678,14 @@ mod tests {
 
         let (_clock, source) = setup();
         let mut orderbook = OrderBook::new();
-        let order = FortunaOrder {
+        let order = JuraOrder {
             asset: 0,
             is_buy: false,
             limit_px: "108.00".to_string(),
             sz: "100.0".to_string(),
             reduce_only: false,
             cloid: None,
-            order_type: super::FortunaOrderType::Limit(super::FortunaLimitOrder {
+            order_type: super::JuraOrderType::Limit(super::JuraLimitOrder {
                 tif: super::TimeInForce::Ioc,
             }),
         };
@@ -707,14 +705,14 @@ mod tests {
         //limit so this functions like a normal SL. Executs on next tick.
         let (_clock, source) = setup();
         let mut orderbook = OrderBook::new();
-        let order = FortunaOrder {
+        let order = JuraOrder {
             asset: 0,
             is_buy: true,
             limit_px: "102.00".to_string(),
             sz: "100.0".to_string(),
             reduce_only: false,
             cloid: None,
-            order_type: super::FortunaOrderType::Trigger(super::FortunaTriggerOrder {
+            order_type: super::JuraOrderType::Trigger(super::JuraTriggerOrder {
                 trigger_px: 102.0,
                 is_market: true,
                 tpsl: super::TriggerType::Sl,
@@ -741,14 +739,14 @@ mod tests {
         //executes on 103 when ask is 106.
         let (_clock, source) = setup();
         let mut orderbook = OrderBook::new();
-        let order = FortunaOrder {
+        let order = JuraOrder {
             asset: 0,
             is_buy: true,
             limit_px: "103.00".to_string(),
             sz: "100.0".to_string(),
             reduce_only: false,
             cloid: None,
-            order_type: super::FortunaOrderType::Trigger(super::FortunaTriggerOrder {
+            order_type: super::JuraOrderType::Trigger(super::JuraTriggerOrder {
                 trigger_px: 103.0,
                 is_market: true,
                 tpsl: super::TriggerType::Sl,
@@ -777,14 +775,14 @@ mod tests {
         //limit so this functions like a normal SL. Executes on next tick.
         let (_clock, source) = setup();
         let mut orderbook = OrderBook::new();
-        let order = FortunaOrder {
+        let order = JuraOrder {
             asset: 0,
             is_buy: false,
             limit_px: "101.00".to_string(),
             sz: "100.0".to_string(),
             reduce_only: false,
             cloid: None,
-            order_type: super::FortunaOrderType::Trigger(super::FortunaTriggerOrder {
+            order_type: super::JuraOrderType::Trigger(super::JuraTriggerOrder {
                 trigger_px: 101.0,
                 is_market: true,
                 tpsl: super::TriggerType::Sl,
@@ -809,14 +807,14 @@ mod tests {
         //limit so this functions like a normal TP. Executes on next tick.
         let (_clock, source) = setup();
         let mut orderbook = OrderBook::new();
-        let order = FortunaOrder {
+        let order = JuraOrder {
             asset: 0,
             is_buy: false,
             limit_px: "102.00".to_string(),
             sz: "100.0".to_string(),
             reduce_only: false,
             cloid: None,
-            order_type: super::FortunaOrderType::Trigger(super::FortunaTriggerOrder {
+            order_type: super::JuraOrderType::Trigger(super::JuraTriggerOrder {
                 trigger_px: 102.0,
                 is_market: true,
                 tpsl: super::TriggerType::Tp,
@@ -841,14 +839,14 @@ mod tests {
         //limit so this functions like a normal TP.
         let (_clock, source) = setup();
         let mut orderbook = OrderBook::new();
-        let order = FortunaOrder {
+        let order = JuraOrder {
             asset: 0,
             is_buy: false,
             limit_px: "101.00".to_string(),
             sz: "100.0".to_string(),
             reduce_only: false,
             cloid: None,
-            order_type: super::FortunaOrderType::Trigger(super::FortunaTriggerOrder {
+            order_type: super::JuraOrderType::Trigger(super::JuraTriggerOrder {
                 trigger_px: 101.0,
                 is_market: true,
                 tpsl: super::TriggerType::Tp,

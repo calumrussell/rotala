@@ -4,8 +4,10 @@ use serde::{Deserialize, Serialize};
 
 use crate::{
     clock::{Clock, ClockBuilder, DateTime, Frequency},
-    exchange::uist::{UistQuote, UistSource},
-    orderbook::fortuna::{FortunaQuote, FortunaSource},
+    exchange::{
+        jura::{JuraQuote, JuraSource},
+        uist::{UistQuote, UistSource},
+    },
     source::get_binance_1m_klines,
 };
 
@@ -53,8 +55,8 @@ impl<Q: PenelopeQuote + Clone> Penelope<Q> {
     }
 }
 
-impl FortunaSource for Penelope<FortunaQuote> {
-    fn get_quote(&self, date: &i64, security: &u64) -> Option<FortunaQuote> {
+impl JuraSource for Penelope<JuraQuote> {
+    fn get_quote(&self, date: &i64, security: &u64) -> Option<JuraQuote> {
         Self::get_quote(self, date, &security.to_string()).cloned()
     }
 }
