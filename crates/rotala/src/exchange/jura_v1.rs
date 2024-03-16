@@ -246,7 +246,7 @@ impl JuraV1 {
         self.orderbook.delete_order(asset, order_id);
     }
 
-    pub fn tick(&mut self) -> (bool, Vec<Fill>, Vec<Order>) {
+    pub fn tick(&mut self) -> (bool, Vec<Fill>, Vec<Order>, Vec<u64>) {
         //To eliminate lookahead bias, we only start executing orders on the next
         //tick.
         self.clock.tick();
@@ -257,12 +257,17 @@ impl JuraV1 {
             self.orderbook.insert_order(now.into(), order.clone());
         }
 
-        let (fills, _triggered_order_ids) = self.orderbook.execute_orders(*now, &self.price_source);
+        let (fills, triggered_order_ids) = self.orderbook.execute_orders(*now, &self.price_source);
         for fill in &fills {
             self.trade_log.push(fill.clone());
         }
         let inserted_orders = std::mem::take(&mut self.order_buffer);
-        (self.clock.has_next(), fills, inserted_orders)
+        (
+            self.clock.has_next(),
+            fills,
+            inserted_orders,
+            triggered_order_ids,
+        )
     }
 }
 
