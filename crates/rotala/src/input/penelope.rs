@@ -5,7 +5,7 @@ use serde::{Deserialize, Serialize};
 use crate::{
     clock::{Clock, ClockBuilder, DateTime, Frequency},
     exchange::{
-        jura::{JuraQuote, JuraSource},
+        jura_v1::{JuraQuote, JuraSource},
         uist_v1::{UistQuote, UistSource},
     },
     source::get_binance_1m_klines,

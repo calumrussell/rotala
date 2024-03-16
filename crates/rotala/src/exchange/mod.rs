@@ -3,5 +3,5 @@
 //! to Orderbooks and the logic contained within the Exchange itself primarily relates to the
 //! orchestration of the backtest (for example, ticking forward or synchronizing state with clients
 //! ).
-pub mod jura;
+pub mod jura_v1;
 pub mod uist_v1;
