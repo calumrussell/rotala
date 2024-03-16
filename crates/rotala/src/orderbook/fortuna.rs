@@ -2,13 +2,45 @@ use std::collections::VecDeque;
 
 use serde::{Deserialize, Serialize};
 
-pub trait FortunaSource {
-    fn get_quote(&self, date: &i64, security: &u64) -> Option<impl FortunaQuote>;
+use crate::input::penelope::PenelopeQuote;
+
+#[derive(Clone)]
+pub struct FortunaQuote {
+    bid: f64,
+    ask: f64,
+    date: i64,
+    symbol: String,
 }
 
-pub trait FortunaQuote {
-    fn get_ask(&self) -> f64;
-    fn get_bid(&self) -> f64;
+impl PenelopeQuote for FortunaQuote {
+    fn get_bid(&self) -> f64 {
+        self.bid
+    }
+
+    fn get_ask(&self) -> f64 {
+        self.ask
+    }
+
+    fn get_date(&self) -> i64 {
+        self.date
+    }
+
+    fn get_symbol(&self) -> String {
+        self.symbol.clone()
+    }
+
+    fn create(bid: f64, ask: f64, date: i64, symbol: String) -> Self {
+        Self {
+            bid,
+            ask,
+            date,
+            symbol,
+        }
+    }
+}
+
+pub trait FortunaSource {
+    fn get_quote(&self, date: &i64, security: &u64) -> Option<FortunaQuote>;
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
@@ -219,7 +251,7 @@ impl Fortuna {
         order_id
     }
 
-    fn execute_buy(quote: impl FortunaQuote, order: &FortunaInnerOrder, date: i64) -> FortunaFill {
+    fn execute_buy(quote: FortunaQuote, order: &FortunaInnerOrder, date: i64) -> FortunaFill {
         let trade_price = quote.get_ask();
         FortunaFill {
             closed_pnl: "0.0".to_string(),
@@ -236,7 +268,7 @@ impl Fortuna {
         }
     }
 
-    fn execute_sell(quote: impl FortunaQuote, order: &FortunaInnerOrder, date: i64) -> FortunaFill {
+    fn execute_sell(quote: FortunaQuote, order: &FortunaInnerOrder, date: i64) -> FortunaFill {
         let trade_price = quote.get_bid();
         FortunaFill {
             closed_pnl: "0.0".to_string(),
@@ -439,11 +471,12 @@ impl Fortuna {
 mod tests {
     use super::Fortuna as OrderBook;
     use super::FortunaOrder;
+    use super::FortunaQuote;
     use crate::clock::{Clock, Frequency};
     use crate::input::penelope::Penelope;
     use crate::input::penelope::PenelopeBuilder;
 
-    fn setup() -> (Clock, Penelope) {
+    fn setup() -> (Clock, Penelope<FortunaQuote>) {
         let mut price_source_builder = PenelopeBuilder::new();
         price_source_builder.add_quote(101.0, 102.00, 100, "0".to_string());
         price_source_builder.add_quote(102.0, 103.00, 101, "0".to_string());

@@ -4,65 +4,26 @@ use serde::{Deserialize, Serialize};
 
 use crate::{
     clock::{Clock, ClockBuilder, DateTime, Frequency},
-    orderbook::{
-        diana::{DianaQuote, DianaSource},
-        fortuna::{FortunaQuote, FortunaSource},
-    },
+    exchange::uist::{UistQuote, UistSource},
+    orderbook::fortuna::{FortunaQuote, FortunaSource},
     source::get_binance_1m_klines,
 };
 
-#[derive(Clone, Debug, Deserialize, Serialize)]
-pub struct PenelopeQuote {
-    pub bid: f64,
-    pub ask: f64,
-    pub date: i64,
-    pub symbol: String,
+pub trait PenelopeQuote {
+    fn get_bid(&self) -> f64;
+    fn get_ask(&self) -> f64;
+    fn get_symbol(&self) -> String;
+    fn get_date(&self) -> i64;
+    fn create(bid: f64, ask: f64, date: i64, symbol: String) -> Self;
 }
 
-impl PenelopeQuote {
-    pub fn get_bid(&self) -> f64 {
-        self.bid
-    }
-
-    pub fn get_ask(&self) -> f64 {
-        self.ask
-    }
-
-    pub fn get_symbol(&self) -> String {
-        self.symbol.clone()
-    }
-
-    pub fn get_date(&self) -> i64 {
-        self.date
-    }
+#[derive(Debug, Deserialize, Serialize)]
+pub struct Penelope<Q: PenelopeQuote + Clone> {
+    inner: HashMap<i64, HashMap<String, Q>>,
 }
 
-impl DianaQuote for PenelopeQuote {
-    fn get_ask(&self) -> f64 {
-        self.ask
-    }
-    fn get_bid(&self) -> f64 {
-        self.bid
-    }
-}
-
-impl FortunaQuote for PenelopeQuote {
-    fn get_ask(&self) -> f64 {
-        self.get_ask()
-    }
-
-    fn get_bid(&self) -> f64 {
-        self.get_bid()
-    }
-}
-
-#[derive(Debug)]
-pub struct Penelope {
-    inner: HashMap<i64, HashMap<String, PenelopeQuote>>,
-}
-
-impl Penelope {
-    pub fn get_quote(&self, date: &i64, symbol: &str) -> Option<&PenelopeQuote> {
+impl<Q: PenelopeQuote + Clone> Penelope<Q> {
+    pub fn get_quote(&self, date: &i64, symbol: &str) -> Option<&Q> {
         if let Some(date_row) = self.inner.get(date) {
             if let Some(quote) = date_row.get(symbol) {
                 return Some(quote);
@@ -71,14 +32,14 @@ impl Penelope {
         None
     }
 
-    pub fn get_quotes(&self, date: &i64) -> Option<Vec<PenelopeQuote>> {
+    pub fn get_quotes(&self, date: &i64) -> Option<Vec<Q>> {
         if let Some(date_row) = self.inner.get(date) {
             return Some(date_row.values().cloned().collect());
         }
         None
     }
     pub fn from_binance() -> (Self, Clock) {
-        let mut builder = PenelopeBuilder::new();
+        let mut builder = PenelopeBuilder::<Q>::new();
 
         for record in get_binance_1m_klines() {
             builder.add_quote(record.open, record.open, record.open_date, "BTC");
@@ -87,29 +48,29 @@ impl Penelope {
         builder.build()
     }
 
-    pub fn from_hashmap(inner: HashMap<i64, HashMap<String, PenelopeQuote>>) -> Self {
+    pub fn from_hashmap(inner: HashMap<i64, HashMap<String, Q>>) -> Self {
         Self { inner }
     }
 }
 
-impl DianaSource for Penelope {
-    fn get_quote(&self, date: &i64, security: &str) -> Option<impl DianaQuote> {
-        Self::get_quote(self, date, security).cloned()
-    }
-}
-
-impl FortunaSource for Penelope {
-    fn get_quote(&self, date: &i64, security: &u64) -> Option<impl FortunaQuote> {
+impl FortunaSource for Penelope<FortunaQuote> {
+    fn get_quote(&self, date: &i64, security: &u64) -> Option<FortunaQuote> {
         Self::get_quote(self, date, &security.to_string()).cloned()
     }
 }
 
-pub struct PenelopeBuilder {
-    inner: HashMap<i64, HashMap<String, PenelopeQuote>>,
+impl UistSource for Penelope<UistQuote> {
+    fn get_quote(&self, date: &i64, security: &str) -> Option<UistQuote> {
+        Self::get_quote(&self, date, security).cloned()
+    }
+}
+
+pub struct PenelopeBuilder<Q: PenelopeQuote + Clone> {
+    inner: HashMap<i64, HashMap<String, Q>>,
     dates: HashSet<DateTime>,
 }
 
-impl PenelopeBuilder {
+impl<Q: PenelopeQuote + Clone> PenelopeBuilder<Q> {
     pub fn new() -> Self {
         Self {
             inner: HashMap::new(),
@@ -117,7 +78,7 @@ impl PenelopeBuilder {
         }
     }
 
-    pub fn build_with_frequency(&self, frequency: Frequency) -> (Penelope, Clock) {
+    pub fn build_with_frequency(&self, frequency: Frequency) -> (Penelope<Q>, Clock) {
         // TODO: there is a clone of the underlying hashmap/dates which is very expensive, need to std::move
         match frequency {
             Frequency::Fixed => (
@@ -149,7 +110,7 @@ impl PenelopeBuilder {
         }
     }
 
-    pub fn build(&self) -> (Penelope, Clock) {
+    pub fn build(&self) -> (Penelope<Q>, Clock) {
         // TODO: there is a clone of the underlying hashmap/dates which is very expensive, need to std::move
         (
             Penelope::from_hashmap(self.inner.clone()),
@@ -158,12 +119,7 @@ impl PenelopeBuilder {
     }
 
     pub fn add_quote(&mut self, bid: f64, ask: f64, date: i64, symbol: impl Into<String> + Clone) {
-        let quote = PenelopeQuote {
-            bid,
-            ask,
-            date,
-            symbol: symbol.clone().into(),
-        };
+        let quote = PenelopeQuote::create(bid, ask, date, symbol.clone().into());
 
         if let Some(date_row) = self.inner.get_mut(&date) {
             date_row.insert(symbol.into(), quote);
@@ -177,7 +133,7 @@ impl PenelopeBuilder {
     }
 }
 
-impl Default for PenelopeBuilder {
+impl<Q: PenelopeQuote + Clone> Default for PenelopeBuilder<Q> {
     fn default() -> Self {
         Self::new()
     }
