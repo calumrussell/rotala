@@ -46,16 +46,16 @@ impl PenelopeQuote for UistQuote {
     }
 }
 
-pub type UistOrderId = u64;
+pub type OrderId = u64;
 
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
-pub enum UistTradeType {
+pub enum TradeType {
     Buy,
     Sell,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Deserialize, Serialize)]
-pub enum UistOrderType {
+pub enum OrderType {
     MarketSell,
     MarketBuy,
     LimitSell,
@@ -65,21 +65,21 @@ pub enum UistOrderType {
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
-pub struct UistTrade {
+pub struct Trade {
     pub symbol: String,
     pub value: f64,
     pub quantity: f64,
     pub date: i64,
-    pub typ: UistTradeType,
+    pub typ: TradeType,
 }
 
-impl UistTrade {
+impl Trade {
     pub fn new(
         symbol: impl Into<String>,
         value: f64,
         quantity: f64,
         date: i64,
-        typ: UistTradeType,
+        typ: TradeType,
     ) -> Self {
         Self {
             symbol: symbol.into(),
@@ -92,15 +92,15 @@ impl UistTrade {
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
-pub struct UistOrder {
-    pub order_id: Option<UistOrderId>,
-    pub order_type: UistOrderType,
+pub struct Order {
+    pub order_id: Option<OrderId>,
+    pub order_type: OrderType,
     pub symbol: String,
     pub shares: f64,
     pub price: Option<f64>,
 }
 
-impl UistOrder {
+impl Order {
     pub fn get_shares(&self) -> f64 {
         self.shares
     }
@@ -112,14 +112,14 @@ impl UistOrder {
         &self.price
     }
 
-    pub fn get_order_type(&self) -> &UistOrderType {
+    pub fn get_order_type(&self) -> &OrderType {
         &self.order_type
     }
 }
 
-impl Eq for UistOrder {}
+impl Eq for Order {}
 
-impl PartialEq for UistOrder {
+impl PartialEq for Order {
     fn eq(&self, other: &Self) -> bool {
         self.symbol == other.symbol
             && self.order_type == other.order_type
@@ -127,12 +127,12 @@ impl PartialEq for UistOrder {
     }
 }
 
-impl UistOrder {
+impl Order {
     fn set_order_id(&mut self, order_id: u64) {
         self.order_id = Some(order_id);
     }
 
-    fn market(order_type: UistOrderType, symbol: impl Into<String>, shares: f64) -> Self {
+    fn market(order_type: OrderType, symbol: impl Into<String>, shares: f64) -> Self {
         Self {
             order_id: None,
             order_type,
@@ -142,12 +142,7 @@ impl UistOrder {
         }
     }
 
-    fn delayed(
-        order_type: UistOrderType,
-        symbol: impl Into<String>,
-        shares: f64,
-        price: f64,
-    ) -> Self {
+    fn delayed(order_type: OrderType, symbol: impl Into<String>, shares: f64, price: f64) -> Self {
         Self {
             order_id: None,
             order_type,
@@ -158,27 +153,27 @@ impl UistOrder {
     }
 
     pub fn market_buy(symbol: impl Into<String>, shares: f64) -> Self {
-        UistOrder::market(UistOrderType::MarketBuy, symbol, shares)
+        Order::market(OrderType::MarketBuy, symbol, shares)
     }
 
     pub fn market_sell(symbol: impl Into<String>, shares: f64) -> Self {
-        UistOrder::market(UistOrderType::MarketSell, symbol, shares)
+        Order::market(OrderType::MarketSell, symbol, shares)
     }
 
     pub fn stop_buy(symbol: impl Into<String>, shares: f64, price: f64) -> Self {
-        UistOrder::delayed(UistOrderType::StopBuy, symbol, shares, price)
+        Order::delayed(OrderType::StopBuy, symbol, shares, price)
     }
 
     pub fn stop_sell(symbol: impl Into<String>, shares: f64, price: f64) -> Self {
-        UistOrder::delayed(UistOrderType::StopSell, symbol, shares, price)
+        Order::delayed(OrderType::StopSell, symbol, shares, price)
     }
 
     pub fn limit_buy(symbol: impl Into<String>, shares: f64, price: f64) -> Self {
-        UistOrder::delayed(UistOrderType::LimitBuy, symbol, shares, price)
+        Order::delayed(OrderType::LimitBuy, symbol, shares, price)
     }
 
     pub fn limit_sell(symbol: impl Into<String>, shares: f64, price: f64) -> Self {
-        UistOrder::delayed(UistOrderType::LimitSell, symbol, shares, price)
+        Order::delayed(OrderType::LimitSell, symbol, shares, price)
     }
 }
 
@@ -209,9 +204,9 @@ pub struct UistV1 {
     clock: Clock,
     price_source: Penelope<UistQuote>,
     orderbook: OrderBook,
-    trade_log: Vec<UistTrade>,
+    trade_log: Vec<Trade>,
     //This is cleared on every tick
-    order_buffer: Vec<UistOrder>,
+    order_buffer: Vec<Order>,
 }
 
 impl UistV1 {
@@ -233,7 +228,7 @@ impl UistV1 {
 
     fn sort_order_buffer(&mut self) {
         self.order_buffer.sort_by(|a, _b| match a.get_order_type() {
-            UistOrderType::LimitSell | UistOrderType::StopSell | UistOrderType::MarketSell => {
+            OrderType::LimitSell | OrderType::StopSell | OrderType::MarketSell => {
                 std::cmp::Ordering::Less
             }
             _ => std::cmp::Ordering::Greater,
@@ -258,7 +253,7 @@ impl UistV1 {
         vec![]
     }
 
-    pub fn insert_order(&mut self, order: UistOrder) {
+    pub fn insert_order(&mut self, order: Order) {
         // Orders are only inserted into the book when tick is called, this is to ensure proper
         // ordering of trades
         // This impacts order_id where an order X can come in before order X+1 but the latter can
@@ -266,11 +261,11 @@ impl UistV1 {
         self.order_buffer.push(order);
     }
 
-    pub fn delete_order(&mut self, order_id: UistOrderId) {
+    pub fn delete_order(&mut self, order_id: OrderId) {
         self.orderbook.delete_order(order_id);
     }
 
-    pub fn tick(&mut self) -> (bool, Vec<UistTrade>, Vec<UistOrder>) {
+    pub fn tick(&mut self) -> (bool, Vec<Trade>, Vec<Order>) {
         //To eliminate lookahead bias, we only start executing orders on the next
         //tick.
         self.clock.tick();
@@ -318,7 +313,7 @@ pub fn random_uist_generator(length: i64) -> (UistV1, Clock) {
 
 #[derive(Debug)]
 pub struct OrderBook {
-    inner: VecDeque<UistOrder>,
+    inner: VecDeque<Order>,
     last_inserted: u64,
 }
 
@@ -351,7 +346,7 @@ impl OrderBook {
         }
     }
 
-    pub fn insert_order(&mut self, order: &mut UistOrder) {
+    pub fn insert_order(&mut self, order: &mut Order) {
         order.set_order_id(self.last_inserted);
         self.inner.push_back(order.clone());
         self.last_inserted += 1;
@@ -361,31 +356,31 @@ impl OrderBook {
         self.inner.is_empty()
     }
 
-    fn execute_buy(quote: UistQuote, order: &UistOrder, date: i64) -> UistTrade {
+    fn execute_buy(quote: UistQuote, order: &Order, date: i64) -> Trade {
         let trade_price = quote.get_ask();
         let value = trade_price * order.get_shares();
-        UistTrade {
+        Trade {
             symbol: order.get_symbol().to_string(),
             value,
             quantity: order.get_shares(),
             date,
-            typ: UistTradeType::Buy,
+            typ: TradeType::Buy,
         }
     }
 
-    fn execute_sell(quote: UistQuote, order: &UistOrder, date: i64) -> UistTrade {
+    fn execute_sell(quote: UistQuote, order: &Order, date: i64) -> Trade {
         let trade_price = quote.get_bid();
         let value = trade_price * order.get_shares();
-        UistTrade {
+        Trade {
             symbol: order.get_symbol().to_string(),
             value,
             quantity: order.get_shares(),
             date,
-            typ: UistTradeType::Sell,
+            typ: TradeType::Sell,
         }
     }
 
-    pub fn execute_orders(&mut self, date: i64, source: &impl UistSource) -> Vec<UistTrade> {
+    pub fn execute_orders(&mut self, date: i64, source: &impl UistSource) -> Vec<Trade> {
         let mut completed_orderids = Vec::new();
         let mut trade_results = Vec::new();
         if self.is_empty() {
@@ -396,9 +391,9 @@ impl OrderBook {
             let security_id = &order.symbol;
             if let Some(quote) = source.get_quote(&date, security_id) {
                 let result = match order.order_type {
-                    UistOrderType::MarketBuy => Some(Self::execute_buy(quote, order, date)),
-                    UistOrderType::MarketSell => Some(Self::execute_sell(quote, order, date)),
-                    UistOrderType::LimitBuy => {
+                    OrderType::MarketBuy => Some(Self::execute_buy(quote, order, date)),
+                    OrderType::MarketSell => Some(Self::execute_sell(quote, order, date)),
+                    OrderType::LimitBuy => {
                         //Unwrap is safe because LimitBuy will always have a price
                         let order_price = order.price;
                         if order_price >= Some(quote.get_ask()) {
@@ -407,7 +402,7 @@ impl OrderBook {
                             None
                         }
                     }
-                    UistOrderType::LimitSell => {
+                    OrderType::LimitSell => {
                         //Unwrap is safe because LimitSell will always have a price
                         let order_price = order.price;
                         if order_price <= Some(quote.get_bid()) {
@@ -416,7 +411,7 @@ impl OrderBook {
                             None
                         }
                     }
-                    UistOrderType::StopBuy => {
+                    OrderType::StopBuy => {
                         //Unwrap is safe because StopBuy will always have a price
                         let order_price = order.price;
                         if order_price <= Some(quote.get_ask()) {
@@ -425,7 +420,7 @@ impl OrderBook {
                             None
                         }
                     }
-                    UistOrderType::StopSell => {
+                    OrderType::StopSell => {
                         //Unwrap is safe because StopSell will always have a price
                         let order_price = order.price;
                         if order_price >= Some(quote.get_bid()) {
@@ -453,7 +448,7 @@ mod tests {
     use super::{OrderBook, UistQuote, UistV1};
     use crate::input::penelope::PenelopeBuilder;
 
-    use super::{UistOrder, UistOrderType, UistTradeType};
+    use super::{Order, OrderType, TradeType};
     use crate::clock::{Clock, Frequency};
     use crate::input::penelope::Penelope;
 
@@ -471,33 +466,33 @@ mod tests {
     fn test_that_multiple_orders_will_execute() {
         let (_clock, source) = setup_orderbook();
         let mut orderbook = OrderBook::new();
-        let mut order = UistOrder {
+        let mut order = Order {
             order_id: None,
-            order_type: UistOrderType::MarketBuy,
+            order_type: OrderType::MarketBuy,
             symbol: "ABC".to_string(),
             shares: 25.0,
             price: None,
         };
         orderbook.insert_order(&mut order);
-        let mut order1 = UistOrder {
+        let mut order1 = Order {
             order_id: None,
-            order_type: UistOrderType::MarketBuy,
+            order_type: OrderType::MarketBuy,
             symbol: "ABC".to_string(),
             shares: 25.0,
             price: None,
         };
         orderbook.insert_order(&mut order1);
-        let mut order2 = UistOrder {
+        let mut order2 = Order {
             order_id: None,
-            order_type: UistOrderType::MarketBuy,
+            order_type: OrderType::MarketBuy,
             symbol: "ABC".to_string(),
             shares: 25.0,
             price: None,
         };
         orderbook.insert_order(&mut order2);
-        let mut order3 = UistOrder {
+        let mut order3 = Order {
             order_id: None,
-            order_type: UistOrderType::MarketBuy,
+            order_type: OrderType::MarketBuy,
             symbol: "ABC".to_string(),
             shares: 25.0,
             price: None,
@@ -512,9 +507,9 @@ mod tests {
     fn test_that_buy_market_executes() {
         let (_clock, source) = setup_orderbook();
         let mut orderbook = OrderBook::new();
-        let mut order = UistOrder {
+        let mut order = Order {
             order_id: None,
-            order_type: UistOrderType::MarketBuy,
+            order_type: OrderType::MarketBuy,
             symbol: "ABC".to_string(),
             shares: 100.0,
             price: None,
@@ -534,9 +529,9 @@ mod tests {
     fn test_that_sell_market_executes() {
         let (_clock, source) = setup_orderbook();
         let mut orderbook = OrderBook::new();
-        let mut order = UistOrder {
+        let mut order = Order {
             order_id: None,
-            order_type: UistOrderType::MarketSell,
+            order_type: OrderType::MarketSell,
             symbol: "ABC".to_string(),
             shares: 100.0,
             price: None,
@@ -556,16 +551,16 @@ mod tests {
     fn test_that_buy_limit_triggers_correctly() {
         let (_clock, source) = setup_orderbook();
         let mut orderbook = OrderBook::new();
-        let mut order = UistOrder {
+        let mut order = Order {
             order_id: None,
-            order_type: UistOrderType::LimitBuy,
+            order_type: OrderType::LimitBuy,
             symbol: "ABC".to_string(),
             shares: 100.0,
             price: Some(95.0),
         };
-        let mut order1 = UistOrder {
+        let mut order1 = Order {
             order_id: None,
-            order_type: UistOrderType::LimitBuy,
+            order_type: OrderType::LimitBuy,
             symbol: "ABC".to_string(),
             shares: 100.0,
             price: Some(105.0),
@@ -587,16 +582,16 @@ mod tests {
     fn test_that_sell_limit_triggers_correctly() {
         let (_clock, source) = setup_orderbook();
         let mut orderbook = OrderBook::new();
-        let mut order = UistOrder {
+        let mut order = Order {
             order_id: None,
-            order_type: UistOrderType::LimitSell,
+            order_type: OrderType::LimitSell,
             symbol: "ABC".to_string(),
             shares: 100.0,
             price: Some(95.0),
         };
-        let mut order1 = UistOrder {
+        let mut order1 = Order {
             order_id: None,
-            order_type: UistOrderType::LimitSell,
+            order_type: OrderType::LimitSell,
             symbol: "ABC".to_string(),
             shares: 100.0,
             price: Some(105.0),
@@ -622,16 +617,16 @@ mod tests {
 
         let (_clock, source) = setup_orderbook();
         let mut orderbook = OrderBook::new();
-        let mut order = UistOrder {
+        let mut order = Order {
             order_id: None,
-            order_type: UistOrderType::StopBuy,
+            order_type: OrderType::StopBuy,
             symbol: "ABC".to_string(),
             shares: 100.0,
             price: Some(95.0),
         };
-        let mut order1 = UistOrder {
+        let mut order1 = Order {
             order_id: None,
-            order_type: UistOrderType::StopBuy,
+            order_type: OrderType::StopBuy,
             symbol: "ABC".to_string(),
             shares: 100.0,
             price: Some(105.0),
@@ -656,16 +651,16 @@ mod tests {
 
         let (_clock, source) = setup_orderbook();
         let mut orderbook = OrderBook::new();
-        let mut order = UistOrder {
+        let mut order = Order {
             order_id: None,
-            order_type: UistOrderType::StopSell,
+            order_type: OrderType::StopSell,
             symbol: "ABC".to_string(),
             shares: 100.0,
             price: Some(99.0),
         };
-        let mut order1 = UistOrder {
+        let mut order1 = Order {
             order_id: None,
-            order_type: UistOrderType::StopSell,
+            order_type: OrderType::StopSell,
             symbol: "ABC".to_string(),
             shares: 100.0,
             price: Some(105.0),
@@ -687,9 +682,9 @@ mod tests {
     fn test_that_order_for_nonexistent_stock_fails_silently_orderbook() {
         let (_clock, source) = setup_orderbook();
         let mut orderbook = OrderBook::new();
-        let mut order = UistOrder {
+        let mut order = Order {
             order_id: None,
-            order_type: UistOrderType::MarketBuy,
+            order_type: OrderType::MarketBuy,
             symbol: "XYZ".to_string(),
             shares: 100.0,
             price: None,
@@ -712,9 +707,9 @@ mod tests {
         clock.tick();
 
         let mut orderbook = OrderBook::new();
-        let mut order = UistOrder {
+        let mut order = Order {
             order_id: None,
-            order_type: UistOrderType::MarketBuy,
+            order_type: OrderType::MarketBuy,
             symbol: "ABC".to_string(),
             shares: 100.0,
             price: None,
@@ -751,7 +746,7 @@ mod tests {
     fn test_that_buy_market_executes_incrementing_trade_log() {
         let mut exchange = setup();
 
-        exchange.insert_order(UistOrder::market_buy("ABC", 100.0));
+        exchange.insert_order(Order::market_buy("ABC", 100.0));
         exchange.tick();
 
         //TODO: no abstraction!
@@ -762,10 +757,10 @@ mod tests {
     fn test_that_multiple_orders_are_executed_on_same_tick() {
         let mut exchange = setup();
 
-        exchange.insert_order(UistOrder::market_buy("ABC", 25.0));
-        exchange.insert_order(UistOrder::market_buy("ABC", 25.0));
-        exchange.insert_order(UistOrder::market_buy("ABC", 25.0));
-        exchange.insert_order(UistOrder::market_buy("ABC", 25.0));
+        exchange.insert_order(Order::market_buy("ABC", 25.0));
+        exchange.insert_order(Order::market_buy("ABC", 25.0));
+        exchange.insert_order(Order::market_buy("ABC", 25.0));
+        exchange.insert_order(Order::market_buy("ABC", 25.0));
 
         exchange.tick();
         assert_eq!(exchange.trade_log.len(), 4);
@@ -774,12 +769,12 @@ mod tests {
     #[test]
     fn test_that_multiple_orders_are_executed_on_consecutive_tick() {
         let mut exchange = setup();
-        exchange.insert_order(UistOrder::market_buy("ABC", 25.0));
-        exchange.insert_order(UistOrder::market_buy("ABC", 25.0));
+        exchange.insert_order(Order::market_buy("ABC", 25.0));
+        exchange.insert_order(Order::market_buy("ABC", 25.0));
         exchange.tick();
 
-        exchange.insert_order(UistOrder::market_buy("ABC", 25.0));
-        exchange.insert_order(UistOrder::market_buy("ABC", 25.0));
+        exchange.insert_order(Order::market_buy("ABC", 25.0));
+        exchange.insert_order(Order::market_buy("ABC", 25.0));
         exchange.tick();
 
         assert_eq!(exchange.trade_log.len(), 4);
@@ -790,7 +785,7 @@ mod tests {
         //Verifies that trades do not execute instaneously removing lookahead bias
         let mut exchange = setup();
 
-        exchange.insert_order(UistOrder::market_buy("ABC", 100.0));
+        exchange.insert_order(Order::market_buy("ABC", 100.0));
         exchange.tick();
 
         assert_eq!(exchange.trade_log.len(), 1);
@@ -805,7 +800,7 @@ mod tests {
         //Verifies that trades do not execute instaneously removing lookahead bias
         let mut exchange = setup();
 
-        exchange.insert_order(UistOrder::market_sell("ABC", 100.0));
+        exchange.insert_order(Order::market_sell("ABC", 100.0));
         exchange.tick();
 
         assert_eq!(exchange.trade_log.len(), 1);
@@ -819,7 +814,7 @@ mod tests {
     fn test_that_order_for_nonexistent_stock_fails_silently() {
         let mut exchange = setup();
 
-        exchange.insert_order(UistOrder::market_buy("XYZ", 100.0));
+        exchange.insert_order(Order::market_buy("XYZ", 100.0));
         exchange.tick();
 
         assert_eq!(exchange.trade_log.len(), 0);
@@ -830,7 +825,7 @@ mod tests {
         //Sounds redundant but accidentally removing the clear could cause unusual errors elsewhere
         let mut exchange = setup();
 
-        exchange.insert_order(UistOrder::market_buy("ABC", 100.0));
+        exchange.insert_order(Order::market_buy("ABC", 100.0));
         exchange.tick();
 
         assert!(exchange.order_buffer.is_empty());
@@ -846,7 +841,7 @@ mod tests {
 
         let mut exchange = UistV1::new(clock, source, "FAKE");
 
-        exchange.insert_order(UistOrder::market_buy("ABC", 100.0));
+        exchange.insert_order(Order::market_buy("ABC", 100.0));
         exchange.tick();
         //Orderbook should have one order and trade log has no executed trades
         assert_eq!(exchange.trade_log.len(), 0);
@@ -860,12 +855,12 @@ mod tests {
     fn test_that_sells_are_executed_before_buy() {
         let mut exchange = setup();
 
-        exchange.insert_order(UistOrder::market_buy("ABC", 100.0));
-        exchange.insert_order(UistOrder::market_buy("ABC", 100.0));
-        exchange.insert_order(UistOrder::market_sell("ABC", 100.0));
+        exchange.insert_order(Order::market_buy("ABC", 100.0));
+        exchange.insert_order(Order::market_buy("ABC", 100.0));
+        exchange.insert_order(Order::market_sell("ABC", 100.0));
         let res = exchange.tick();
 
         assert_eq!(res.1.len(), 3);
-        assert_eq!(res.1.get(0).unwrap().typ, UistTradeType::Sell)
+        assert_eq!(res.1.get(0).unwrap().typ, TradeType::Sell)
     }
 }

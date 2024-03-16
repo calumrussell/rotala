@@ -6,7 +6,7 @@ pub mod uistv1_client {
         DeleteOrderRequest, FetchQuotesResponse, InsertOrderRequest, TickResponse,
     };
 
-    use crate::exchange::uist::{InfoMessage, InitMessage, UistOrder, UistOrderId};
+    use crate::exchange::uist_v1::{InfoMessage, InitMessage, Order, OrderId};
 
     pub struct Client {
         pub path: String,
@@ -21,7 +21,7 @@ pub mod uistv1_client {
                 .await
         }
 
-        pub async fn delete_order(&self, order_id: UistOrderId) -> Result<()> {
+        pub async fn delete_order(&self, order_id: OrderId) -> Result<()> {
             let req = DeleteOrderRequest { order_id };
             self.client
                 .post(self.path.clone() + "/delete_order")
@@ -32,7 +32,7 @@ pub mod uistv1_client {
                 .await
         }
 
-        pub async fn insert_order(&self, order: UistOrder) -> Result<()> {
+        pub async fn insert_order(&self, order: Order) -> Result<()> {
             let req = InsertOrderRequest { order };
             self.client
                 .post(self.path.clone() + "/insert_order")
@@ -77,7 +77,7 @@ pub mod uistv1_server {
     use serde::{Deserialize, Serialize};
     use std::sync::Mutex;
 
-    use crate::exchange::uist::{UistOrder, UistOrderId, UistQuote, UistTrade, UistV1};
+    use crate::exchange::uist_v1::{Order, OrderId, Trade, UistQuote, UistV1};
     use actix_web::web;
 
     pub struct AppState {
@@ -87,8 +87,8 @@ pub mod uistv1_server {
     #[derive(Debug, Deserialize, Serialize)]
     pub struct TickResponse {
         pub has_next: bool,
-        pub executed_trades: Vec<UistTrade>,
-        pub inserted_orders: Vec<UistOrder>,
+        pub executed_trades: Vec<Trade>,
+        pub inserted_orders: Vec<Order>,
     }
 
     pub async fn tick(app: web::Data<AppState>) -> web::Json<TickResponse> {
@@ -104,7 +104,7 @@ pub mod uistv1_server {
 
     #[derive(Debug, Deserialize, Serialize)]
     pub struct DeleteOrderRequest {
-        pub order_id: UistOrderId,
+        pub order_id: OrderId,
     }
 
     pub async fn delete_order(
@@ -118,7 +118,7 @@ pub mod uistv1_server {
 
     #[derive(Debug, Deserialize, Serialize)]
     pub struct InsertOrderRequest {
-        pub order: UistOrder,
+        pub order: Order,
     }
 
     pub async fn insert_order(
@@ -133,7 +133,7 @@ pub mod uistv1_server {
 
     #[derive(Debug, Deserialize, Serialize)]
     pub struct FetchTradesRequest {
-        pub from: UistOrderId,
+        pub from: OrderId,
     }
 
     #[derive(Debug, Deserialize, Serialize)]
@@ -183,7 +183,7 @@ pub mod uistv1_server {
 mod tests {
     use actix_web::{test, web, App};
 
-    use crate::exchange::uist::{random_uist_generator, UistOrder};
+    use crate::exchange::uist_v1::{random_uist_generator, Order};
 
     use super::uistv1_server::*;
     use std::sync::Mutex;
@@ -218,7 +218,7 @@ mod tests {
 
         let req3 = test::TestRequest::post()
             .set_json(InsertOrderRequest {
-                order: UistOrder::market_buy("ABC", 100.0),
+                order: Order::market_buy("ABC", 100.0),
             })
             .uri("/insert_order")
             .to_request();

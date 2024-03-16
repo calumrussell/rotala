@@ -6,7 +6,7 @@ use crate::{
     clock::{Clock, ClockBuilder, DateTime, Frequency},
     exchange::{
         jura::{JuraQuote, JuraSource},
-        uist::{UistQuote, UistSource},
+        uist_v1::{UistQuote, UistSource},
     },
     source::get_binance_1m_klines,
 };

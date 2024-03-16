@@ -1,6 +1,6 @@
 use criterion::{criterion_group, criterion_main, Criterion};
 
-use rotala::exchange::uist::{UistOrder, UistV1};
+use rotala::exchange::uist_v1::{Order, UistV1};
 use rotala::input::penelope::PenelopeBuilder;
 
 fn uist_core_loop_test() {
@@ -17,8 +17,8 @@ fn uist_core_loop_test() {
     let (price_source, clock) = source_builder.build();
     let mut uist = UistV1::new(clock, price_source, "FAKE");
 
-    uist.insert_order(UistOrder::market_buy("ABC", 100.0));
-    uist.insert_order(UistOrder::market_buy("ABC", 100.0));
+    uist.insert_order(Order::market_buy("ABC", 100.0));
+    uist.insert_order(Order::market_buy("ABC", 100.0));
 
     uist.tick();
     uist.tick();

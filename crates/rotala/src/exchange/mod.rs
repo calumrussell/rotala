@@ -4,4 +4,4 @@
 //! orchestration of the backtest (for example, ticking forward or synchronizing state with clients
 //! ).
 pub mod jura;
-pub mod uist;
+pub mod uist_v1;
