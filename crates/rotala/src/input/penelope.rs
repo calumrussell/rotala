@@ -61,7 +61,7 @@ impl FortunaSource for Penelope<FortunaQuote> {
 
 impl UistSource for Penelope<UistQuote> {
     fn get_quote(&self, date: &i64, security: &str) -> Option<UistQuote> {
-        Self::get_quote(&self, date, security).cloned()
+        Self::get_quote(self, date, security).cloned()
     }
 }
 
