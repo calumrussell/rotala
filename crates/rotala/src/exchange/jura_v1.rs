@@ -252,6 +252,7 @@ impl JuraV1 {
         self.clock.tick();
         let now = self.clock.now();
 
+        self.sort_order_buffer();
         for order in self.order_buffer.iter_mut() {
             self.orderbook.insert_order(now.into(), order.clone());
         }
