@@ -1,10 +1,12 @@
 use std::collections::VecDeque;
 
+use rand::thread_rng;
+use rand_distr::{Distribution, Uniform};
 use serde::{Deserialize, Serialize};
 
 use crate::{
     clock::Clock,
-    input::penelope::{Penelope, PenelopeQuote},
+    input::penelope::{Penelope, PenelopeBuilder, PenelopeQuote},
 };
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
@@ -74,17 +76,17 @@ impl From<Side> for String {
 /// always be set to false
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct Fill {
-    closed_pnl: String,
-    coin: String,
-    crossed: bool,
-    dir: bool,
-    hash: bool,
-    oid: u64,
-    px: String,
-    side: String,
-    start_position: bool,
-    sz: String,
-    time: i64,
+    pub closed_pnl: String,
+    pub coin: String,
+    pub crossed: bool,
+    pub dir: bool,
+    pub hash: bool,
+    pub oid: u64,
+    pub px: String,
+    pub side: String,
+    pub start_position: bool,
+    pub sz: String,
+    pub time: i64,
 }
 
 pub type OrderId = u64;
@@ -748,6 +750,31 @@ impl OrderBook {
         }
         (fills, triggered_order_ids)
     }
+}
+
+pub fn random_jura_generator(length: i64) -> (JuraV1, Clock) {
+    let price_dist = Uniform::new(90.0, 100.0);
+    let mut rng = thread_rng();
+
+    let mut source_builder = PenelopeBuilder::new();
+
+    for date in 100..length + 100 {
+        source_builder.add_quote(
+            price_dist.sample(&mut rng),
+            price_dist.sample(&mut rng),
+            date,
+            "0",
+        );
+        source_builder.add_quote(
+            price_dist.sample(&mut rng),
+            price_dist.sample(&mut rng),
+            date,
+            "1",
+        );
+    }
+
+    let (penelope, clock) = source_builder.build_with_frequency(crate::clock::Frequency::Second);
+    (JuraV1::new(clock.clone(), penelope, "RANDOM"), clock)
 }
 
 #[cfg(test)]
