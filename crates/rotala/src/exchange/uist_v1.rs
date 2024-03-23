@@ -115,19 +115,7 @@ impl Order {
     pub fn get_order_type(&self) -> &OrderType {
         &self.order_type
     }
-}
 
-impl Eq for Order {}
-
-impl PartialEq for Order {
-    fn eq(&self, other: &Self) -> bool {
-        self.symbol == other.symbol
-            && self.order_type == other.order_type
-            && self.shares == other.shares
-    }
-}
-
-impl Order {
     fn set_order_id(&mut self, order_id: u64) {
         self.order_id = Some(order_id);
     }
@@ -174,6 +162,16 @@ impl Order {
 
     pub fn limit_sell(symbol: impl Into<String>, shares: f64, price: f64) -> Self {
         Order::delayed(OrderType::LimitSell, symbol, shares, price)
+    }
+}
+
+impl Eq for Order {}
+
+impl PartialEq for Order {
+    fn eq(&self, other: &Self) -> bool {
+        self.symbol == other.symbol
+            && self.order_type == other.order_type
+            && self.shares == other.shares
     }
 }
 

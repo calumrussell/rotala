@@ -133,13 +133,178 @@ pub enum OrderType {
 pub struct Order {
     asset: u64,
     is_buy: bool,
-    // What if limit_px has value but is_market is true?
     limit_px: String,
     sz: String,
     reduce_only: bool,
     //This is client order id, need to check whether test impl should reasonably use this.
     cloid: Option<String>,
     order_type: OrderType,
+}
+
+impl Order {
+    pub fn market_buy(asset: u64, sz: &str, price: &str) -> Self {
+        Self {
+            asset,
+            is_buy: true,
+            limit_px: price.to_string(),
+            sz: sz.to_string(),
+            reduce_only: false,
+            cloid: None,
+            order_type: OrderType::Limit(LimitOrder {
+                tif: TimeInForce::Ioc,
+            }),
+        }
+    }
+
+    pub fn market_sell(
+        asset: impl Into<u64>,
+        sz: impl Into<String>,
+        price: impl Into<String>,
+    ) -> Self {
+        Self {
+            asset: asset.into(),
+            is_buy: false,
+            limit_px: price.into(),
+            sz: sz.into(),
+            reduce_only: false,
+            cloid: None,
+            order_type: OrderType::Limit(LimitOrder {
+                tif: TimeInForce::Ioc,
+            }),
+        }
+    }
+
+    pub fn limit_buy(
+        asset: impl Into<u64>,
+        sz: impl Into<String>,
+        price: impl Into<String>,
+    ) -> Self {
+        Self {
+            asset: asset.into(),
+            is_buy: true,
+            limit_px: price.into(),
+            sz: sz.into(),
+            reduce_only: false,
+            cloid: None,
+            order_type: OrderType::Limit(LimitOrder {
+                tif: TimeInForce::Gtc,
+            }),
+        }
+    }
+
+    pub fn limit_sell(
+        asset: impl Into<u64>,
+        sz: impl Into<String>,
+        price: impl Into<String>,
+    ) -> Self {
+        Self {
+            asset: asset.into(),
+            is_buy: false,
+            limit_px: price.into(),
+            sz: sz.into(),
+            reduce_only: false,
+            cloid: None,
+            order_type: OrderType::Limit(LimitOrder {
+                tif: TimeInForce::Gtc,
+            }),
+        }
+    }
+
+    pub fn stop_buy(
+        asset: impl Into<u64>,
+        sz: impl Into<String>,
+        price: impl Into<String>,
+    ) -> Self {
+        // It is possible for a stop to use a different trigger price, we guard against this with
+        // the default order type because it is unexpected behaviour in most applications.
+        let copy = price.into();
+        let to_f64 = copy.parse::<f64>().unwrap();
+        Self {
+            asset: asset.into(),
+            is_buy: true,
+            limit_px: copy.clone(),
+            sz: sz.into(),
+            reduce_only: false,
+            cloid: None,
+            order_type: OrderType::Trigger(TriggerOrder {
+                trigger_px: to_f64,
+                is_market: true,
+                tpsl: TriggerType::Sl,
+            }),
+        }
+    }
+
+    pub fn stop_sell(
+        asset: impl Into<u64>,
+        sz: impl Into<String>,
+        price: impl Into<String>,
+    ) -> Self {
+        // It is possible for a stop to use a different trigger price, we guard against this with
+        // the default order type because it is unexpected behaviour in most applications.
+        let copy = price.into();
+        let to_f64 = copy.parse::<f64>().unwrap();
+        Self {
+            asset: asset.into(),
+            is_buy: false,
+            limit_px: copy.clone(),
+            sz: sz.into(),
+            reduce_only: false,
+            cloid: None,
+            order_type: OrderType::Trigger(TriggerOrder {
+                trigger_px: to_f64,
+                is_market: true,
+                tpsl: TriggerType::Sl,
+            }),
+        }
+    }
+
+    pub fn takeprofit_buy(
+        asset: impl Into<u64>,
+        sz: impl Into<String>,
+        price: impl Into<String>,
+    ) -> Self {
+        // It is possible for a stop to use a different trigger price, we guard against this with
+        // the default order type because it is unexpected behaviour in most applications.
+        let copy = price.into();
+        let to_f64 = copy.parse::<f64>().unwrap();
+        Self {
+            asset: asset.into(),
+            is_buy: true,
+            limit_px: copy.clone(),
+            sz: sz.into(),
+            reduce_only: false,
+            cloid: None,
+            order_type: OrderType::Trigger(TriggerOrder {
+                trigger_px: to_f64,
+                is_market: true,
+                tpsl: TriggerType::Tp,
+            }),
+        }
+    }
+
+    pub fn takeprofit_sell(
+        asset: impl Into<u64>,
+        sz: impl Into<String>,
+        price: impl Into<String>,
+    ) -> Self {
+        // It is possible for a stop to use a different trigger price, we guard against this with
+        // the default order type because it is unexpected behaviour in most applications.
+        let copy = price.into();
+        let to_f64 = copy.parse::<f64>().unwrap();
+        Self {
+            asset: asset.into(),
+            is_buy: false,
+            limit_px: copy.clone(),
+            sz: sz.into(),
+            reduce_only: false,
+            cloid: None,
+            order_type: OrderType::Trigger(TriggerOrder {
+                trigger_px: to_f64,
+                is_market: true,
+                tpsl: TriggerType::Tp,
+            }),
+        }
+    }
 }
 
 #[derive(Debug)]
@@ -587,12 +752,13 @@ impl OrderBook {
 
 #[cfg(test)]
 mod tests {
-    use super::{JuraQuote, Order, OrderBook};
+    use super::{JuraQuote, JuraV1, Order, OrderBook};
     use crate::clock::{Clock, Frequency};
+    use crate::exchange::jura_v1::Side;
     use crate::input::penelope::Penelope;
     use crate::input::penelope::PenelopeBuilder;
 
-    fn setup() -> (Clock, Penelope<JuraQuote>) {
+    fn setup_orderbook() -> (Clock, Penelope<JuraQuote>) {
         let mut price_source_builder = PenelopeBuilder::new();
         price_source_builder.add_quote(101.0, 102.00, 100, "0".to_string());
         price_source_builder.add_quote(102.0, 103.00, 101, "0".to_string());
@@ -605,7 +771,7 @@ mod tests {
 
     #[test]
     fn test_that_buy_market_ioc_executes() {
-        let (_clock, source) = setup();
+        let (_clock, source) = setup_orderbook();
         let mut orderbook = OrderBook::new();
         let order = Order {
             asset: 0,
@@ -630,7 +796,7 @@ mod tests {
 
     #[test]
     fn test_that_buy_market_gtc_executes() {
-        let (_clock, source) = setup();
+        let (_clock, source) = setup_orderbook();
         let mut orderbook = OrderBook::new();
         let order = Order {
             asset: 0,
@@ -655,7 +821,7 @@ mod tests {
 
     #[test]
     fn test_that_sell_market_gtc_executes() {
-        let (_clock, source) = setup();
+        let (_clock, source) = setup_orderbook();
         let mut orderbook = OrderBook::new();
         let order = Order {
             asset: 0,
@@ -680,7 +846,7 @@ mod tests {
 
     #[test]
     fn test_that_sell_market_ioc_executes() {
-        let (_clock, source) = setup();
+        let (_clock, source) = setup_orderbook();
         let mut orderbook = OrderBook::new();
         let order = Order {
             asset: 0,
@@ -705,7 +871,7 @@ mod tests {
 
     #[test]
     fn test_that_buy_market_cancels_itself_if_price_too_high() {
-        let (_clock, source) = setup();
+        let (_clock, source) = setup_orderbook();
         let mut orderbook = OrderBook::new();
         let order = Order {
             asset: 0,
@@ -733,7 +899,7 @@ mod tests {
 
     #[test]
     fn test_that_sell_market_cancels_itself_if_price_too_high() {
-        let (_clock, source) = setup();
+        let (_clock, source) = setup_orderbook();
         let mut orderbook = OrderBook::new();
         let order = Order {
             asset: 0,
@@ -765,7 +931,7 @@ mod tests {
         // execute when limit_px*1.1 > price (not when price*0.9 > limit_px) so 93 is the lowest
         // price (roughly) that will trigger a market buy with ask of 102.
 
-        let (_clock, source) = setup();
+        let (_clock, source) = setup_orderbook();
         let mut orderbook = OrderBook::new();
         let order = Order {
             asset: 0,
@@ -794,7 +960,7 @@ mod tests {
         // execute when limit_px*0.9 < price so 108 is the highest
         // price (roughly) that will trigger a market buy with bid of 101.
 
-        let (_clock, source) = setup();
+        let (_clock, source) = setup_orderbook();
         let mut orderbook = OrderBook::new();
         let order = Order {
             asset: 0,
@@ -821,7 +987,7 @@ mod tests {
     fn test_that_trigger_order_triggers_stop_loss_long() {
         //Currently short, set stop loss to trigger immediately if 102 is hit. Trigger is same as
         //limit so this functions like a normal SL. Executs on next tick.
-        let (_clock, source) = setup();
+        let (_clock, source) = setup_orderbook();
         let mut orderbook = OrderBook::new();
         let order = Order {
             asset: 0,
@@ -855,7 +1021,7 @@ mod tests {
         //limit so this functions like a normal SL.
         //Order inserted on 100 and doesn't trigger as ask is 102, triggers on 101 as ask is 103,
         //executes on 103 when ask is 106.
-        let (_clock, source) = setup();
+        let (_clock, source) = setup_orderbook();
         let mut orderbook = OrderBook::new();
         let order = Order {
             asset: 0,
@@ -891,7 +1057,7 @@ mod tests {
     fn test_that_trigger_order_triggers_stop_loss_short() {
         //Currently long, set stop loss to trigger immediately if 101 is hit. Trigger is same as
         //limit so this functions like a normal SL. Executes on next tick.
-        let (_clock, source) = setup();
+        let (_clock, source) = setup_orderbook();
         let mut orderbook = OrderBook::new();
         let order = Order {
             asset: 0,
@@ -923,7 +1089,7 @@ mod tests {
     fn test_that_trigger_order_triggers_take_profit_long() {
         //Current short , set take profit to trigger immediately if 102 is hit. Trigger is same as
         //limit so this functions like a normal TP. Executes on next tick.
-        let (_clock, source) = setup();
+        let (_clock, source) = setup_orderbook();
         let mut orderbook = OrderBook::new();
         let order = Order {
             asset: 0,
@@ -955,7 +1121,7 @@ mod tests {
     fn test_that_trigger_order_triggers_take_profit_short() {
         //Current long, set take profit to trigger immediately if 101 is hit. Trigger is same as
         //limit so this functions like a normal TP.
-        let (_clock, source) = setup();
+        let (_clock, source) = setup_orderbook();
         let mut orderbook = OrderBook::new();
         let order = Order {
             asset: 0,
@@ -981,5 +1147,139 @@ mod tests {
 
         assert_eq!(trade.px, "102".to_string());
         assert_eq!(trade.time, 101);
+    }
+
+    fn setup() -> JuraV1 {
+        let mut source_builder = PenelopeBuilder::new();
+        source_builder.add_quote(101.00, 102.00, 100, "0".to_owned());
+        source_builder.add_quote(102.00, 103.00, 101, "0".to_owned());
+        source_builder.add_quote(105.00, 106.00, 102, "0".to_owned());
+
+        let (source, clock) = source_builder.build_with_frequency(crate::clock::Frequency::Second);
+
+        let exchange = JuraV1::new(clock, source, "FAKE");
+        exchange
+    }
+
+    #[test]
+    fn test_that_buy_market_executes_incrementing_trade_log() {
+        let mut exchange = setup();
+
+        exchange.insert_order(Order::market_buy(0_u64, "100.0", "102.00"));
+        exchange.tick();
+
+        //TODO: no abstraction!
+        assert_eq!(exchange.trade_log.len(), 1);
+    }
+
+    #[test]
+    fn test_that_multiple_orders_are_executed_on_same_tick() {
+        let mut exchange = setup();
+
+        exchange.insert_order(Order::market_buy(0_u64, "25.0", "102.00"));
+        exchange.insert_order(Order::market_buy(0_u64, "25.0", "102.00"));
+        exchange.insert_order(Order::market_buy(0_u64, "25.0", "102.00"));
+        exchange.insert_order(Order::market_buy(0_u64, "25.0", "102.00"));
+
+        exchange.tick();
+        assert_eq!(exchange.trade_log.len(), 4);
+    }
+
+    #[test]
+    fn test_that_multiple_orders_are_executed_on_consecutive_tick() {
+        let mut exchange = setup();
+        exchange.insert_order(Order::market_buy(0_u64, "25.0", "102.00"));
+        exchange.insert_order(Order::market_buy(0_u64, "25.0", "102.00"));
+        exchange.tick();
+
+        exchange.insert_order(Order::market_buy(0_u64, "25.0", "102.00"));
+        exchange.insert_order(Order::market_buy(0_u64, "25.0", "102.00"));
+        exchange.tick();
+
+        assert_eq!(exchange.trade_log.len(), 4);
+    }
+
+    #[test]
+    fn test_that_buy_market_executes_on_next_tick() {
+        //Verifies that trades do not execute instaneously removing lookahead bias
+        let mut exchange = setup();
+
+        exchange.insert_order(Order::market_buy(0_u64, "100.0", "102.00"));
+        exchange.tick();
+
+        assert_eq!(exchange.trade_log.len(), 1);
+        let trade = exchange.trade_log.remove(0);
+        //Trade executes at 101 so trade price should be 103
+        assert_eq!(trade.px, "103");
+        assert_eq!(trade.time, 101);
+    }
+
+    #[test]
+    fn test_that_sell_market_executes_on_next_tick() {
+        //Verifies that trades do not execute instaneously removing lookahead bias
+        let mut exchange = setup();
+
+        exchange.insert_order(Order::market_sell(0_u64, "100.0", "101.00"));
+        exchange.tick();
+
+        assert_eq!(exchange.trade_log.len(), 1);
+        let trade = exchange.trade_log.remove(0);
+        //Trade executes at 101 so trade price should be 102
+        assert_eq!(trade.px, "102");
+        assert_eq!(trade.time, 101);
+    }
+
+    #[test]
+    fn test_that_order_for_nonexistent_stock_fails_silently() {
+        let mut exchange = setup();
+
+        exchange.insert_order(Order::market_buy(99_u64, "100.0", "102.00"));
+        exchange.tick();
+
+        assert_eq!(exchange.trade_log.len(), 0);
+    }
+
+    #[test]
+    fn test_that_order_buffer_clears() {
+        //Sounds redundant but accidentally removing the clear could cause unusual errors elsewhere
+        let mut exchange = setup();
+
+        exchange.insert_order(Order::market_buy(0_u64, "100.0", "102.00"));
+        exchange.tick();
+
+        assert!(exchange.order_buffer.is_empty());
+    }
+
+    #[test]
+    fn test_that_order_with_missing_price_executes_later() {
+        let mut source_builder = PenelopeBuilder::new();
+        source_builder.add_quote(101.00, 102.00, 100, "0".to_owned());
+        source_builder.add_quote(105.00, 106.00, 102, "0".to_owned());
+
+        let (source, clock) = source_builder.build_with_frequency(crate::clock::Frequency::Second);
+
+        let mut exchange = JuraV1::new(clock, source, "FAKE");
+
+        exchange.insert_order(Order::market_buy(0_u64, "100.0", "102.00"));
+        exchange.tick();
+        //Orderbook should have one order and trade log has no executed trades
+        assert_eq!(exchange.trade_log.len(), 0);
+
+        exchange.tick();
+        //Order should execute now
+        assert_eq!(exchange.trade_log.len(), 1);
+    }
+
+    #[test]
+    fn test_that_sells_are_executed_before_buy() {
+        let mut exchange = setup();
+
+        exchange.insert_order(Order::market_buy(0_u64, "100.0", "102.00"));
+        exchange.insert_order(Order::market_buy(0_u64, "100.0", "102.00"));
+        exchange.insert_order(Order::market_sell(0_u64, "100.0", "102.00"));
+        let res = exchange.tick();
+
+        assert_eq!(res.1.len(), 3);
+        assert_eq!(res.1.get(0).unwrap().side, String::from(Side::Bid))
     }
 }
