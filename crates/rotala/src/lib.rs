@@ -77,5 +77,4 @@ pub mod clock;
 pub mod exchange;
 pub mod http;
 pub mod input;
-pub mod orderbook;
 pub mod source;

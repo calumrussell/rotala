@@ -2,8 +2,8 @@ use std::env;
 use std::sync::Mutex;
 
 use actix_web::{web, App, HttpServer};
-use rotala::exchange::uist_v1::random_uist_generator;
-use rotala::http::uist::uistv1_server::{
+use rotala::exchange::jura_v1::random_jura_generator;
+use rotala::http::jura::jurav1_server::{
     delete_order, fetch_quotes, info, init, insert_order, tick, AppState,
 };
 
@@ -15,7 +15,7 @@ async fn main() -> std::io::Result<()> {
     let port: u16 = args[2].parse().unwrap();
 
     let app_state = web::Data::new(AppState {
-        exchange: Mutex::new(random_uist_generator(3000).0),
+        exchange: Mutex::new(random_jura_generator(3000).0),
     });
 
     HttpServer::new(move || {

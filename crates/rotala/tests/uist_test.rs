@@ -1,4 +1,4 @@
-use rotala::exchange::uist::{random_uist_generator, UistOrder};
+use rotala::exchange::uist_v1::{random_uist_generator, Order};
 
 #[test]
 fn test_that_uist_works() {
@@ -6,6 +6,6 @@ fn test_that_uist_works() {
 
     let _init = exchange.init();
 
-    let order = UistOrder::market_buy("ABC", 100.0);
+    let order = Order::market_buy("ABC", 100.0);
     exchange.insert_order(order);
 }

@@ -1,12 +1,12 @@
-pub mod uistv1_client {
+pub mod jurav1_client {
 
     use reqwest::Result;
 
-    use super::uistv1_server::{
+    use super::jurav1_server::{
         DeleteOrderRequest, FetchQuotesResponse, InsertOrderRequest, TickResponse,
     };
 
-    use crate::exchange::uist_v1::{InfoMessage, InitMessage, Order, OrderId};
+    use crate::exchange::jura_v1::{InfoMessage, InitMessage, Order, OrderId};
 
     pub struct Client {
         pub path: String,
@@ -21,8 +21,8 @@ pub mod uistv1_client {
                 .await
         }
 
-        pub async fn delete_order(&self, order_id: OrderId) -> Result<()> {
-            let req = DeleteOrderRequest { order_id };
+        pub async fn delete_order(&self, asset: u64, order_id: OrderId) -> Result<()> {
+            let req = DeleteOrderRequest { asset, order_id };
             self.client
                 .post(self.path.clone() + "/delete_order")
                 .json(&req)
@@ -73,21 +73,21 @@ pub mod uistv1_client {
     }
 }
 
-pub mod uistv1_server {
+pub mod jurav1_server {
     use serde::{Deserialize, Serialize};
     use std::sync::Mutex;
 
-    use crate::exchange::uist_v1::{Order, OrderId, Trade, UistQuote, UistV1};
+    use crate::exchange::jura_v1::{Fill, JuraQuote, JuraV1, Order, OrderId};
     use actix_web::web;
 
     pub struct AppState {
-        pub exchange: Mutex<UistV1>,
+        pub exchange: Mutex<JuraV1>,
     }
 
     #[derive(Debug, Deserialize, Serialize)]
     pub struct TickResponse {
         pub has_next: bool,
-        pub executed_trades: Vec<Trade>,
+        pub executed_trades: Vec<Fill>,
         pub inserted_orders: Vec<Order>,
     }
 
@@ -104,6 +104,7 @@ pub mod uistv1_server {
 
     #[derive(Debug, Deserialize, Serialize)]
     pub struct DeleteOrderRequest {
+        pub asset: u64,
         pub order_id: OrderId,
     }
 
@@ -112,7 +113,7 @@ pub mod uistv1_server {
         delete_order: web::Json<DeleteOrderRequest>,
     ) -> web::Json<()> {
         let mut ex = app.exchange.lock().unwrap();
-        ex.delete_order(delete_order.order_id);
+        ex.delete_order(delete_order.asset, delete_order.order_id);
         web::Json(())
     }
 
@@ -138,7 +139,7 @@ pub mod uistv1_server {
 
     #[derive(Debug, Deserialize, Serialize)]
     pub struct FetchQuotesResponse {
-        pub quotes: Vec<UistQuote>,
+        pub quotes: Vec<JuraQuote>,
     }
 
     pub async fn fetch_quotes(app: web::Data<AppState>) -> web::Json<FetchQuotesResponse> {
@@ -183,15 +184,15 @@ pub mod uistv1_server {
 mod tests {
     use actix_web::{test, web, App};
 
-    use crate::exchange::uist_v1::{random_uist_generator, Order};
+    use crate::exchange::jura_v1::{random_jura_generator, Order};
 
-    use super::uistv1_server::*;
+    use super::jurav1_server::*;
     use std::sync::Mutex;
 
     #[actix_web::test]
     async fn test_single_trade_loop() {
         let app_state = web::Data::new(AppState {
-            exchange: Mutex::new(random_uist_generator(3000).0),
+            exchange: Mutex::new(random_jura_generator(3000).0),
         });
 
         let app = test::init_service(
@@ -218,7 +219,7 @@ mod tests {
 
         let req3 = test::TestRequest::post()
             .set_json(InsertOrderRequest {
-                order: Order::market_buy("ABC", 100.0),
+                order: Order::market_buy(0, "100.0", "97.00"),
             })
             .uri("/insert_order")
             .to_request();
@@ -228,6 +229,6 @@ mod tests {
         let resp4: TickResponse = test::call_and_read_body_json(&app, req4).await;
 
         assert!(resp4.executed_trades.len() == 1);
-        assert!(resp4.executed_trades.get(0).unwrap().symbol == "ABC")
+        assert!(resp4.executed_trades.get(0).unwrap().coin == "0")
     }
 }
