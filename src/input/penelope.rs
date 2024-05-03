@@ -19,7 +19,7 @@ pub trait PenelopeQuote {
     fn create(bid: f64, ask: f64, date: i64, symbol: String) -> Self;
 }
 
-#[derive(Debug, Deserialize, Serialize)]
+#[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct Penelope<Q: PenelopeQuote + Clone> {
     inner: HashMap<i64, HashMap<String, Q>>,
 }

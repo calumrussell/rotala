@@ -309,7 +309,7 @@ impl Order {
     }
 }
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 struct InnerOrder {
     pub order_id: OrderId,
     pub order: Order,
@@ -345,7 +345,7 @@ impl InfoMessage {
     }
 }
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub struct JuraV1 {
     dataset: String,
     clock: Clock,
@@ -469,7 +469,7 @@ impl JuraV1 {
 /// After a trade executes a fill is returned to the user, the data returned is substantially
 /// different to the Hyperliquid API due to Hyperliquid performing functions like margin.
 /// The differences are documented in [Fill].
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub struct OrderBook {
     inner: VecDeque<InnerOrder>,
     last_inserted: u64,
