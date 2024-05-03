@@ -18,7 +18,7 @@ pub mod jurav1_client {
     impl Client {
         pub async fn tick(&self, backtest_id: BacktestId) -> Result<TickResponse> {
             self.client
-                .get(self.path.clone() + format!("/{backtest_id}/tick").as_str())
+                .get(self.path.clone() + format!("/backtest/{backtest_id}/tick").as_str())
                 .send()
                 .await?
                 .json::<TickResponse>()
@@ -33,7 +33,7 @@ pub mod jurav1_client {
         ) -> Result<()> {
             let req = DeleteOrderRequest { asset, order_id };
             self.client
-                .post(self.path.clone() + format!("/{backtest_id}/delete_order").as_str())
+                .post(self.path.clone() + format!("/backtest/{backtest_id}/delete_order").as_str())
                 .json(&req)
                 .send()
                 .await?
@@ -44,7 +44,7 @@ pub mod jurav1_client {
         pub async fn insert_order(&self, order: Order, backtest_id: BacktestId) -> Result<()> {
             let req = InsertOrderRequest { order };
             self.client
-                .post(self.path.clone() + format!("/{backtest_id}/insert_order").as_str())
+                .post(self.path.clone() + format!("/backtest/{backtest_id}/insert_order").as_str())
                 .json(&req)
                 .send()
                 .await?
@@ -54,7 +54,7 @@ pub mod jurav1_client {
 
         pub async fn fetch_quotes(&self, backtest_id: BacktestId) -> Result<FetchQuotesResponse> {
             self.client
-                .get(self.path.clone() + format!("/{backtest_id}/fetch_quotes").as_str())
+                .get(self.path.clone() + format!("/backtest/{backtest_id}/fetch_quotes").as_str())
                 .send()
                 .await?
                 .json::<FetchQuotesResponse>()
@@ -63,7 +63,7 @@ pub mod jurav1_client {
 
         pub async fn init(&self, dataset_name: String) -> Result<InitMessage> {
             self.client
-                .get(self.path.clone() + format!("/{dataset_name}/init").as_str())
+                .get(self.path.clone() + format!("/init/{dataset_name}").as_str())
                 .send()
                 .await?
                 .json::<InitMessage>()
@@ -72,7 +72,7 @@ pub mod jurav1_client {
 
         pub async fn info(&self, backtest_id: BacktestId) -> Result<InfoMessage> {
             self.client
-                .get(self.path.clone() + format!("/{backtest_id}/info").as_str())
+                .get(self.path.clone() + format!("/backtest/{backtest_id}/info").as_str())
                 .send()
                 .await?
                 .json::<InfoMessage>()
