@@ -196,7 +196,7 @@ impl InfoMessage {
     }
 }
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub struct UistV1 {
     dataset: String,
     clock: Clock,
@@ -309,7 +309,7 @@ pub fn random_uist_generator(length: i64) -> (UistV1, Clock) {
     (UistV1::new(clock.clone(), penelope, "RANDOM"), clock)
 }
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub struct OrderBook {
     inner: VecDeque<Order>,
     last_inserted: u64,
