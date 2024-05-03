@@ -172,7 +172,7 @@ pub mod jurav1_server {
         pub inserted_orders: Vec<Order>,
     }
 
-    #[get("/{backtest_id}/tick")]
+    #[get("/backtest/{backtest_id}/tick")]
     pub async fn tick(
         app: web::Data<JuraState>,
         path: web::Path<(BacktestId,)>,
@@ -198,7 +198,7 @@ pub mod jurav1_server {
         pub order_id: OrderId,
     }
 
-    #[post("/{backtest_id}/delete_order")]
+    #[post("/backtest/{backtest_id}/delete_order")]
     pub async fn delete_order(
         app: web::Data<JuraState>,
         path: web::Path<(BacktestId,)>,
@@ -221,7 +221,7 @@ pub mod jurav1_server {
         pub order: Order,
     }
 
-    #[post("/{backtest_id}/insert_order")]
+    #[post("/backtest/{backtest_id}/insert_order")]
     pub async fn insert_order(
         app: web::Data<JuraState>,
         path: Path<(BacktestId,)>,
@@ -243,7 +243,7 @@ pub mod jurav1_server {
         pub quotes: Vec<JuraQuote>,
     }
 
-    #[get("/{backtest_id}/fetch_quotes")]
+    #[get("/backtest/{backtest_id}/fetch_quotes")]
     pub async fn fetch_quotes(
         app: web::Data<JuraState>,
         path: Path<(BacktestId,)>,
@@ -292,7 +292,7 @@ pub mod jurav1_server {
         pub dataset: String,
     }
 
-    #[get("/{backtest_id}/info")]
+    #[get("/backtest/{backtest_id}/info")]
     pub async fn info(
         app: web::Data<JuraState>,
         path: Path<(BacktestId,)>,
@@ -353,12 +353,12 @@ mod tests {
         let backtest_id = resp.backtest_id;
 
         let req1 = test::TestRequest::get()
-            .uri(format!("/{backtest_id}/fetch_quotes").as_str())
+            .uri(format!("/backtest/{backtest_id}/fetch_quotes").as_str())
             .to_request();
         let _resp1: FetchQuotesResponse = test::call_and_read_body_json(&app, req1).await;
 
         let req2 = test::TestRequest::get()
-            .uri(format!("/{backtest_id}/tick").as_str())
+            .uri(format!("/backtest/{backtest_id}/tick").as_str())
             .to_request();
         let _resp2: TickResponse = test::call_and_read_body_json(&app, req2).await;
 
@@ -366,12 +366,12 @@ mod tests {
             .set_json(InsertOrderRequest {
                 order: Order::market_buy(0, "100.0", "97.00"),
             })
-            .uri(format!("/{backtest_id}/insert_order").as_str())
+            .uri(format!("/backtest/{backtest_id}/insert_order").as_str())
             .to_request();
         test::call_and_read_body(&app, req3).await;
 
         let req4 = test::TestRequest::get()
-            .uri(format!("/{backtest_id}/tick").as_str())
+            .uri(format!("/backtest/{backtest_id}/tick").as_str())
             .to_request();
         let resp4: TickResponse = test::call_and_read_body_json(&app, req4).await;
 
