@@ -305,7 +305,7 @@ pub fn random_uist_generator(length: i64) -> (UistV1, Clock) {
 }
 
 #[derive(Clone, Debug)]
-pub struct OrderBook {
+struct OrderBook {
     inner: VecDeque<Order>,
     last_inserted: u64,
 }

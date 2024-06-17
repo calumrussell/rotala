@@ -466,7 +466,7 @@ impl JuraV1 {
 /// different to the Hyperliquid API due to Hyperliquid performing functions like margin.
 /// The differences are documented in [Fill].
 #[derive(Clone, Debug)]
-pub struct OrderBook {
+struct OrderBook {
     inner: VecDeque<InnerOrder>,
     last_inserted: u64,
     slippage: f64,
@@ -485,18 +485,6 @@ impl OrderBook {
             last_inserted: 0,
             slippage: 0.1,
         }
-    }
-
-    /// This method runs in O(N) because the underlying representation is [VecDeque]. Clients
-    /// should be performing synchronization themselves so if you are calling this within main
-    /// trade loop then you are doing something wrong. This is included for testing.
-    pub fn get_order(&self, order_id: OrderId) -> Option<Order> {
-        for order in self.inner.iter() {
-            if order_id.eq(&order.order_id) {
-                return Some(order.order.clone());
-            }
-        }
-        None
     }
 
     // Hyperliquid returns an error if we try to cancel a non-existent order
