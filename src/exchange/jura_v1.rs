@@ -44,10 +44,6 @@ impl PenelopeQuote for JuraQuote {
     }
 }
 
-pub trait JuraSource {
-    fn get_quote(&self, date: &i64, security: &u64) -> Option<JuraQuote>;
-}
-
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub enum Side {
     Ask,
@@ -593,7 +589,7 @@ impl OrderBook {
     pub fn execute_orders(
         &mut self,
         date: i64,
-        source: &impl JuraSource,
+        source: &Penelope<JuraQuote>,
     ) -> (Vec<Fill>, Vec<OrderId>) {
         let mut fills: Vec<Fill> = Vec::new();
         let mut should_delete: Vec<(u64, u64)> = Vec::new();
@@ -602,8 +598,9 @@ impl OrderBook {
 
         // We have to have a mutable reference so we can update attempted_execution
         for order in self.inner.iter_mut() {
-            let symbol = order.order.asset;
+            let symbol = order.order.asset.to_string();
             if let Some(quote) = source.get_quote(&date, &symbol.clone()) {
+                let quote_copy = quote.clone();
                 let result = match &order.order.order_type {
                     OrderType::Limit(limit) => {
                         // A market order is a limit order with Ioc time-in-force. The px parameter
@@ -628,15 +625,15 @@ impl OrderBook {
                                     let price = str::parse::<f64>(&order.order.limit_px).unwrap();
                                     order.attempted_execution = true;
                                     if order.order.is_buy {
-                                        if price * (1.0 + self.slippage) >= quote.get_ask() {
+                                        if price * (1.0 + self.slippage) >= quote_copy.get_ask() {
                                             should_delete.push((order.order.asset, order.order_id));
-                                            Some(Self::execute_buy(quote, order, date))
+                                            Some(Self::execute_buy(quote_copy, order, date))
                                         } else {
                                             None
                                         }
-                                    } else if price * (1.0 - self.slippage) <= quote.get_bid() {
+                                    } else if price * (1.0 - self.slippage) <= quote_copy.get_bid() {
                                         should_delete.push((order.order.asset, order.order_id));
-                                        Some(Self::execute_sell(quote, order, date))
+                                        Some(Self::execute_sell(quote_copy, order, date))
                                     } else {
                                         None
                                     }
@@ -645,15 +642,15 @@ impl OrderBook {
                             TimeInForce::Gtc => {
                                 let price = str::parse::<f64>(&order.order.limit_px).unwrap();
                                 if order.order.is_buy {
-                                    if price >= quote.get_ask() {
+                                    if price >= quote_copy.get_ask() {
                                         should_delete.push((order.order.asset, order.order_id));
-                                        Some(Self::execute_buy(quote, order, date))
+                                        Some(Self::execute_buy(quote_copy, order, date))
                                     } else {
                                         None
                                     }
-                                } else if price <= quote.get_bid() {
+                                } else if price <= quote_copy.get_bid() {
                                     should_delete.push((order.order.asset, order.order_id));
-                                    Some(Self::execute_sell(quote, order, date))
+                                    Some(Self::execute_sell(quote_copy, order, date))
                                 } else {
                                     None
                                 }
@@ -674,7 +671,7 @@ impl OrderBook {
                             TriggerType::Sl => {
                                 // Closing a short as price goes up
                                 if order.order.is_buy {
-                                    if quote.get_ask() >= trigger.trigger_px {
+                                    if quote_copy.get_ask() >= trigger.trigger_px {
                                         if trigger.is_market {
                                             should_insert.push(Self::create_ioc_trigger(order));
                                         } else {
@@ -687,7 +684,7 @@ impl OrderBook {
                                     }
                                 } else {
                                     // Closing a long as price goes down
-                                    if quote.get_bid() >= trigger.trigger_px {
+                                    if quote_copy.get_bid() >= trigger.trigger_px {
                                         if trigger.is_market {
                                             should_insert.push(Self::create_ioc_trigger(order));
                                         } else {
@@ -703,7 +700,7 @@ impl OrderBook {
                             TriggerType::Tp => {
                                 // Closing a short as price goes down
                                 if order.order.is_buy {
-                                    if quote.get_ask() <= trigger.trigger_px {
+                                    if quote_copy.get_ask() <= trigger.trigger_px {
                                         if trigger.is_market {
                                             should_insert.push(Self::create_ioc_trigger(order))
                                         } else {
@@ -716,7 +713,7 @@ impl OrderBook {
                                     }
                                 } else {
                                     // Closing a long as price goes up
-                                    if quote.get_bid() <= trigger.trigger_px {
+                                    if quote_copy.get_bid() <= trigger.trigger_px {
                                         if trigger.is_market {
                                             should_insert.push(Self::create_ioc_trigger(order))
                                         } else {

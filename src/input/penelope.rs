@@ -4,10 +4,6 @@ use serde::{Deserialize, Serialize};
 
 use crate::{
     clock::{Clock, ClockBuilder, DateTime, Frequency},
-    exchange::{
-        jura_v1::{JuraQuote, JuraSource},
-        uist_v1::{UistQuote, UistSource},
-    },
     source::get_binance_1m_klines,
 };
 
@@ -52,18 +48,6 @@ impl<Q: PenelopeQuote + Clone> Penelope<Q> {
 
     pub fn from_hashmap(inner: HashMap<i64, HashMap<String, Q>>) -> Self {
         Self { inner }
-    }
-}
-
-impl JuraSource for Penelope<JuraQuote> {
-    fn get_quote(&self, date: &i64, security: &u64) -> Option<JuraQuote> {
-        Self::get_quote(self, date, &security.to_string()).cloned()
-    }
-}
-
-impl UistSource for Penelope<UistQuote> {
-    fn get_quote(&self, date: &i64, security: &str) -> Option<UistQuote> {
-        Self::get_quote(self, date, security).cloned()
     }
 }
 

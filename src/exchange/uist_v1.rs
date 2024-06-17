@@ -6,11 +6,6 @@ use std::collections::VecDeque;
 use crate::clock::Clock;
 use crate::input::penelope::{Penelope, PenelopeBuilder, PenelopeQuote};
 
-// Unclear if the right approach is traits but this was the quickest way
-pub trait UistSource {
-    fn get_quote(&self, date: &i64, security: &str) -> Option<UistQuote>;
-}
-
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct UistQuote {
     bid: f64,
@@ -378,7 +373,7 @@ impl OrderBook {
         }
     }
 
-    pub fn execute_orders(&mut self, date: i64, source: &impl UistSource) -> Vec<Trade> {
+    pub fn execute_orders(&mut self, date: i64, source: &Penelope<UistQuote>) -> Vec<Trade> {
         let mut completed_orderids = Vec::new();
         let mut trade_results = Vec::new();
         if self.is_empty() {
@@ -388,14 +383,15 @@ impl OrderBook {
         for order in self.inner.iter() {
             let security_id = &order.symbol;
             if let Some(quote) = source.get_quote(&date, security_id) {
+                let quote_copy = quote.clone();
                 let result = match order.order_type {
-                    OrderType::MarketBuy => Some(Self::execute_buy(quote, order, date)),
-                    OrderType::MarketSell => Some(Self::execute_sell(quote, order, date)),
+                    OrderType::MarketBuy => Some(Self::execute_buy(quote_copy, order, date)),
+                    OrderType::MarketSell => Some(Self::execute_sell(quote_copy, order, date)),
                     OrderType::LimitBuy => {
                         //Unwrap is safe because LimitBuy will always have a price
                         let order_price = order.price;
-                        if order_price >= Some(quote.get_ask()) {
-                            Some(Self::execute_buy(quote, order, date))
+                        if order_price >= Some(quote_copy.get_ask()) {
+                            Some(Self::execute_buy(quote_copy, order, date))
                         } else {
                             None
                         }
@@ -403,8 +399,8 @@ impl OrderBook {
                     OrderType::LimitSell => {
                         //Unwrap is safe because LimitSell will always have a price
                         let order_price = order.price;
-                        if order_price <= Some(quote.get_bid()) {
-                            Some(Self::execute_sell(quote, order, date))
+                        if order_price <= Some(quote_copy.get_bid()) {
+                            Some(Self::execute_sell(quote_copy, order, date))
                         } else {
                             None
                         }
@@ -412,8 +408,8 @@ impl OrderBook {
                     OrderType::StopBuy => {
                         //Unwrap is safe because StopBuy will always have a price
                         let order_price = order.price;
-                        if order_price <= Some(quote.get_ask()) {
-                            Some(Self::execute_buy(quote, order, date))
+                        if order_price <= Some(quote_copy.get_ask()) {
+                            Some(Self::execute_buy(quote_copy, order, date))
                         } else {
                             None
                         }
@@ -421,8 +417,8 @@ impl OrderBook {
                     OrderType::StopSell => {
                         //Unwrap is safe because StopSell will always have a price
                         let order_price = order.price;
-                        if order_price >= Some(quote.get_bid()) {
-                            Some(Self::execute_sell(quote, order, date))
+                        if order_price >= Some(quote_copy.get_bid()) {
+                            Some(Self::execute_sell(quote_copy, order, date))
                         } else {
                             None
                         }
