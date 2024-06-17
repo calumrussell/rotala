@@ -14,29 +14,13 @@ pub struct UistQuote {
     symbol: String,
 }
 
-impl PenelopeQuote for UistQuote {
-    fn get_ask(&self) -> f64 {
-        self.ask
-    }
-
-    fn get_bid(&self) -> f64 {
-        self.bid
-    }
-
-    fn get_date(&self) -> i64 {
-        self.date
-    }
-
-    fn get_symbol(&self) -> String {
-        self.symbol.clone()
-    }
-
-    fn create(bid: f64, ask: f64, date: i64, symbol: String) -> Self {
+impl From<PenelopeQuote> for UistQuote {
+    fn from(value: PenelopeQuote) -> Self {
         Self {
-            bid,
-            ask,
-            date,
-            symbol,
+            bid: value.bid,
+            ask: value.ask,
+            date: value.date,
+            symbol: value.symbol,
         }
     }
 }
@@ -195,7 +179,7 @@ impl InfoMessage {
 pub struct UistV1 {
     dataset: String,
     clock: Clock,
-    price_source: Penelope<UistQuote>,
+    price_source: Penelope,
     orderbook: OrderBook,
     trade_log: Vec<Trade>,
     //This is cleared on every tick
@@ -208,7 +192,7 @@ impl UistV1 {
         Self::new(clock, penelope, "BINANCE")
     }
 
-    pub fn new(clock: Clock, price_source: Penelope<UistQuote>, dataset: &str) -> Self {
+    pub fn new(clock: Clock, price_source: Penelope, dataset: &str) -> Self {
         Self {
             dataset: dataset.into(),
             clock,
@@ -241,7 +225,7 @@ impl UistV1 {
 
     pub fn fetch_quotes(&self) -> Vec<UistQuote> {
         if let Some(quotes) = self.price_source.get_quotes(&self.clock.now()) {
-            return quotes;
+            return quotes.into_iter().map(|v| v.into()).collect();
         }
         vec![]
     }
@@ -350,7 +334,7 @@ impl OrderBook {
     }
 
     fn execute_buy(quote: UistQuote, order: &Order, date: i64) -> Trade {
-        let trade_price = quote.get_ask();
+        let trade_price = quote.ask;
         let value = trade_price * order.get_shares();
         Trade {
             symbol: order.get_symbol().to_string(),
@@ -362,7 +346,7 @@ impl OrderBook {
     }
 
     fn execute_sell(quote: UistQuote, order: &Order, date: i64) -> Trade {
-        let trade_price = quote.get_bid();
+        let trade_price = quote.bid;
         let value = trade_price * order.get_shares();
         Trade {
             symbol: order.get_symbol().to_string(),
@@ -373,7 +357,7 @@ impl OrderBook {
         }
     }
 
-    pub fn execute_orders(&mut self, date: i64, source: &Penelope<UistQuote>) -> Vec<Trade> {
+    pub fn execute_orders(&mut self, date: i64, source: &Penelope) -> Vec<Trade> {
         let mut completed_orderids = Vec::new();
         let mut trade_results = Vec::new();
         if self.is_empty() {
@@ -383,14 +367,14 @@ impl OrderBook {
         for order in self.inner.iter() {
             let security_id = &order.symbol;
             if let Some(quote) = source.get_quote(&date, security_id) {
-                let quote_copy = quote.clone();
+                let quote_copy: UistQuote = quote.clone().into();
                 let result = match order.order_type {
                     OrderType::MarketBuy => Some(Self::execute_buy(quote_copy, order, date)),
                     OrderType::MarketSell => Some(Self::execute_sell(quote_copy, order, date)),
                     OrderType::LimitBuy => {
                         //Unwrap is safe because LimitBuy will always have a price
                         let order_price = order.price;
-                        if order_price >= Some(quote_copy.get_ask()) {
+                        if order_price >= Some(quote_copy.ask) {
                             Some(Self::execute_buy(quote_copy, order, date))
                         } else {
                             None
@@ -399,7 +383,7 @@ impl OrderBook {
                     OrderType::LimitSell => {
                         //Unwrap is safe because LimitSell will always have a price
                         let order_price = order.price;
-                        if order_price <= Some(quote_copy.get_bid()) {
+                        if order_price <= Some(quote_copy.bid) {
                             Some(Self::execute_sell(quote_copy, order, date))
                         } else {
                             None
@@ -408,7 +392,7 @@ impl OrderBook {
                     OrderType::StopBuy => {
                         //Unwrap is safe because StopBuy will always have a price
                         let order_price = order.price;
-                        if order_price <= Some(quote_copy.get_ask()) {
+                        if order_price <= Some(quote_copy.ask) {
                             Some(Self::execute_buy(quote_copy, order, date))
                         } else {
                             None
@@ -417,7 +401,7 @@ impl OrderBook {
                     OrderType::StopSell => {
                         //Unwrap is safe because StopSell will always have a price
                         let order_price = order.price;
-                        if order_price >= Some(quote_copy.get_bid()) {
+                        if order_price >= Some(quote_copy.bid) {
                             Some(Self::execute_sell(quote_copy, order, date))
                         } else {
                             None
