@@ -7,21 +7,22 @@ use crate::{
     source::get_binance_1m_klines,
 };
 
-pub trait PenelopeQuote {
-    fn get_bid(&self) -> f64;
-    fn get_ask(&self) -> f64;
-    fn get_symbol(&self) -> String;
-    fn get_date(&self) -> i64;
-    fn create(bid: f64, ask: f64, date: i64, symbol: String) -> Self;
+pub (crate) struct PenelopeQuote {
+    pub bid: f64,
+    pub ask: f64,
+    pub symbol: String,
+    pub date: i64,
 }
 
+// Penelope produces data for exchanges to use. Exchanges bind their underlying data representation
+// to that used by Penelope: `PenelopeQuote`.
 #[derive(Clone, Debug, Deserialize, Serialize)]
-pub struct Penelope<Q: PenelopeQuote + Clone> {
-    inner: HashMap<i64, HashMap<String, Q>>,
+pub (crate) struct Penelope {
+    inner: HashMap<i64, HashMap<String, PenelopeQuote>>,
 }
 
-impl<Q: PenelopeQuote + Clone> Penelope<Q> {
-    pub fn get_quote(&self, date: &i64, symbol: &str) -> Option<&Q> {
+impl Penelope {
+    pub fn get_quote(&self, date: &i64, symbol: &str) -> Option<PenelopeQuote> {
         if let Some(date_row) = self.inner.get(date) {
             if let Some(quote) = date_row.get(symbol) {
                 return Some(quote);
@@ -30,14 +31,14 @@ impl<Q: PenelopeQuote + Clone> Penelope<Q> {
         None
     }
 
-    pub fn get_quotes(&self, date: &i64) -> Option<Vec<Q>> {
+    pub fn get_quotes(&self, date: &i64) -> Option<Vec<PenelopeQuote>> {
         if let Some(date_row) = self.inner.get(date) {
-            return Some(date_row.values().cloned().collect());
+            return Some(date_row.values());
         }
         None
     }
     pub fn from_binance() -> (Self, Clock) {
-        let mut builder = PenelopeBuilder::<Q>::new();
+        let mut builder = PenelopeBuilder::new();
 
         for record in get_binance_1m_klines() {
             builder.add_quote(record.open, record.open, record.open_date, "BTC");
@@ -46,17 +47,17 @@ impl<Q: PenelopeQuote + Clone> Penelope<Q> {
         builder.build()
     }
 
-    pub fn from_hashmap(inner: HashMap<i64, HashMap<String, Q>>) -> Self {
+    pub fn from_hashmap(inner: HashMap<i64, HashMap<String, PenelopeQuote>>) -> Self {
         Self { inner }
     }
 }
 
-pub struct PenelopeBuilder<Q: PenelopeQuote + Clone> {
-    inner: HashMap<i64, HashMap<String, Q>>,
+pub struct PenelopeBuilder {
+    inner: HashMap<i64, HashMap<String, PenelopeQuote>>,
     dates: HashSet<DateTime>,
 }
 
-impl<Q: PenelopeQuote + Clone> PenelopeBuilder<Q> {
+impl PenelopeBuilder {
     pub fn new() -> Self {
         Self {
             inner: HashMap::new(),
@@ -64,11 +65,11 @@ impl<Q: PenelopeQuote + Clone> PenelopeBuilder<Q> {
         }
     }
 
-    pub fn build_with_frequency(&self, frequency: Frequency) -> (Penelope<Q>, Clock) {
-        // TODO: there is a clone of the underlying hashmap/dates which is very expensive, need to std::move
+    pub fn build_with_frequency(&mut self, frequency: Frequency) -> (Penelope, Clock) {
+        let inner = std::mem::take(&mut self.inner);
         match frequency {
             Frequency::Fixed => (
-                Penelope::from_hashmap(self.inner.clone()),
+                Penelope::from_hashmap(inner),
                 Clock::from_fixed(Vec::from_iter(self.dates.clone())),
             ),
             Frequency::Daily => {
@@ -80,7 +81,7 @@ impl<Q: PenelopeQuote + Clone> PenelopeBuilder<Q> {
                 let clock = ClockBuilder::with_length_in_days(first, gap)
                     .with_frequency(&Frequency::Daily)
                     .build();
-                (Penelope::from_hashmap(self.inner.clone()), clock)
+                (Penelope::from_hashmap(inner), clock)
             }
             Frequency::Second => {
                 let mut dates_vec = Vec::from_iter(self.dates.clone());
@@ -91,21 +92,27 @@ impl<Q: PenelopeQuote + Clone> PenelopeBuilder<Q> {
                 let clock = ClockBuilder::with_length_in_seconds(first, gap)
                     .with_frequency(&Frequency::Second)
                     .build();
-                (Penelope::from_hashmap(self.inner.clone()), clock)
+                (Penelope::from_hashmap(inner), clock)
             }
         }
     }
 
-    pub fn build(&self) -> (Penelope<Q>, Clock) {
-        // TODO: there is a clone of the underlying hashmap/dates which is very expensive, need to std::move
+    pub fn build(&self) -> (Penelope, Clock) {
+        let inner = std::mem::take(&mut self.inner);
         (
-            Penelope::from_hashmap(self.inner.clone()),
+            Penelope::from_hashmap(inner),
             Clock::from_fixed(Vec::from_iter(self.dates.clone())),
         )
     }
 
     pub fn add_quote(&mut self, bid: f64, ask: f64, date: i64, symbol: impl Into<String> + Clone) {
-        let quote = PenelopeQuote::create(bid, ask, date, symbol.clone().into());
+
+        let quote = PenelopeQuote {
+            bid,
+            ask,
+            date,
+            symbol: symbol.into(),
+        };
 
         if let Some(date_row) = self.inner.get_mut(&date) {
             date_row.insert(symbol.into(), quote);
@@ -119,7 +126,7 @@ impl<Q: PenelopeQuote + Clone> PenelopeBuilder<Q> {
     }
 }
 
-impl<Q: PenelopeQuote + Clone> Default for PenelopeBuilder<Q> {
+impl Default for PenelopeBuilder {
     fn default() -> Self {
         Self::new()
     }
