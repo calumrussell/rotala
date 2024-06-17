@@ -7,7 +7,8 @@ use crate::{
     source::get_binance_1m_klines,
 };
 
-pub (crate) struct PenelopeQuote {
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct PenelopeQuote {
     pub bid: f64,
     pub ask: f64,
     pub symbol: String,
@@ -17,12 +18,12 @@ pub (crate) struct PenelopeQuote {
 // Penelope produces data for exchanges to use. Exchanges bind their underlying data representation
 // to that used by Penelope: `PenelopeQuote`.
 #[derive(Clone, Debug, Deserialize, Serialize)]
-pub (crate) struct Penelope {
+pub struct Penelope {
     inner: HashMap<i64, HashMap<String, PenelopeQuote>>,
 }
 
 impl Penelope {
-    pub fn get_quote(&self, date: &i64, symbol: &str) -> Option<PenelopeQuote> {
+    pub fn get_quote(&self, date: &i64, symbol: &str) -> Option<&PenelopeQuote> {
         if let Some(date_row) = self.inner.get(date) {
             if let Some(quote) = date_row.get(symbol) {
                 return Some(quote);
@@ -33,7 +34,7 @@ impl Penelope {
 
     pub fn get_quotes(&self, date: &i64) -> Option<Vec<PenelopeQuote>> {
         if let Some(date_row) = self.inner.get(date) {
-            return Some(date_row.values());
+            return Some(date_row.values().cloned().collect());
         }
         None
     }
@@ -97,7 +98,7 @@ impl PenelopeBuilder {
         }
     }
 
-    pub fn build(&self) -> (Penelope, Clock) {
+    pub fn build(&mut self) -> (Penelope, Clock) {
         let inner = std::mem::take(&mut self.inner);
         (
             Penelope::from_hashmap(inner),
@@ -106,7 +107,6 @@ impl PenelopeBuilder {
     }
 
     pub fn add_quote(&mut self, bid: f64, ask: f64, date: i64, symbol: impl Into<String> + Clone) {
-
         let quote = PenelopeQuote {
             bid,
             ask,
@@ -115,10 +115,10 @@ impl PenelopeBuilder {
         };
 
         if let Some(date_row) = self.inner.get_mut(&date) {
-            date_row.insert(symbol.into(), quote);
+            date_row.insert(quote.symbol.clone(), quote);
         } else {
             let mut date_row = HashMap::new();
-            date_row.insert(symbol.into(), quote);
+            date_row.insert(quote.symbol.clone(), quote);
             self.inner.insert(date, date_row);
         }
 

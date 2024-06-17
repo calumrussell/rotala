@@ -17,29 +17,13 @@ pub struct JuraQuote {
     symbol: String,
 }
 
-impl PenelopeQuote for JuraQuote {
-    fn get_ask(&self) -> f64 {
-        self.ask
-    }
-
-    fn get_bid(&self) -> f64 {
-        self.bid
-    }
-
-    fn get_date(&self) -> i64 {
-        self.date
-    }
-
-    fn get_symbol(&self) -> String {
-        self.symbol.clone()
-    }
-
-    fn create(bid: f64, ask: f64, date: i64, symbol: String) -> Self {
+impl From<PenelopeQuote> for JuraQuote {
+    fn from(value: PenelopeQuote) -> Self {
         Self {
-            bid,
-            ask,
-            date,
-            symbol,
+            bid: value.bid,
+            ask: value.ask,
+            date: value.date,
+            symbol: value.symbol,
         }
     }
 }
@@ -345,7 +329,7 @@ impl InfoMessage {
 pub struct JuraV1 {
     dataset: String,
     clock: Clock,
-    price_source: Penelope<JuraQuote>,
+    price_source: Penelope,
     orderbook: OrderBook,
     trade_log: Vec<Fill>,
     //This is cleared on every tick
@@ -358,7 +342,7 @@ impl JuraV1 {
         Self::new(clock, penelope, "BINANCE")
     }
 
-    pub fn new(clock: Clock, price_source: Penelope<JuraQuote>, dataset: &str) -> Self {
+    pub fn new(clock: Clock, price_source: Penelope, dataset: &str) -> Self {
         Self {
             dataset: dataset.into(),
             clock,
@@ -392,7 +376,7 @@ impl JuraV1 {
 
     pub fn fetch_quotes(&self) -> Vec<JuraQuote> {
         if let Some(quotes) = self.price_source.get_quotes(&self.clock.now()) {
-            return quotes;
+            return quotes.into_iter().map(|v| v.into()).collect();
         }
         vec![]
     }
@@ -521,7 +505,7 @@ impl OrderBook {
     }
 
     fn execute_buy(quote: JuraQuote, order: &InnerOrder, date: i64) -> Fill {
-        let trade_price = quote.get_ask();
+        let trade_price = quote.ask;
         Fill {
             closed_pnl: "0.0".to_string(),
             coin: order.order.asset.to_string(),
@@ -538,7 +522,7 @@ impl OrderBook {
     }
 
     fn execute_sell(quote: JuraQuote, order: &InnerOrder, date: i64) -> Fill {
-        let trade_price = quote.get_bid();
+        let trade_price = quote.bid;
         Fill {
             closed_pnl: "0.0".to_string(),
             coin: order.order.asset.to_string(),
@@ -574,11 +558,7 @@ impl OrderBook {
         Self::create_trigger(order, TimeInForce::Ioc)
     }
 
-    pub fn execute_orders(
-        &mut self,
-        date: i64,
-        source: &Penelope<JuraQuote>,
-    ) -> (Vec<Fill>, Vec<OrderId>) {
+    pub fn execute_orders(&mut self, date: i64, source: &Penelope) -> (Vec<Fill>, Vec<OrderId>) {
         let mut fills: Vec<Fill> = Vec::new();
         let mut should_delete: Vec<(u64, u64)> = Vec::new();
         // HyperLiquid execution can trigger more orders, we don't execute these immediately.
@@ -588,7 +568,7 @@ impl OrderBook {
         for order in self.inner.iter_mut() {
             let symbol = order.order.asset.to_string();
             if let Some(quote) = source.get_quote(&date, &symbol.clone()) {
-                let quote_copy = quote.clone();
+                let quote_copy: JuraQuote = quote.clone().into();
                 let result = match &order.order.order_type {
                     OrderType::Limit(limit) => {
                         // A market order is a limit order with Ioc time-in-force. The px parameter
@@ -613,13 +593,13 @@ impl OrderBook {
                                     let price = str::parse::<f64>(&order.order.limit_px).unwrap();
                                     order.attempted_execution = true;
                                     if order.order.is_buy {
-                                        if price * (1.0 + self.slippage) >= quote_copy.get_ask() {
+                                        if price * (1.0 + self.slippage) >= quote_copy.ask {
                                             should_delete.push((order.order.asset, order.order_id));
                                             Some(Self::execute_buy(quote_copy, order, date))
                                         } else {
                                             None
                                         }
-                                    } else if price * (1.0 - self.slippage) <= quote_copy.get_bid() {
+                                    } else if price * (1.0 - self.slippage) <= quote_copy.bid {
                                         should_delete.push((order.order.asset, order.order_id));
                                         Some(Self::execute_sell(quote_copy, order, date))
                                     } else {
@@ -630,13 +610,13 @@ impl OrderBook {
                             TimeInForce::Gtc => {
                                 let price = str::parse::<f64>(&order.order.limit_px).unwrap();
                                 if order.order.is_buy {
-                                    if price >= quote_copy.get_ask() {
+                                    if price >= quote_copy.ask {
                                         should_delete.push((order.order.asset, order.order_id));
                                         Some(Self::execute_buy(quote_copy, order, date))
                                     } else {
                                         None
                                     }
-                                } else if price <= quote_copy.get_bid() {
+                                } else if price <= quote_copy.bid {
                                     should_delete.push((order.order.asset, order.order_id));
                                     Some(Self::execute_sell(quote_copy, order, date))
                                 } else {
@@ -659,7 +639,7 @@ impl OrderBook {
                             TriggerType::Sl => {
                                 // Closing a short as price goes up
                                 if order.order.is_buy {
-                                    if quote_copy.get_ask() >= trigger.trigger_px {
+                                    if quote_copy.ask >= trigger.trigger_px {
                                         if trigger.is_market {
                                             should_insert.push(Self::create_ioc_trigger(order));
                                         } else {
@@ -672,7 +652,7 @@ impl OrderBook {
                                     }
                                 } else {
                                     // Closing a long as price goes down
-                                    if quote_copy.get_bid() >= trigger.trigger_px {
+                                    if quote_copy.bid >= trigger.trigger_px {
                                         if trigger.is_market {
                                             should_insert.push(Self::create_ioc_trigger(order));
                                         } else {
@@ -688,7 +668,7 @@ impl OrderBook {
                             TriggerType::Tp => {
                                 // Closing a short as price goes down
                                 if order.order.is_buy {
-                                    if quote_copy.get_ask() <= trigger.trigger_px {
+                                    if quote_copy.ask <= trigger.trigger_px {
                                         if trigger.is_market {
                                             should_insert.push(Self::create_ioc_trigger(order))
                                         } else {
@@ -701,7 +681,7 @@ impl OrderBook {
                                     }
                                 } else {
                                     // Closing a long as price goes up
-                                    if quote_copy.get_bid() <= trigger.trigger_px {
+                                    if quote_copy.bid <= trigger.trigger_px {
                                         if trigger.is_market {
                                             should_insert.push(Self::create_ioc_trigger(order))
                                         } else {
