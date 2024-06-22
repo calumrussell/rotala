@@ -253,8 +253,12 @@ impl PerformanceCalculator {
 
 #[cfg(test)]
 mod tests {
+    use std::collections::HashMap;
+
     use rotala::clock::Clock;
-    use rotala::exchange::uist::UistV1;
+    use rotala::exchange::uist_v1::UistV1;
+    use rotala::http::uist::uistv1_client::TestClient;
+    use rotala::http::uist::uistv1_client::UistClient;
     use rotala::input::penelope::PenelopeBuilder;
 
     use crate::broker::uist::UistBroker;
@@ -262,14 +266,13 @@ mod tests {
     use crate::broker::BrokerCost;
     use crate::perf::StrategySnapshot;
     use crate::strategy::staticweight::StaticWeightStrategyBuilder;
-    use crate::strategy::{History, Strategy};
     use crate::types::PortfolioAllocation;
 
     use super::Frequency;
     use super::PerformanceCalculator;
     use super::PortfolioCalculations;
 
-    fn setup() -> (UistBroker, Clock) {
+    async fn setup() -> (UistBroker<TestClient>, Clock) {
         let mut source_builder = PenelopeBuilder::new();
         source_builder.add_quote(101.0, 102.0, 100, "ABC");
         source_builder.add_quote(102.0, 103.0, 101, "ABC");
@@ -283,12 +286,17 @@ mod tests {
 
         let (price_source, clock) =
             source_builder.build_with_frequency(rotala::clock::Frequency::Second);
-        let uist = UistV1::new(clock.clone(), price_source, "FAKE");
+        let exchange = UistV1::new(clock.clone(), price_source, "Random");
+        let mut datasets = HashMap::new();
+        datasets.insert("Random".to_string(), exchange);
+        let mut client = TestClient::new(&mut datasets);
+        let resp = client.init("Random".to_string()).await.unwrap();
 
         let brkr = UistBrokerBuilder::new()
+            .with_client(client, resp.backtest_id)
             .with_trade_costs(vec![BrokerCost::PctOfValue(0.01)])
-            .with_exchange(uist)
-            .build();
+            .build()
+            .await;
 
         (brkr, clock)
     }
@@ -312,9 +320,9 @@ mod tests {
         );
     }
 
-    #[test]
-    fn test_that_portfolio_calculates_performance_accurately() {
-        let (brkr, clock) = setup();
+    #[tokio::test]
+    async fn test_that_portfolio_calculates_performance_accurately() {
+        let (brkr, clock) = setup().await;
         //We use less than 100% because some bugs become possible when you are allocating the full
         //portfolio which perturb the order of operations leading to different perf outputs.
         let mut target_weights = PortfolioAllocation::new();

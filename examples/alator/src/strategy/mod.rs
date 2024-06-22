@@ -12,44 +12,12 @@
 
 pub mod staticweight;
 
-use crate::broker::BrokerTrade;
 #[allow(unused)]
 use crate::types::{CashValue, StrategySnapshot};
-
-/// `init` should set up broker with initial_cash and initialize any data sources used
-/// by strategy. `update` is called on every loop and handles the creation of new orders
-/// passed to the broker.
-pub trait Strategy: TransferTo {
-    fn update(&mut self);
-    fn init(&mut self, initial_cash: &f64);
-}
 
 /// Used to log cash flows which may be used in performance calculations.
 pub enum StrategyEvent {
     WithdrawSuccess(CashValue),
     WithdrawFailure(CashValue),
     DepositSuccess(CashValue),
-}
-
-/// Used to record trades for external functions (i.e. tax reporting).
-pub trait Audit<T: BrokerTrade> {
-    fn trades_between(&self, start: &i64, end: &i64) -> Vec<T>;
-}
-
-/// Transfer cash into a strategy at the start or whilst running.
-pub trait TransferTo {
-    fn deposit_cash(&mut self, cash: &f64) -> StrategyEvent;
-}
-
-/// Withdraw cash from a strategy ast the start or whilst running.
-pub trait TransferFrom {
-    fn withdraw_cash(&mut self, cash: &f64) -> StrategyEvent;
-    fn withdraw_cash_with_liquidation(&mut self, cash: &f64) -> StrategyEvent;
-}
-
-/// Strategy records and can return history to client.
-///
-/// Records using [StrategySnapshot].
-pub trait History {
-    fn get_history(&self) -> Vec<StrategySnapshot>;
 }

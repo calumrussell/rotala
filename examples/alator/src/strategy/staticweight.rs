@@ -1,23 +1,27 @@
-use log::info;
-use rotala::exchange::uist::UistTrade;
+use std::marker::PhantomData;
 
-use crate::broker::uist::UistBroker;
-use crate::broker::{BrokerCashEvent, BrokerOperations, CashOperations, Portfolio, SendOrder};
+use log::info;
+
+use crate::broker::{BrokerCashEvent, BrokerOperations, BrokerOrder, BrokerQuote, BrokerStates, CashOperations, Portfolio, SendOrder, Update};
 use crate::perf::{BacktestOutput, PerformanceCalculator};
 use crate::schedule::{DefaultTradingSchedule, TradingSchedule};
-use crate::strategy::{Audit, History, Strategy, StrategyEvent, TransferFrom, TransferTo};
+use crate::strategy::StrategyEvent;
 use crate::types::{CashValue, PortfolioAllocation, StrategySnapshot};
 use rotala::clock::{Clock, Frequency};
 
-pub struct StaticWeightStrategyBuilder {
+pub trait StaticWeightBroker<Q: BrokerQuote, O: BrokerOrder>: CashOperations<Q> + BrokerOperations<O, Q> + Portfolio<Q> + SendOrder<O> + BrokerStates + Update {}
+
+pub struct StaticWeightStrategyBuilder<Q: BrokerQuote, O: BrokerOrder, B: StaticWeightBroker<Q, O>> {
     //If missing either field, we cannot run this strategy
-    brkr: Option<UistBroker>,
+    brkr: Option<B>,
     weights: Option<PortfolioAllocation>,
     clock: Option<Clock>,
+    _quote: PhantomData<Q>,
+    _order: PhantomData<O>,
 }
 
-impl StaticWeightStrategyBuilder {
-    pub fn default(&mut self) -> StaticWeightStrategy {
+impl<Q: BrokerQuote, O: BrokerOrder, B: StaticWeightBroker<Q, O>> StaticWeightStrategyBuilder<Q, O, B> {
+    pub fn default(&mut self) -> StaticWeightStrategy<Q, O, B> {
         if self.brkr.is_none() || self.weights.is_none() || self.clock.is_none() {
             panic!("Strategy must have broker, weights, and clock");
         }
@@ -30,6 +34,8 @@ impl StaticWeightStrategyBuilder {
             net_cash_flow: 0.0.into(),
             clock: self.clock.as_ref().unwrap().clone(),
             history: Vec::new(),
+            _quote: PhantomData,
+            _order: PhantomData,
         }
     }
 
@@ -38,7 +44,7 @@ impl StaticWeightStrategyBuilder {
         self
     }
 
-    pub fn with_brkr(&mut self, brkr: UistBroker) -> &mut Self {
+    pub fn with_brkr(&mut self, brkr: B) -> &mut Self {
         self.brkr = Some(brkr);
         self
     }
@@ -53,11 +59,13 @@ impl StaticWeightStrategyBuilder {
             brkr: None,
             weights: None,
             clock: None,
+            _quote: PhantomData,
+            _order: PhantomData,
         }
     }
 }
 
-impl Default for StaticWeightStrategyBuilder {
+impl<Q: BrokerQuote, O: BrokerOrder, B: StaticWeightBroker<Q, O>> Default for StaticWeightStrategyBuilder<Q, O, B> {
     fn default() -> Self {
         Self::new()
     }
@@ -65,15 +73,17 @@ impl Default for StaticWeightStrategyBuilder {
 
 ///Basic implementation of an investment strategy which takes a set of fixed-weight allocations and
 ///rebalances over time towards those weights.
-pub struct StaticWeightStrategy {
-    brkr: UistBroker,
+pub struct StaticWeightStrategy<Q: BrokerQuote, O: BrokerOrder, B: StaticWeightBroker<Q, O>> {
+    brkr: B,
     target_weights: PortfolioAllocation,
     net_cash_flow: CashValue,
     clock: Clock,
     history: Vec<StrategySnapshot>,
+    _quote: PhantomData<Q>,
+    _order: PhantomData<O>,
 }
 
-impl StaticWeightStrategy {
+impl<Q: BrokerQuote, O: BrokerOrder, B: StaticWeightBroker<Q, O>> StaticWeightStrategy<Q, O, B> {
     pub fn run(&mut self) {
         while self.clock.has_next() {
             self.update();
@@ -97,10 +107,8 @@ impl StaticWeightStrategy {
             inflation: 0.0,
         }
     }
-}
 
-impl Strategy for StaticWeightStrategy {
-    fn init(&mut self, initital_cash: &f64) {
+    pub fn init(&mut self, initital_cash: &f64) {
         self.deposit_cash(initital_cash);
         if DefaultTradingSchedule::should_trade(&self.clock.now()) {
             let orders = self
@@ -112,7 +120,7 @@ impl Strategy for StaticWeightStrategy {
         }
     }
 
-    fn update(&mut self) {
+    pub fn update(&mut self) {
         self.brkr.check();
         let now = self.clock.now();
         if DefaultTradingSchedule::should_trade(&now) {
@@ -126,19 +134,15 @@ impl Strategy for StaticWeightStrategy {
         let snap = self.get_snapshot();
         self.history.push(snap);
     }
-}
 
-impl TransferTo for StaticWeightStrategy {
     fn deposit_cash(&mut self, cash: &f64) -> StrategyEvent {
-        info!("STRATEGY: Depositing {:?} into strategy", cash);
-        self.brkr.deposit_cash(cash);
-        self.net_cash_flow = CashValue::from(cash + *self.net_cash_flow);
-        StrategyEvent::DepositSuccess(CashValue::from(*cash))
+            info!("STRATEGY: Depositing {:?} into strategy", cash);
+            self.brkr.deposit_cash(cash);
+            self.net_cash_flow = CashValue::from(cash + *self.net_cash_flow);
+            StrategyEvent::DepositSuccess(CashValue::from(*cash))
     }
-}
 
-impl TransferFrom for StaticWeightStrategy {
-    fn withdraw_cash(&mut self, cash: &f64) -> StrategyEvent {
+    pub fn withdraw_cash(&mut self, cash: &f64) -> StrategyEvent {
         if let BrokerCashEvent::WithdrawSuccess(withdrawn) = self.brkr.withdraw_cash(cash) {
             info!("STRATEGY: Succesfully withdrew {:?} from strategy", cash);
             self.net_cash_flow = CashValue::from(*self.net_cash_flow - *withdrawn);
@@ -148,7 +152,7 @@ impl TransferFrom for StaticWeightStrategy {
         StrategyEvent::WithdrawFailure(CashValue::from(*cash))
     }
 
-    fn withdraw_cash_with_liquidation(&mut self, cash: &f64) -> StrategyEvent {
+    pub fn withdraw_cash_with_liquidation(&mut self, cash: &f64) -> StrategyEvent {
         if let BrokerCashEvent::WithdrawSuccess(withdrawn) =
             //No logging here because the implementation is fully logged due to the greater
             //complexity of this task vs standard withdraw
@@ -159,16 +163,8 @@ impl TransferFrom for StaticWeightStrategy {
         }
         StrategyEvent::WithdrawFailure(CashValue::from(*cash))
     }
-}
 
-impl Audit<UistTrade> for StaticWeightStrategy {
-    fn trades_between(&self, start: &i64, end: &i64) -> Vec<UistTrade> {
-        self.brkr.trades_between(start, end)
-    }
-}
-
-impl History for StaticWeightStrategy {
-    fn get_history(&self) -> Vec<StrategySnapshot> {
+    pub fn get_history(&self) -> Vec<StrategySnapshot> {
         self.history.clone()
     }
 }
