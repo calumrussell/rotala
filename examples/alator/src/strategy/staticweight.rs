@@ -84,9 +84,9 @@ pub struct StaticWeightStrategy<Q: BrokerQuote, O: BrokerOrder, B: StaticWeightB
 }
 
 impl<Q: BrokerQuote, O: BrokerOrder, B: StaticWeightBroker<Q, O>> StaticWeightStrategy<Q, O, B> {
-    pub fn run(&mut self) {
+    pub async fn run(&mut self) {
         while self.clock.has_next() {
-            self.update();
+            self.update().await;
         }
     }
 
@@ -120,8 +120,8 @@ impl<Q: BrokerQuote, O: BrokerOrder, B: StaticWeightBroker<Q, O>> StaticWeightSt
         }
     }
 
-    pub fn update(&mut self) {
-        self.brkr.check();
+    pub async fn update(&mut self) {
+        self.brkr.check().await;
         let now = self.clock.now();
         if DefaultTradingSchedule::should_trade(&now) {
             let orders = self
