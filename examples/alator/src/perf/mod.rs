@@ -337,11 +337,11 @@ mod tests {
 
         strat.init(&100_000.0);
 
-        strat.update();
+        strat.update().await;
 
-        strat.update();
+        strat.update().await;
 
-        strat.update();
+        strat.update().await;
 
         let output = strat.get_history();
         println!("{:?}", output);

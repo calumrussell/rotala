@@ -68,7 +68,7 @@ async fn staticweight_integration_test() {
         .default();
 
     strat.init(&initial_cash);
-    strat.run();
+    strat.run().await;
 
     let _perf = strat.perf(Frequency::Daily);
 }

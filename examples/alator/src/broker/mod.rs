@@ -783,5 +783,5 @@ pub trait BrokerOperations<O: BrokerOrder, Q: BrokerQuote>:
 }
 
 pub trait Update {
-    async fn check(&mut self);
+    fn check(&mut self) -> impl std::future::Future<Output = ()>;
 }
