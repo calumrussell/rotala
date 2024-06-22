@@ -52,7 +52,7 @@ use std::{
 };
 
 use log::info;
-use rotala::exchange::uist::{UistOrder, UistOrderType, UistQuote, UistTrade};
+use rotala::exchange::uist_v1::{Order as UistOrder, OrderType as UistOrderType, UistQuote, Trade as UistTrade};
 
 use crate::types::{
     CashValue, PortfolioAllocation, PortfolioHoldings, PortfolioQty, PortfolioValues, Price,
@@ -780,4 +780,8 @@ pub trait BrokerOperations<O: BrokerOrder, Q: BrokerQuote>:
         orders.extend(buy_orders);
         orders
     }
+}
+
+pub trait Update {
+    async fn check(&mut self);
 }

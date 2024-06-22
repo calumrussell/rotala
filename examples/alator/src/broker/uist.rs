@@ -3,30 +3,32 @@ use std::{
     collections::HashMap,
     error::Error,
     fmt::{Display, Formatter},
+    mem,
 };
 
 use log::info;
-use rotala::clock::DateTime;
-use rotala::exchange::uist::{
-    UistOrder, UistOrderType, UistQuote, UistTrade, UistTradeType, UistV1,
+use rotala::exchange::uist_v1::{Order, OrderType, Trade, TradeType, UistQuote, UistV1};
+use rotala::http::uist::uistv1_client::Client;
+use rotala::{
+    clock::DateTime,
+    http::uist::uistv1_client::{BacktestId, UistClient},
 };
 
-use crate::types::{
+use crate::{strategy::staticweight::StaticWeightBroker, types::{
     CashValue, PortfolioAllocation, PortfolioHoldings, PortfolioQty, PortfolioValues, Price,
-};
+}};
 
 use super::{
     BrokerCost, BrokerEvent, BrokerOperations, BrokerState, BrokerStates, CashOperations,
-    Portfolio, Quote, SendOrder,
+    Portfolio, Quote, SendOrder, Update,
 };
 
-type UistBrokerEvent = BrokerEvent<UistOrder>;
+type UistBrokerEvent = BrokerEvent<Order>;
 
 /// Implementation of broker that uses the [Uist](rotala::exchange::uist::UistV1) exchange.
 #[derive(Debug)]
-pub struct UistBroker {
+pub struct UistBroker<C: UistClient> {
     cash: CashValue,
-    exchange: UistV1,
     holdings: PortfolioHoldings,
     //Kept distinct from holdings because some perf calculations may need to distinguish between
     //trades that we know are booked vs ones that we think should get booked
@@ -37,9 +39,13 @@ pub struct UistBroker {
     log: UistBrokerLog,
     trade_costs: Vec<BrokerCost>,
     broker_state: BrokerState,
+    http_client: C,
+    backtest_id: BacktestId,
 }
 
-impl Quote<UistQuote> for UistBroker {
+impl<C: UistClient> StaticWeightBroker<UistQuote, Order> for UistBroker<C> {}
+
+impl<C: UistClient> Quote<UistQuote> for UistBroker<C> {
     fn get_quote(&self, symbol: &str) -> Option<UistQuote> {
         self.latest_quotes.get(symbol).cloned()
     }
@@ -57,7 +63,7 @@ impl Quote<UistQuote> for UistBroker {
     }
 }
 
-impl Portfolio<UistQuote> for UistBroker {
+impl<C: UistClient> Portfolio<UistQuote> for UistBroker<C> {
     fn get_trade_costs(&self) -> Vec<BrokerCost> {
         self.trade_costs.clone()
     }
@@ -98,7 +104,7 @@ impl Portfolio<UistQuote> for UistBroker {
     }
 }
 
-impl BrokerStates for UistBroker {
+impl<C: UistClient> BrokerStates for UistBroker<C> {
     fn get_broker_state(&self) -> BrokerState {
         self.broker_state.clone()
     }
@@ -108,12 +114,12 @@ impl BrokerStates for UistBroker {
     }
 }
 
-impl CashOperations<UistQuote> for UistBroker {}
+impl<C: UistClient> CashOperations<UistQuote> for UistBroker<C> {}
 
-impl BrokerOperations<UistOrder, UistQuote> for UistBroker {}
+impl<C: UistClient> BrokerOperations<Order, UistQuote> for UistBroker<C> {}
 
-impl SendOrder<UistOrder> for UistBroker {
-    fn send_order(&mut self, order: UistOrder) -> UistBrokerEvent {
+impl<C: UistClient> SendOrder<Order> for UistBroker<C> {
+    fn send_order(&mut self, order: Order) -> UistBrokerEvent {
         //This is an estimate of the cost based on the current price, can still end with negative
         //balance when we reconcile with actuals, may also reject valid orders at the margin
         match self.get_broker_state() {
@@ -136,16 +142,12 @@ impl SendOrder<UistOrder> for UistBroker {
 
                 let quote = self.get_quote(order.get_symbol()).unwrap();
                 let price = match order.get_order_type() {
-                    UistOrderType::MarketBuy | UistOrderType::LimitBuy | UistOrderType::StopBuy => {
-                        quote.get_ask()
-                    }
-                    UistOrderType::MarketSell
-                    | UistOrderType::LimitSell
-                    | UistOrderType::StopSell => quote.get_bid(),
+                    OrderType::MarketBuy | OrderType::LimitBuy | OrderType::StopBuy => quote.ask,
+                    OrderType::MarketSell | OrderType::LimitSell | OrderType::StopSell => quote.bid,
                 };
 
                 if let Err(_err) =
-                    self.client_has_sufficient_cash::<UistOrderType>(&order, &Price::from(price))
+                    self.client_has_sufficient_cash::<OrderType>(&order, &Price::from(price))
                 {
                     info!(
                         "BROKER: Unable to send {:?} order for {:?} shares of {:?} to exchange",
@@ -155,8 +157,7 @@ impl SendOrder<UistOrder> for UistBroker {
                     );
                     return UistBrokerEvent::OrderInvalid(order.clone());
                 }
-                if let Err(_err) =
-                    self.client_has_sufficient_holdings_for_sale::<UistOrderType>(&order)
+                if let Err(_err) = self.client_has_sufficient_holdings_for_sale::<OrderType>(&order)
                 {
                     info!(
                         "BROKER: Unable to send {:?} order for {:?} shares of {:?} to exchange",
@@ -176,20 +177,21 @@ impl SendOrder<UistOrder> for UistBroker {
                     return UistBrokerEvent::OrderInvalid(order.clone());
                 }
 
-                self.exchange.insert_order(order.clone());
+                self.http_client
+                    .insert_order(order.clone(), self.backtest_id);
                 //From the point of view of strategy, an order pending is the same as an order
                 //executed. If the order is executed, then it is executed. If the order isn't
                 //executed then the strategy must wait but all the strategy's work has been
                 //done. So once we send the order, we need some way for clients to work out
                 //what orders are pending and whether they need to do more work.
                 let order_effect = match order.get_order_type() {
-                    UistOrderType::MarketBuy | UistOrderType::LimitBuy | UistOrderType::StopBuy => {
+                    OrderType::MarketBuy | OrderType::LimitBuy | OrderType::StopBuy => {
                         order.get_shares()
                     }
 
-                    UistOrderType::MarketSell
-                    | UistOrderType::LimitSell
-                    | UistOrderType::StopSell => -order.get_shares(),
+                    OrderType::MarketSell | OrderType::LimitSell | OrderType::StopSell => {
+                        -order.get_shares()
+                    }
                 };
 
                 if let Some(position) = self.pending_orders.get(order.get_symbol()) {
@@ -211,7 +213,7 @@ impl SendOrder<UistOrder> for UistBroker {
         }
     }
 
-    fn send_orders(&mut self, orders: &[UistOrder]) -> Vec<UistBrokerEvent> {
+    fn send_orders(&mut self, orders: &[Order]) -> Vec<UistBrokerEvent> {
         let mut res = Vec::new();
         for o in orders {
             let trade = self.send_order(o.clone());
@@ -221,93 +223,99 @@ impl SendOrder<UistOrder> for UistBroker {
     }
 }
 
-impl UistBroker {
+impl<C: UistClient> Update for UistBroker<C> {
     /// Called on every tick of clock to ensure that state is synchronized with other components.
     ///
     /// * Calls `check` on exchange
     /// * Updates last seen prices for exchange tick
     /// * Reconciles internal state against trades completed on current tick
     /// * Rebalances cash, which can trigger new trades if broker is in invalid state
-    pub fn check(&mut self) {
-        let (has_next, completed_trades, inserted_orders) = self.exchange.tick();
+    async fn check(&mut self) {
+        if let Ok(tick_response) = self.http_client.tick(self.backtest_id).await {
+            if let Ok(quotes_response) = self.http_client.fetch_quotes(self.backtest_id).await {
+                //Update prices, these prices are not tradable
+                for quote in &quotes_response.quotes {
+                    self.latest_quotes
+                        .insert(quote.symbol.clone(), quote.clone());
+                }
 
-        //Update prices, these prices are not tradable
-        for quote in &self.exchange.fetch_quotes() {
-            self.latest_quotes
-                .insert(quote.get_symbol().to_string(), quote.clone());
-        }
+                for trade in tick_response.executed_trades {
+                    match trade.typ {
+                        //Force debit so we can end up with negative cash here
+                        TradeType::Buy => self.debit_force(&trade.value),
+                        TradeType::Sell => self.credit(&trade.value),
+                    };
+                    self.log.record::<Trade>(trade.clone());
 
-        for trade in completed_trades {
-            match trade.typ {
-                //Force debit so we can end up with negative cash here
-                UistTradeType::Buy => self.debit_force(&trade.value),
-                UistTradeType::Sell => self.credit(&trade.value),
-            };
-            self.log.record::<UistTrade>(trade.clone());
+                    let curr_position = self.get_position_qty(&trade.symbol).unwrap_or_default();
 
-            let curr_position = self.get_position_qty(&trade.symbol).unwrap_or_default();
+                    let updated = match trade.typ {
+                        TradeType::Buy => *curr_position + trade.quantity,
+                        TradeType::Sell => *curr_position - trade.quantity,
+                    };
+                    self.update_holdings(&trade.symbol, PortfolioQty::from(updated));
 
-            let updated = match trade.typ {
-                UistTradeType::Buy => *curr_position + trade.quantity,
-                UistTradeType::Sell => *curr_position - trade.quantity,
-            };
-            self.update_holdings(&trade.symbol, PortfolioQty::from(updated));
+                    //Because the order has completed, we should be able to unwrap pending_orders safetly
+                    //If this fails then there must be an application bug and panic is required.
+                    let pending = self.pending_orders.get(&trade.symbol).unwrap_or_default();
 
-            //Because the order has completed, we should be able to unwrap pending_orders safetly
-            //If this fails then there must be an application bug and panic is required.
-            let pending = self.pending_orders.get(&trade.symbol).unwrap_or_default();
+                    let updated_pending = match trade.typ {
+                        TradeType::Buy => *pending - trade.quantity,
+                        TradeType::Sell => *pending + trade.quantity,
+                    };
+                    if updated_pending == 0.0 {
+                        self.pending_orders.remove(&trade.symbol);
+                    } else {
+                        self.pending_orders
+                            .insert(&trade.symbol, &PortfolioQty::from(updated_pending));
+                    }
 
-            let updated_pending = match trade.typ {
-                UistTradeType::Buy => *pending - trade.quantity,
-                UistTradeType::Sell => *pending + trade.quantity,
-            };
-            if updated_pending == 0.0 {
-                self.pending_orders.remove(&trade.symbol);
-            } else {
-                self.pending_orders
-                    .insert(&trade.symbol, &PortfolioQty::from(updated_pending));
+                    self.last_seen_trade += 1;
+                }
             }
-
-            self.last_seen_trade += 1;
         }
         //Previous step can cause negative cash balance so we have to rebalance here, this
         //is not instant so will never balance properly if the series is very volatile
         self.rebalance_cash();
     }
+}
 
+impl<C: UistClient> UistBroker<C> {
     pub fn cost_basis(&self, symbol: &str) -> Option<Price> {
         self.log.cost_basis(symbol)
     }
 
-    pub fn trades_between(&self, start: &i64, stop: &i64) -> Vec<UistTrade> {
+    pub fn trades_between(&self, start: &i64, stop: &i64) -> Vec<Trade> {
         self.log.trades_between(start, stop)
     }
 }
 
-pub struct UistBrokerBuilder {
+pub struct UistBrokerBuilder<C: UistClient> {
     trade_costs: Vec<BrokerCost>,
-    exchange: Option<UistV1>,
+    client: Option<C>,
+    backtest_id: Option<BacktestId>,
 }
 
-impl UistBrokerBuilder {
-    pub fn build(&mut self) -> UistBroker {
-        if self.exchange.is_none() {
-            panic!("Cannot build broker without exchange");
+impl<C: UistClient> UistBrokerBuilder<C> {
+    pub async fn build(&mut self) -> UistBroker<C> {
+        if self.client.is_none() {
+            panic!("Cannot build broker without client");
         }
+
+        let mut client = mem::take(&mut self.client).unwrap();
+        let backtest_id = mem::take(&mut self.backtest_id).unwrap();
 
         //If we don't have quotes on first tick, we shouldn't error but we should expect every
         //`DataSource` to provide a first tick
         let mut first_quotes = HashMap::new();
-        let quotes = self.exchange.as_ref().unwrap().fetch_quotes();
-        for quote in &quotes {
-            first_quotes.insert(quote.get_symbol().to_string(), quote.clone());
+        let quote_response = client.fetch_quotes(backtest_id).await.unwrap();
+        for quote in &quote_response.quotes {
+            first_quotes.insert(quote.symbol.clone(), quote.clone());
         }
 
         let holdings = PortfolioHoldings::new();
         let pending_orders = PortfolioHoldings::new();
         let log = UistBrokerLog::new();
-
-        let exchange = std::mem::take(&mut self.exchange).unwrap();
 
         UistBroker {
             //Intialised as invalid so errors throw if client tries to run before init
@@ -316,15 +324,17 @@ impl UistBrokerBuilder {
             cash: CashValue::from(0.0),
             log,
             last_seen_trade: 0,
-            exchange,
             trade_costs: self.trade_costs.clone(),
             latest_quotes: first_quotes,
             broker_state: BrokerState::Ready,
+            http_client: client,
+            backtest_id,
         }
     }
 
-    pub fn with_exchange(&mut self, exchange: UistV1) -> &mut Self {
-        self.exchange = Some(exchange);
+    pub fn with_client(&mut self, client: C, backtest_id: BacktestId) -> &mut Self {
+        self.client = Some(client);
+        self.backtest_id = Some(backtest_id);
         self
     }
 
@@ -336,12 +346,13 @@ impl UistBrokerBuilder {
     pub fn new() -> Self {
         UistBrokerBuilder {
             trade_costs: Vec::new(),
-            exchange: None,
+            client: None,
+            backtest_id: None,
         }
     }
 }
 
-impl Default for UistBrokerBuilder {
+impl<C: UistClient> Default for UistBrokerBuilder<C> {
     fn default() -> Self {
         Self::new()
     }
@@ -349,11 +360,11 @@ impl Default for UistBrokerBuilder {
 
 #[derive(Clone, Debug)]
 pub enum UistRecordedEvent {
-    TradeCompleted(UistTrade),
+    TradeCompleted(Trade),
 }
 
-impl From<UistTrade> for UistRecordedEvent {
-    fn from(value: UistTrade) -> Self {
+impl From<Trade> for UistRecordedEvent {
+    fn from(value: Trade) -> Self {
         UistRecordedEvent::TradeCompleted(value)
     }
 }
@@ -372,7 +383,7 @@ impl UistBrokerLog {
         self.log.push(brokerevent);
     }
 
-    pub fn trades(&self) -> Vec<UistTrade> {
+    pub fn trades(&self) -> Vec<Trade> {
         let mut trades = Vec::new();
         for event in &self.log {
             let UistRecordedEvent::TradeCompleted(trade) = event;
@@ -381,7 +392,7 @@ impl UistBrokerLog {
         trades
     }
 
-    pub fn trades_between(&self, start: &i64, stop: &i64) -> Vec<UistTrade> {
+    pub fn trades_between(&self, start: &i64, stop: &i64) -> Vec<Trade> {
         let trades = self.trades();
         trades
             .iter()
@@ -397,11 +408,11 @@ impl UistBrokerLog {
             let UistRecordedEvent::TradeCompleted(trade) = event;
             if trade.symbol.eq(symbol) {
                 match trade.typ {
-                    UistTradeType::Buy => {
+                    TradeType::Buy => {
                         cum_qty = PortfolioQty::from(*cum_qty + trade.quantity);
                         cum_val = CashValue::from(*cum_val + trade.value);
                     }
-                    UistTradeType::Sell => {
+                    TradeType::Sell => {
                         cum_qty = PortfolioQty::from(*cum_qty - trade.quantity);
                         cum_val = CashValue::from(*cum_val - trade.value);
                     }
@@ -434,19 +445,23 @@ impl Default for UistBrokerLog {
 #[cfg(test)]
 mod tests {
 
+    use std::collections::HashMap;
+
     use crate::broker::{
-        BrokerCashEvent, BrokerCost, BrokerOperations, CashOperations, Portfolio, SendOrder,
+        BrokerCashEvent, BrokerCost, BrokerOperations, CashOperations, Portfolio, SendOrder, Update,
     };
     use crate::types::{CashValue, PortfolioAllocation, PortfolioQty};
     use rotala::clock::{ClockBuilder, Frequency};
-    use rotala::exchange::uist::{
-        random_uist_generator, UistOrder, UistOrderType, UistTrade, UistTradeType, UistV1,
+    use rotala::exchange::uist_v1::{
+        random_uist_generator, Order, OrderType, Trade, TradeType, UistV1,
     };
+    use rotala::http::uist::uistv1_client::{Client, TestClient, UistClient};
+
     use rotala::input::penelope::PenelopeBuilder;
 
     use super::{UistBroker, UistBrokerBuilder, UistBrokerEvent, UistBrokerLog};
 
-    fn setup() -> UistBroker {
+    async fn setup() -> UistBroker<TestClient> {
         let mut source_builder = PenelopeBuilder::new();
 
         source_builder.add_quote(100.00, 101.00, 100, "ABC");
@@ -463,19 +478,26 @@ mod tests {
 
         let (price_source, clock) =
             source_builder.build_with_frequency(rotala::clock::Frequency::Second);
-        let uist = UistV1::new(clock, price_source, "FAKE");
+
+        let exchange = UistV1::new(clock, price_source, "Random");
+        let mut datasets = HashMap::new();
+        datasets.insert("Random".to_string(), exchange);
+        let mut client = TestClient::new(&mut datasets);
+
+        let resp = client.init("Random".to_string()).await.unwrap();
 
         let brkr = UistBrokerBuilder::new()
-            .with_exchange(uist)
             .with_trade_costs(vec![BrokerCost::PctOfValue(0.01)])
-            .build();
+            .with_client(client, resp.backtest_id)
+            .build()
+            .await;
 
         brkr
     }
 
-    #[test]
-    fn test_cash_deposit_withdraw() {
-        let mut brkr = setup();
+    #[tokio::test]
+    async fn test_cash_deposit_withdraw() {
+        let mut brkr = setup().await;
         brkr.deposit_cash(&100.0);
 
         brkr.check();
@@ -509,12 +531,12 @@ mod tests {
         ));
     }
 
-    #[test]
-    fn test_that_buy_order_reduces_cash_and_increases_holdings() {
-        let mut brkr = setup();
+    #[tokio::test]
+    async fn test_that_buy_order_reduces_cash_and_increases_holdings() {
+        let mut brkr = setup().await;
         brkr.deposit_cash(&100_000.0);
 
-        let res = brkr.send_order(UistOrder::market_buy("ABC", 495.0));
+        let res = brkr.send_order(Order::market_buy("ABC", 495.0));
         println!("{:?}", res);
         assert!(matches!(res, UistBrokerEvent::OrderSentToExchange(..)));
 
@@ -529,12 +551,12 @@ mod tests {
         assert_eq!(*qty.clone(), 495.00);
     }
 
-    #[test]
-    fn test_that_buy_order_larger_than_cash_fails_with_error_returned_without_panic() {
-        let mut brkr = setup();
+    #[tokio::test]
+    async fn test_that_buy_order_larger_than_cash_fails_with_error_returned_without_panic() {
+        let mut brkr = setup().await;
         brkr.deposit_cash(&100.0);
         //Order value is greater than cash balance
-        let res = brkr.send_order(UistOrder::market_buy("ABC", 495.0));
+        let res = brkr.send_order(Order::market_buy("ABC", 495.0));
 
         assert!(matches!(res, UistBrokerEvent::OrderInvalid(..)));
         brkr.check();
@@ -543,19 +565,19 @@ mod tests {
         assert!(*cash == 100.0);
     }
 
-    #[test]
-    fn test_that_sell_order_larger_than_holding_fails_with_error_returned_without_panic() {
-        let mut brkr = setup();
+    #[tokio::test]
+    async fn test_that_sell_order_larger_than_holding_fails_with_error_returned_without_panic() {
+        let mut brkr = setup().await;
         brkr.deposit_cash(&100_000.0);
 
-        let res = brkr.send_order(UistOrder::market_buy("ABC", 100.0));
+        let res = brkr.send_order(Order::market_buy("ABC", 100.0));
         assert!(matches!(res, UistBrokerEvent::OrderSentToExchange(..)));
         brkr.check();
 
         //Order greater than current holding
         brkr.check();
 
-        let res = brkr.send_order(UistOrder::market_sell("ABC", 105.0));
+        let res = brkr.send_order(Order::market_sell("ABC", 105.0));
         assert!(matches!(res, UistBrokerEvent::OrderInvalid(..)));
 
         //Checking that
@@ -564,18 +586,18 @@ mod tests {
         assert!((*qty.clone()).eq(&100.0));
     }
 
-    #[test]
-    fn test_that_market_sell_increases_cash_and_decreases_holdings() {
-        let mut brkr = setup();
+    #[tokio::test]
+    async fn test_that_market_sell_increases_cash_and_decreases_holdings() {
+        let mut brkr = setup().await;
         brkr.deposit_cash(&100_000.0);
-        let res = brkr.send_order(UistOrder::market_buy("ABC", 495.0));
+        let res = brkr.send_order(Order::market_buy("ABC", 495.0));
         assert!(matches!(res, UistBrokerEvent::OrderSentToExchange(..)));
         brkr.check();
         let cash = brkr.get_cash_balance();
 
         brkr.check();
 
-        let res = brkr.send_order(UistOrder::market_sell("ABC", 295.0));
+        let res = brkr.send_order(Order::market_sell("ABC", 295.0));
         assert!(matches!(res, UistBrokerEvent::OrderSentToExchange(..)));
 
         brkr.check();
@@ -586,12 +608,12 @@ mod tests {
         assert!(*cash0 > *cash);
     }
 
-    #[test]
-    fn test_that_valuation_updates_in_next_period() {
-        let mut brkr = setup();
+    #[tokio::test]
+    async fn test_that_valuation_updates_in_next_period() {
+        let mut brkr = setup().await;
         brkr.deposit_cash(&100_000.0);
 
-        brkr.send_order(UistOrder::market_buy("ABC", 495.0));
+        brkr.send_order(Order::market_buy("ABC", 495.0));
         brkr.check();
 
         let val = brkr.get_position_value("ABC");
@@ -601,11 +623,11 @@ mod tests {
         assert_ne!(val, val1);
     }
 
-    #[test]
-    fn test_that_profit_calculation_is_accurate() {
-        let mut brkr = setup();
+    #[tokio::test]
+    async fn test_that_profit_calculation_is_accurate() {
+        let mut brkr = setup().await;
         brkr.deposit_cash(&100_000.0);
-        brkr.send_order(UistOrder::market_buy("ABC", 495.0));
+        brkr.send_order(Order::market_buy("ABC", 495.0));
         brkr.check();
 
         brkr.check();
@@ -614,25 +636,8 @@ mod tests {
         assert_eq!(*profit, -4950.00);
     }
 
-    #[test]
-    fn test_that_broker_build_passes_without_trade_costs() {
-        let mut source_builder = PenelopeBuilder::new();
-        source_builder.add_quote(100.00, 101.00, 100, "ABC");
-        source_builder.add_quote(104.00, 105.00, 101, "ABC");
-        source_builder.add_quote(95.00, 96.00, 102, "ABC");
-
-        let (price_source, clock) =
-            source_builder.build_with_frequency(rotala::clock::Frequency::Second);
-        let uist = UistV1::new(clock, price_source, "FAKE");
-
-        let _brkr = UistBrokerBuilder::new()
-            .with_exchange(uist)
-            .with_trade_costs(vec![BrokerCost::PctOfValue(0.01)])
-            .build();
-    }
-
-    #[test]
-    fn test_that_broker_uses_last_value_if_it_fails_to_find_quote() {
+    #[tokio::test]
+    async fn test_that_broker_uses_last_value_if_it_fails_to_find_quote() {
         //If the broker cannot find a quote in the current period for a stock, it automatically
         //uses a value of zero. This is a problem because the current time could a weekend or
         //bank holiday, and if the broker is attempting to value the portfolio on that day
@@ -655,17 +660,22 @@ mod tests {
 
         let (price_source, clock) =
             source_builder.build_with_frequency(rotala::clock::Frequency::Second);
-        let uist = UistV1::new(clock, price_source, "FAKE");
+        let exchange = UistV1::new(clock, price_source, "Random");
+        let mut datasets = HashMap::new();
+        datasets.insert("Random".to_string(), exchange);
+        let mut client = TestClient::new(&mut datasets);
+        let resp = client.init("Random".to_string()).await.unwrap();
 
         let mut brkr = UistBrokerBuilder::new()
-            .with_exchange(uist)
+            .with_client(client, resp.backtest_id)
             .with_trade_costs(vec![BrokerCost::PctOfValue(0.01)])
-            .build();
+            .build()
+            .await;
 
         brkr.deposit_cash(&100_000.0);
 
-        brkr.send_order(UistOrder::market_buy("ABC", 100.0));
-        brkr.send_order(UistOrder::market_buy("BCD", 100.0));
+        brkr.send_order(Order::market_buy("ABC", 100.0));
+        brkr.send_order(Order::market_buy("BCD", 100.0));
 
         brkr.check();
 
@@ -688,8 +698,8 @@ mod tests {
         assert!(*value1 == 12.0 * 100.0);
     }
 
-    #[test]
-    fn test_that_broker_handles_negative_cash_balance_due_to_volatility() {
+    #[tokio::test]
+    async fn test_that_broker_handles_negative_cash_balance_due_to_volatility() {
         //Because orders sent to the exchange are not executed instantaneously it is possible for a
         //broker to issue an order for a stock, the price to fall/rise before the trade gets
         //executed, and the broker end up with more/less cash than expected.
@@ -704,17 +714,22 @@ mod tests {
 
         let (price_source, clock) =
             source_builder.build_with_frequency(rotala::clock::Frequency::Second);
-        let uist = UistV1::new(clock, price_source, "FAKE");
+        let exchange = UistV1::new(clock, price_source, "Random");
+        let mut datasets = HashMap::new();
+        datasets.insert("Random".to_string(), exchange);
+        let mut client = TestClient::new(&mut datasets);
+        let resp = client.init("Random".to_string()).await.unwrap();
 
         let mut brkr = UistBrokerBuilder::new()
-            .with_exchange(uist)
+            .with_client(client, resp.backtest_id)
             .with_trade_costs(vec![BrokerCost::PctOfValue(0.01)])
-            .build();
+            .build()
+            .await;
 
         brkr.deposit_cash(&100_000.0);
         //Because the price of ABC rises after this order is sent, we will end up with a negative
         //cash balance after the order is executed
-        brkr.send_order(UistOrder::market_buy("ABC", 700.0));
+        brkr.send_order(Order::market_buy("ABC", 700.0));
 
         //Trades execute
         brkr.check();
@@ -728,8 +743,8 @@ mod tests {
         assert!(*cash1 > 0.0);
     }
 
-    #[test]
-    fn test_that_broker_stops_when_liquidation_fails() {
+    #[tokio::test]
+    async fn test_that_broker_stops_when_liquidation_fails() {
         let mut source_builder = PenelopeBuilder::new();
         source_builder.add_quote(100.00, 101.00, 100, "ABC");
         //Price doubles over one tick so that the broker is trading on information that has become
@@ -739,18 +754,23 @@ mod tests {
 
         let (price_source, clock) =
             source_builder.build_with_frequency(rotala::clock::Frequency::Second);
-        let uist = UistV1::new(clock, price_source, "FAKE");
+        let exchange = UistV1::new(clock, price_source, "Random");
+        let mut datasets = HashMap::new();
+        datasets.insert("Random".to_string(), exchange);
+        let mut client = TestClient::new(&mut datasets);
+        let resp = client.init("Random".to_string()).await.unwrap();
 
         let mut brkr = UistBrokerBuilder::new()
-            .with_exchange(uist)
+            .with_client(client, resp.backtest_id)
             .with_trade_costs(vec![BrokerCost::PctOfValue(0.01)])
-            .build();
+            .build()
+            .await;
 
         brkr.deposit_cash(&100_000.0);
         //This will use all the available cash balance, the market price doubles so the broker ends
         //up with a shortfall of -100_000.
 
-        brkr.send_order(UistOrder::market_buy("ABC", 990.0));
+        brkr.send_order(Order::market_buy("ABC", 990.0));
 
         brkr.check();
         brkr.check();
@@ -758,7 +778,7 @@ mod tests {
         let cash = brkr.get_cash_balance();
         assert!(*cash < 0.0);
 
-        let res = brkr.send_order(UistOrder::market_buy("ABC", 100.0));
+        let res = brkr.send_order(Order::market_buy("ABC", 100.0));
         assert!(matches!(res, UistBrokerEvent::OrderInvalid { .. }));
 
         assert!(matches!(
@@ -771,11 +791,11 @@ mod tests {
         ));
     }
 
-    #[test]
-    fn test_that_holdings_updates_correctly() {
-        let mut brkr = setup();
+    #[tokio::test]
+    async fn test_that_holdings_updates_correctly() {
+        let mut brkr = setup().await;
         brkr.deposit_cash(&100_000.0);
-        let res = brkr.send_order(UistOrder::market_buy("ABC", 50.0));
+        let res = brkr.send_order(Order::market_buy("ABC", 50.0));
         assert!(matches!(res, UistBrokerEvent::OrderSentToExchange(..)));
         assert_eq!(
             *brkr
@@ -787,7 +807,7 @@ mod tests {
         brkr.check();
         assert_eq!(*brkr.get_holdings().get("ABC").unwrap_or_default(), 50.0);
 
-        let res = brkr.send_order(UistOrder::market_sell("ABC", 10.0));
+        let res = brkr.send_order(Order::market_sell("ABC", 10.0));
         assert!(matches!(res, UistBrokerEvent::OrderSentToExchange(..)));
         assert_eq!(
             *brkr
@@ -799,7 +819,7 @@ mod tests {
         brkr.check();
         assert_eq!(*brkr.get_holdings().get("ABC").unwrap_or_default(), 40.0);
 
-        let res = brkr.send_order(UistOrder::market_buy("ABC", 50.0));
+        let res = brkr.send_order(Order::market_buy("ABC", 50.0));
         assert!(matches!(res, UistBrokerEvent::OrderSentToExchange(..)));
         assert_eq!(
             *brkr
@@ -815,11 +835,11 @@ mod tests {
     fn setup_log() -> UistBrokerLog {
         let mut rec = UistBrokerLog::new();
 
-        let t1 = UistTrade::new("ABC", 100.0, 10.00, 100, UistTradeType::Buy);
-        let t2 = UistTrade::new("ABC", 500.0, 90.00, 101, UistTradeType::Buy);
-        let t3 = UistTrade::new("BCD", 100.0, 100.0, 102, UistTradeType::Buy);
-        let t4 = UistTrade::new("BCD", 500.0, 100.00, 103, UistTradeType::Sell);
-        let t5 = UistTrade::new("BCD", 50.0, 50.00, 104, UistTradeType::Buy);
+        let t1 = Trade::new("ABC", 100.0, 10.00, 100, TradeType::Buy);
+        let t2 = Trade::new("ABC", 500.0, 90.00, 101, TradeType::Buy);
+        let t3 = Trade::new("BCD", 100.0, 100.0, 102, TradeType::Buy);
+        let t4 = Trade::new("BCD", 500.0, 100.00, 103, TradeType::Sell);
+        let t5 = Trade::new("BCD", 50.0, 50.00, 104, TradeType::Buy);
 
         rec.record(t1);
         rec.record(t2);
@@ -846,13 +866,20 @@ mod tests {
         assert_eq!(*bcd_cost, 1.0);
     }
 
-    #[test]
-    fn diff_direction_correct_if_need_to_buy() {
+    #[tokio::test]
+    async fn diff_direction_correct_if_need_to_buy() {
         let (uist, clock) = random_uist_generator(100);
+
+        let mut datasets = HashMap::new();
+        datasets.insert("Random".to_string(), uist);
+        let mut client = TestClient::new(&mut datasets);
+        let resp = client.init("Random".to_string()).await.unwrap();
+
         let mut brkr = UistBrokerBuilder::new()
-            .with_trade_costs(vec![BrokerCost::flat(1.0)])
-            .with_exchange(uist)
-            .build();
+            .with_client(client, resp.backtest_id)
+            .with_trade_costs(vec![BrokerCost::PctOfValue(0.01)])
+            .build()
+            .await;
 
         let mut weights = PortfolioAllocation::new();
         weights.insert("ABC", 1.0);
@@ -866,20 +893,26 @@ mod tests {
         let first = orders.first().unwrap();
         assert!(matches!(
             first.get_order_type(),
-            UistOrderType::MarketBuy { .. }
+            OrderType::MarketBuy { .. }
         ));
     }
 
-    #[test]
-    fn diff_direction_correct_if_need_to_sell() {
+    #[tokio::test]
+    async fn diff_direction_correct_if_need_to_sell() {
         //This is connected to the previous test, if the above fails then this will never pass.
         //However, if the above passes this could still fail.
 
         let (uist, clock) = random_uist_generator(100);
+        let mut datasets = HashMap::new();
+        datasets.insert("Random".to_string(), uist);
+        let mut client = TestClient::new(&mut datasets);
+        let resp = client.init("Random".to_string()).await.unwrap();
+
         let mut brkr = UistBrokerBuilder::new()
-            .with_trade_costs(vec![BrokerCost::flat(1.0)])
-            .with_exchange(uist)
-            .build();
+            .with_client(client, resp.backtest_id)
+            .with_trade_costs(vec![BrokerCost::PctOfValue(0.01)])
+            .build()
+            .await;
 
         let mut weights = PortfolioAllocation::new();
         weights.insert("ABC", 1.0);
@@ -903,20 +936,26 @@ mod tests {
         let first = orders1.first().unwrap();
         assert!(matches!(
             first.get_order_type(),
-            UistOrderType::MarketSell { .. }
+            OrderType::MarketSell { .. }
         ));
     }
 
-    #[test]
-    fn diff_continues_if_security_missing() {
+    #[tokio::test]
+    async fn diff_continues_if_security_missing() {
         //In this scenario, the user has inserted incorrect information but this scenario can also occur if there is no quote
         //for a given security on a certain date. We are interested in the latter case, not the former but it is more
         //difficult to test for the latter, and the code should be the same.
         let (uist, clock) = random_uist_generator(100);
+        let mut datasets = HashMap::new();
+        datasets.insert("Random".to_string(), uist);
+        let mut client = TestClient::new(&mut datasets);
+        let resp = client.init("Random".to_string()).await.unwrap();
+
         let mut brkr = UistBrokerBuilder::new()
-            .with_trade_costs(vec![BrokerCost::flat(1.0)])
-            .with_exchange(uist)
-            .build();
+            .with_client(client, resp.backtest_id)
+            .with_trade_costs(vec![BrokerCost::PctOfValue(0.01)])
+            .build()
+            .await;
 
         let mut weights = PortfolioAllocation::new();
         weights.insert("ABC", 0.5);
@@ -931,16 +970,22 @@ mod tests {
         assert!(orders.len() == 1);
     }
 
-    #[test]
+    #[tokio::test]
     #[should_panic]
-    fn diff_panics_if_brkr_has_no_cash() {
+    async fn diff_panics_if_brkr_has_no_cash() {
         //If we get to a point where the client is diffing without cash, we can assume that no further operations are possible
         //and we should panic
         let (uist, clock) = random_uist_generator(100);
+        let mut datasets = HashMap::new();
+        datasets.insert("Random".to_string(), uist);
+        let mut client = TestClient::new(&mut datasets);
+        let resp = client.init("Random".to_string()).await.unwrap();
+
         let mut brkr = UistBrokerBuilder::new()
-            .with_trade_costs(vec![BrokerCost::flat(1.0)])
-            .with_exchange(uist)
-            .build();
+            .with_client(client, resp.backtest_id)
+            .with_trade_costs(vec![BrokerCost::PctOfValue(0.01)])
+            .build()
+            .await;
 
         let mut weights = PortfolioAllocation::new();
         weights.insert("ABC", 1.0);
@@ -973,8 +1018,8 @@ mod tests {
         assert!((*initial.1).eq(&1.1));
     }
 
-    #[test]
-    fn diff_handles_sent_but_unexecuted_orders() {
+    #[tokio::test]
+    async fn diff_handles_sent_but_unexecuted_orders() {
         //It is possible for the client to issue orders for infinitely increasing numbers of shares
         //if there is a gap between orders being issued and executed. For example, if we are
         //missing price data the client could think we need 100 shares, that order doesn't get
@@ -990,9 +1035,17 @@ mod tests {
 
         let (price_source, clock) =
             source_builder.build_with_frequency(rotala::clock::Frequency::Second);
-        let uist = UistV1::new(clock, price_source, "FAKE");
+        let exchange = UistV1::new(clock, price_source, "Random");
+        let mut datasets = HashMap::new();
+        datasets.insert("Random".to_string(), exchange);
+        let mut client = TestClient::new(&mut datasets);
+        let resp = client.init("Random".to_string()).await.unwrap();
 
-        let mut brkr = UistBrokerBuilder::new().with_exchange(uist).build();
+        let mut brkr = UistBrokerBuilder::new()
+            .with_client(client, resp.backtest_id)
+            .with_trade_costs(vec![BrokerCost::PctOfValue(0.01)])
+            .build()
+            .await;
 
         brkr.deposit_cash(&100_000.0);
 
@@ -1032,9 +1085,17 @@ mod tests {
 
         let (price_source, clock) =
             source_builder.build_with_frequency(rotala::clock::Frequency::Second);
-        let uist = UistV1::new(clock, price_source, "FAKE");
+        let exchange = UistV1::new(clock, price_source, "Random");
+        let mut datasets = HashMap::new();
+        datasets.insert("Random".to_string(), exchange);
+        let mut client = TestClient::new(&mut datasets);
+        let resp = client.init("Random".to_string()).await.unwrap();
 
-        let mut brkr = UistBrokerBuilder::new().with_exchange(uist).build();
+        let mut brkr = UistBrokerBuilder::new()
+            .with_client(client, resp.backtest_id)
+            .with_trade_costs(vec![BrokerCost::PctOfValue(0.01)])
+            .build()
+            .await;
 
         brkr.deposit_cash(&100_000.0);
 

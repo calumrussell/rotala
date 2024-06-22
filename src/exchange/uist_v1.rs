@@ -8,10 +8,10 @@ use crate::input::penelope::{Penelope, PenelopeBuilder, PenelopeQuote};
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct UistQuote {
-    bid: f64,
-    ask: f64,
-    date: i64,
-    symbol: String,
+    pub bid: f64,
+    pub ask: f64,
+    pub date: i64,
+    pub symbol: String,
 }
 
 impl From<PenelopeQuote> for UistQuote {
