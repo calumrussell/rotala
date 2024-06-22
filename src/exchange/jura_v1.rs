@@ -757,6 +757,7 @@ mod tests {
         let (source, clock) = source_builder.build_with_frequency(crate::clock::Frequency::Second);
 
         let exchange = JuraV1::new(clock, source, "FAKE");
+
         exchange
     }
 

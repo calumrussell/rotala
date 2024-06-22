@@ -3,7 +3,7 @@ use rand::thread_rng;
 use serde::{Deserialize, Serialize};
 use std::collections::VecDeque;
 
-use crate::clock::Clock;
+use crate::clock::{Clock, Frequency};
 use crate::input::penelope::{Penelope, PenelopeBuilder, PenelopeQuote};
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
@@ -187,6 +187,11 @@ pub struct UistV1 {
 }
 
 impl UistV1 {
+    pub fn from_penelope_builder(builder: &mut PenelopeBuilder, dataset: &str, frequency: Frequency) -> Self {
+        let (source, clock) = builder.build_with_frequency(frequency);
+        UistV1::new(clock, source, dataset)
+    }
+
     pub fn from_binance() -> Self {
         let (penelope, clock) = Penelope::from_binance();
         Self::new(clock, penelope, "BINANCE")
@@ -433,11 +438,7 @@ mod tests {
         source_builder.add_quote(101.00, 102.00, 100, "ABC".to_owned());
         source_builder.add_quote(102.00, 103.00, 101, "ABC".to_owned());
         source_builder.add_quote(105.00, 106.00, 102, "ABC".to_owned());
-
-        let (source, clock) = source_builder.build_with_frequency(crate::clock::Frequency::Second);
-
-        let exchange = UistV1::new(clock, source, "FAKE");
-        exchange
+        UistV1::from_penelope_builder(&mut source_builder, "Fake", crate::clock::Frequency::Second)
     }
 
     #[test]
