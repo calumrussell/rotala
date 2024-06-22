@@ -284,9 +284,7 @@ mod tests {
         source_builder.add_quote(498.0, 499.0, 102, "BCD");
         source_builder.add_quote(495.0, 496.0, 103, "BCD");
 
-        let (price_source, clock) =
-            source_builder.build_with_frequency(rotala::clock::Frequency::Second);
-        let exchange = UistV1::new(clock.clone(), price_source, "Random");
+        let mut exchange = UistV1::from_penelope_builder(&mut source_builder, "Random", rotala::clock::Frequency::Second);
         let mut datasets = HashMap::new();
         datasets.insert("Random".to_string(), exchange);
         let mut client = TestClient::new(&mut datasets);

@@ -476,10 +476,8 @@ mod tests {
         source_builder.add_quote(95.00, 96.00, 103, "ABC");
         source_builder.add_quote(10.00, 11.00, 103, "BCD");
 
-        let (price_source, clock) =
-            source_builder.build_with_frequency(rotala::clock::Frequency::Second);
+        let mut exchange = UistV1::from_penelope_builder(&mut source_builder, "Fake", rotala::clock::Frequency::Second);
 
-        let exchange = UistV1::new(clock, price_source, "Random");
         let mut datasets = HashMap::new();
         datasets.insert("Random".to_string(), exchange);
         let mut client = TestClient::new(&mut datasets);
@@ -658,9 +656,7 @@ mod tests {
         source_builder.add_quote(104.00, 105.00, 103, "ABC");
         source_builder.add_quote(12.00, 13.00, 103, "BCD");
 
-        let (price_source, clock) =
-            source_builder.build_with_frequency(rotala::clock::Frequency::Second);
-        let exchange = UistV1::new(clock, price_source, "Random");
+        let mut exchange = UistV1::from_penelope_builder(&mut source_builder, "Random", rotala::clock::Frequency::Second);
         let mut datasets = HashMap::new();
         datasets.insert("Random".to_string(), exchange);
         let mut client = TestClient::new(&mut datasets);
@@ -712,9 +708,7 @@ mod tests {
         source_builder.add_quote(150.00, 151.00, 101, "ABC");
         source_builder.add_quote(150.00, 151.00, 102, "ABC");
 
-        let (price_source, clock) =
-            source_builder.build_with_frequency(rotala::clock::Frequency::Second);
-        let exchange = UistV1::new(clock, price_source, "Random");
+        let mut exchange = UistV1::from_penelope_builder(&mut source_builder, "Random", rotala::clock::Frequency::Second);
         let mut datasets = HashMap::new();
         datasets.insert("Random".to_string(), exchange);
         let mut client = TestClient::new(&mut datasets);
@@ -752,9 +746,7 @@ mod tests {
         source_builder.add_quote(200.00, 201.00, 101, "ABC");
         source_builder.add_quote(200.00, 201.00, 101, "ABC");
 
-        let (price_source, clock) =
-            source_builder.build_with_frequency(rotala::clock::Frequency::Second);
-        let exchange = UistV1::new(clock, price_source, "Random");
+        let mut exchange = UistV1::from_penelope_builder(&mut source_builder, "Random", rotala::clock::Frequency::Second);
         let mut datasets = HashMap::new();
         datasets.insert("Random".to_string(), exchange);
         let mut client = TestClient::new(&mut datasets);
@@ -1033,9 +1025,7 @@ mod tests {
         source_builder.add_quote(100.00, 100.00, 101, "ABC");
         source_builder.add_quote(100.00, 100.00, 103, "ABC");
 
-        let (price_source, clock) =
-            source_builder.build_with_frequency(rotala::clock::Frequency::Second);
-        let exchange = UistV1::new(clock, price_source, "Random");
+        let mut exchange = UistV1::from_penelope_builder(&mut source_builder, "Random", rotala::clock::Frequency::Second);
         let mut datasets = HashMap::new();
         datasets.insert("Random".to_string(), exchange);
         let mut client = TestClient::new(&mut datasets);
@@ -1082,9 +1072,7 @@ mod tests {
         source_builder.add_quote(75.00, 75.00, 103, "ABC");
         source_builder.add_quote(75.00, 75.00, 104, "ABC");
 
-        let (price_source, clock) =
-            source_builder.build_with_frequency(rotala::clock::Frequency::Second);
-        let exchange = UistV1::new(clock, price_source, "Random");
+        let mut exchange = UistV1::from_penelope_builder(&mut source_builder, "Random", rotala::clock::Frequency::Second);
         let mut datasets = HashMap::new();
         datasets.insert("Random".to_string(), exchange);
         let mut client = TestClient::new(&mut datasets);
