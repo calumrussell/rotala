@@ -500,7 +500,7 @@ mod tests {
         let mut brkr = setup().await;
         brkr.deposit_cash(&100.0);
 
-        brkr.check();
+        brkr.check().await;
 
         //Test cash
         assert!(matches!(
@@ -540,7 +540,7 @@ mod tests {
         println!("{:?}", res);
         assert!(matches!(res, UistBrokerEvent::OrderSentToExchange(..)));
 
-        brkr.check();
+        brkr.check().await;
 
         let cash = brkr.get_cash_balance();
         assert!(*cash < 100_000.0);
@@ -559,7 +559,7 @@ mod tests {
         let res = brkr.send_order(Order::market_buy("ABC", 495.0));
 
         assert!(matches!(res, UistBrokerEvent::OrderInvalid(..)));
-        brkr.check();
+        brkr.check().await;
 
         let cash = brkr.get_cash_balance();
         assert!(*cash == 100.0);
@@ -572,10 +572,10 @@ mod tests {
 
         let res = brkr.send_order(Order::market_buy("ABC", 100.0));
         assert!(matches!(res, UistBrokerEvent::OrderSentToExchange(..)));
-        brkr.check();
+        brkr.check().await;
 
         //Order greater than current holding
-        brkr.check();
+        brkr.check().await;
 
         let res = brkr.send_order(Order::market_sell("ABC", 105.0));
         assert!(matches!(res, UistBrokerEvent::OrderInvalid(..)));
@@ -592,15 +592,15 @@ mod tests {
         brkr.deposit_cash(&100_000.0);
         let res = brkr.send_order(Order::market_buy("ABC", 495.0));
         assert!(matches!(res, UistBrokerEvent::OrderSentToExchange(..)));
-        brkr.check();
+        brkr.check().await;
         let cash = brkr.get_cash_balance();
 
-        brkr.check();
+        brkr.check().await;
 
         let res = brkr.send_order(Order::market_sell("ABC", 295.0));
         assert!(matches!(res, UistBrokerEvent::OrderSentToExchange(..)));
 
-        brkr.check();
+        brkr.check().await;
         let cash0 = brkr.get_cash_balance();
 
         let qty = brkr.get_position_qty("ABC").unwrap_or_default();
@@ -614,11 +614,11 @@ mod tests {
         brkr.deposit_cash(&100_000.0);
 
         brkr.send_order(Order::market_buy("ABC", 495.0));
-        brkr.check();
+        brkr.check().await;
 
         let val = brkr.get_position_value("ABC");
 
-        brkr.check();
+        brkr.check().await;
         let val1 = brkr.get_position_value("ABC");
         assert_ne!(val, val1);
     }
@@ -628,9 +628,9 @@ mod tests {
         let mut brkr = setup().await;
         brkr.deposit_cash(&100_000.0);
         brkr.send_order(Order::market_buy("ABC", 495.0));
-        brkr.check();
+        brkr.check().await;
 
-        brkr.check();
+        brkr.check().await;
 
         let profit = brkr.get_position_profit("ABC").unwrap();
         assert_eq!(*profit, -4950.00);
@@ -677,10 +677,10 @@ mod tests {
         brkr.send_order(Order::market_buy("ABC", 100.0));
         brkr.send_order(Order::market_buy("BCD", 100.0));
 
-        brkr.check();
+        brkr.check().await;
 
         //Missing live quote for BCD
-        brkr.check();
+        brkr.check().await;
         let value = brkr
             .get_position_value("BCD")
             .unwrap_or(CashValue::from(0.0));
@@ -689,7 +689,7 @@ mod tests {
         assert!(*value == 10.0 * 100.0);
 
         //BCD has quote again
-        brkr.check();
+        brkr.check().await;
 
         let value1 = brkr
             .get_position_value("BCD")
@@ -732,13 +732,13 @@ mod tests {
         brkr.send_order(Order::market_buy("ABC", 700.0));
 
         //Trades execute
-        brkr.check();
+        brkr.check().await;
 
         let cash = brkr.get_cash_balance();
         assert!(*cash < 0.0);
 
         //Broker rebalances to raise cash
-        brkr.check();
+        brkr.check().await;
         let cash1 = brkr.get_cash_balance();
         assert!(*cash1 > 0.0);
     }
@@ -772,8 +772,8 @@ mod tests {
 
         brkr.send_order(Order::market_buy("ABC", 990.0));
 
-        brkr.check();
-        brkr.check();
+        brkr.check().await;
+        brkr.check().await;
 
         let cash = brkr.get_cash_balance();
         assert!(*cash < 0.0);
@@ -804,7 +804,7 @@ mod tests {
                 .unwrap_or_default(),
             50.0
         );
-        brkr.check();
+        brkr.check().await;
         assert_eq!(*brkr.get_holdings().get("ABC").unwrap_or_default(), 50.0);
 
         let res = brkr.send_order(Order::market_sell("ABC", 10.0));
@@ -816,7 +816,7 @@ mod tests {
                 .unwrap_or_default(),
             40.0
         );
-        brkr.check();
+        brkr.check().await;
         assert_eq!(*brkr.get_holdings().get("ABC").unwrap_or_default(), 40.0);
 
         let res = brkr.send_order(Order::market_buy("ABC", 50.0));
@@ -828,7 +828,7 @@ mod tests {
                 .unwrap_or_default(),
             90.0
         );
-        brkr.check();
+        brkr.check().await;
         assert_eq!(*brkr.get_holdings().get("ABC").unwrap_or_default(), 90.0)
     }
 
@@ -877,7 +877,7 @@ mod tests {
 
         let mut brkr = UistBrokerBuilder::new()
             .with_client(client, resp.backtest_id)
-            .with_trade_costs(vec![BrokerCost::PctOfValue(0.01)])
+            .with_trade_costs(vec![BrokerCost::flat(1.0)])
             .build()
             .await;
 
@@ -885,7 +885,7 @@ mod tests {
         weights.insert("ABC", 1.0);
 
         brkr.deposit_cash(&100_000.0);
-        brkr.check();
+        brkr.check().await;
 
         let orders = brkr.diff_brkr_against_target_weights(&weights);
 
@@ -921,9 +921,9 @@ mod tests {
         let orders = brkr.diff_brkr_against_target_weights(&weights);
         brkr.send_orders(&orders);
 
-        brkr.check();
+        brkr.check().await;
 
-        brkr.check();
+        brkr.check().await;
 
         let mut weights1 = PortfolioAllocation::new();
         //This weight needs to very small because it is possible for the data generator to generate
@@ -965,7 +965,7 @@ mod tests {
         weights.insert("XYZ", 0.5);
 
         brkr.deposit_cash(&100_000.0);
-        brkr.check();
+        brkr.check().await;
         let orders = brkr.diff_brkr_against_target_weights(&weights);
         assert!(orders.len() == 1);
     }
@@ -990,7 +990,7 @@ mod tests {
         let mut weights = PortfolioAllocation::new();
         weights.insert("ABC", 1.0);
 
-        brkr.check();
+        brkr.check().await;
         brkr.diff_brkr_against_target_weights(&weights);
     }
 
@@ -1043,16 +1043,15 @@ mod tests {
 
         let mut brkr = UistBrokerBuilder::new()
             .with_client(client, resp.backtest_id)
-            .with_trade_costs(vec![BrokerCost::PctOfValue(0.01)])
             .build()
             .await;
 
         brkr.deposit_cash(&100_000.0);
 
         //No price for security so we haven't diffed correctly
-        brkr.check();
+        brkr.check().await;
 
-        brkr.check();
+        brkr.check().await;
 
         let mut target_weights = PortfolioAllocation::new();
         target_weights.insert("ABC", 0.9);
@@ -1060,12 +1059,12 @@ mod tests {
         let orders = brkr.diff_brkr_against_target_weights(&target_weights);
         brkr.send_orders(&orders);
 
-        brkr.check();
+        brkr.check().await;
 
         let orders1 = brkr.diff_brkr_against_target_weights(&target_weights);
 
         brkr.send_orders(&orders1);
-        brkr.check();
+        brkr.check().await;
 
         dbg!(brkr.get_position_qty("ABC"));
         //If the logic isn't correct the orders will have doubled up to 1800
@@ -1093,7 +1092,6 @@ mod tests {
 
         let mut brkr = UistBrokerBuilder::new()
             .with_client(client, resp.backtest_id)
-            .with_trade_costs(vec![BrokerCost::PctOfValue(0.01)])
             .build()
             .await;
 
@@ -1107,18 +1105,18 @@ mod tests {
         brkr.send_orders(&orders);
 
         //No price for security so we haven't diffed correctly
-        brkr.check();
+        brkr.check().await;
 
-        brkr.check();
+        brkr.check().await;
 
-        brkr.check();
+        brkr.check().await;
 
         let orders1 = brkr.diff_brkr_against_target_weights(&target_weights);
         println!("{:?}", orders1);
 
         brkr.send_orders(&orders1);
 
-        brkr.check();
+        brkr.check().await;
 
         println!("{:?}", brkr.get_holdings());
         //If the logic isn't correct then the order will be for less shares than is actually
