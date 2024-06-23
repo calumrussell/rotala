@@ -1,93 +1,239 @@
+use std::collections::HashMap;
+
+use crate::exchange::uist_v1::{Order, OrderId, Trade, UistV1};
+use crate::input::penelope::{Penelope, PenelopeQuoteByDate};
+
+type BacktestId = u64;
+
+pub struct BacktestState {
+    pub id: BacktestId,
+    pub date: i64,
+    pub exchange: UistV1,
+    pub dataset_name: String,
+}
+
+pub struct AppState {
+    pub backtests: HashMap<BacktestId, BacktestState>,
+    pub last: BacktestId,
+    pub datasets: HashMap<String, Penelope>,
+}
+
+impl AppState {
+    pub fn create(datasets: &mut HashMap<String, Penelope>) -> Self {
+        Self {
+            backtests: HashMap::new(),
+            last: 0,
+            datasets: std::mem::take(datasets),
+        }
+    }
+
+    pub fn single(name: &str, data: Penelope) -> Self {
+        let exchange = UistV1::new();
+        let backtest = BacktestState {
+            id: 0,
+            date: data.get_first_date().clone(),
+            exchange,
+            dataset_name: name.into(),
+        };
+
+        let mut datasets = HashMap::new();
+        datasets.insert(name.into(), data);
+
+        let mut backtests = HashMap::new();
+        backtests.insert(0, backtest);
+
+        Self {
+            backtests,
+            last: 1,
+            datasets,
+        }
+    }
+
+    pub fn tick(&mut self, backtest_id: BacktestId) -> Option<(Vec<Trade>, Vec<Order>)> {
+        if let Some(backtest) = self.backtests.get_mut(&backtest_id) {
+            if let Some(dataset) = self.datasets.get(&backtest.dataset_name) {
+                if let Some(quotes) = dataset.get_quotes(&backtest.date) {
+                    let next_date = dataset.get_next_date(&backtest.date);
+
+                    let res = backtest.exchange.tick(&quotes);
+                    backtest.date = next_date.clone();
+                    return Some((res.0, res.1));
+                }
+            }
+        }
+        None
+    }
+
+    pub fn fetch_quotes(&self, backtest_id: BacktestId) -> Option<&PenelopeQuoteByDate> {
+        if let Some(backtest) = self.backtests.get(&backtest_id) {
+            if let Some(dataset) = self.datasets.get(&backtest.dataset_name) {
+                return dataset.get_quotes(&backtest.date);
+            }
+        }
+        None
+    }
+
+    pub fn init(&mut self, dataset_name: String) -> Option<BacktestId> {
+        if let Some(dataset) = self.datasets.get(&dataset_name) {
+            let new_id = self.last + 1;
+            let exchange = UistV1::new();
+            let backtest = BacktestState {
+                id: new_id,
+                date: dataset.get_first_date().clone(),
+                exchange,
+                dataset_name: dataset_name.into(),
+            };
+            self.backtests.insert(new_id, backtest);
+            return Some(new_id);
+        }
+        None
+    }
+
+    pub fn insert_order(&mut self, order: Order, backtest_id: BacktestId) -> Option<()> {
+        if let Some(backtest) = self.backtests.get_mut(&backtest_id) {
+            backtest.exchange.insert_order(order);
+            return Some(());
+        }
+        None
+    }
+
+    pub fn delete_order(&mut self, order_id: OrderId, backtest_id: BacktestId) -> Option<()> {
+        if let Some(backtest) = self.backtests.get_mut(&backtest_id) {
+            backtest.exchange.delete_order(order_id);
+            return Some(());
+        }
+        None
+    }
+
+    pub fn new_backtest(&mut self, dataset_name: &str) -> Option<BacktestId> {
+        let new_id = self.last + 1;
+
+        // Check that dataset exists
+        if let Some(dataset) = self.datasets.get(dataset_name) {
+            let exchange = UistV1::new();
+
+            let backtest = BacktestState {
+                id: new_id,
+                date: dataset.get_first_date().clone(),
+                exchange,
+                dataset_name: dataset_name.into(),
+            };
+
+            self.backtests.insert(new_id, backtest);
+
+            self.last = new_id;
+            return Some(new_id);
+        }
+        None
+    }
+}
+
 pub mod uistv1_client {
 
-    use std::future::{self, Future};
+    use std::future;
+    use std::future::Future;
 
     use anyhow::{Error, Result};
 
     use super::uistv1_server::{
-        AppState, DeleteOrderRequest, FetchQuotesResponse, InfoResponse, InitResponse, InsertOrderRequest, TickResponse, UistV1Error
+        DeleteOrderRequest, FetchQuotesResponse, InfoResponse, InitResponse, InsertOrderRequest,
+        TickResponse, UistV1Error,
     };
+    use super::AppState;
 
-    use crate::exchange::uist_v1::{Order, OrderId, UistV1};
+    use crate::exchange::uist_v1::{Order, OrderId};
+    use crate::input::penelope::Penelope;
 
     pub type BacktestId = u64;
 
     pub trait UistClient {
         fn tick(&mut self, backtest_id: BacktestId) -> impl Future<Output = Result<TickResponse>>;
-        fn delete_order(&mut self, order_id: OrderId, backtest_id: BacktestId) -> impl Future<Output = Result<()>>;
-        fn insert_order(&mut self, order: Order, backtest_id: BacktestId) -> impl Future<Output = Result<()>>;
-        fn fetch_quotes(&mut self, backtest_id: BacktestId) -> impl Future<Output = Result<FetchQuotesResponse>>;
+        fn delete_order(
+            &mut self,
+            order_id: OrderId,
+            backtest_id: BacktestId,
+        ) -> impl Future<Output = Result<()>>;
+        fn insert_order(
+            &mut self,
+            order: Order,
+            backtest_id: BacktestId,
+        ) -> impl Future<Output = Result<()>>;
+        fn fetch_quotes(
+            &mut self,
+            backtest_id: BacktestId,
+        ) -> impl Future<Output = Result<FetchQuotesResponse>>;
         fn init(&mut self, dataset_name: String) -> impl Future<Output = Result<InitResponse>>;
         fn info(&mut self, backtest_id: BacktestId) -> impl Future<Output = Result<InfoResponse>>;
     }
 
     pub struct TestClient {
-        state: AppState
+        state: AppState,
     }
 
     impl UistClient for TestClient {
         fn init(&mut self, dataset_name: String) -> impl Future<Output = Result<InitResponse>> {
-            if let Some(backtest) = self.state.new_backtest(dataset_name) {
-                return future::ready(Ok(InitResponse {
-                    backtest_id: backtest.0,
-                    start: backtest.1.start,
-                    frequency: backtest.1.frequency,
-                }));
+            if let Some(id) = self.state.init(dataset_name) {
+                return future::ready(Ok(InitResponse { backtest_id: id }));
             } else {
                 return future::ready(Err(Error::new(UistV1Error::UnknownDataset)));
             }
         }
 
         fn tick(&mut self, backtest_id: BacktestId) -> impl Future<Output = Result<TickResponse>> {
-            if let Some(state) = self.state.exchanges.get_mut(&backtest_id) {
-                let tick = state.exchange.tick();
-                future::ready(Ok(TickResponse {
-                    inserted_orders: tick.2,
-                    executed_trades: tick.1,
-                    has_next: tick.0,
-                }))
+            if let Some(resp) = self.state.tick(backtest_id) {
+                return future::ready(Ok(TickResponse {
+                    inserted_orders: resp.1,
+                    executed_trades: resp.0,
+                    has_next: true,
+                }));
             } else {
                 return future::ready(Err(Error::new(UistV1Error::UnknownBacktest)));
             }
         }
 
-        fn insert_order(&mut self, order: Order, backtest_id: BacktestId) -> impl Future<Output = Result<()>> {
-            let insert_order_request = InsertOrderRequest { order };
-            if let Some(state) = self.state.exchanges.get_mut(&backtest_id) {
-                state.exchange.insert_order(insert_order_request.order.clone());
-                future::ready(Ok(()))
+        fn insert_order(
+            &mut self,
+            order: Order,
+            backtest_id: BacktestId,
+        ) -> impl Future<Output = Result<()>> {
+            if let Some(()) = self.state.insert_order(order, backtest_id) {
+                return future::ready(Ok(()));
             } else {
                 return future::ready(Err(Error::new(UistV1Error::UnknownBacktest)));
             }
         }
 
-        fn delete_order(&mut self, order_id: OrderId, backtest_id: BacktestId) -> impl Future<Output = Result<()>> {
-            let delete_order_request = DeleteOrderRequest { order_id };
-            if let Some(state) = self.state.exchanges.get_mut(&backtest_id) {
-                state.exchange.delete_order(delete_order_request.order_id.clone());
-                future::ready(Ok(()))
+        fn delete_order(
+            &mut self,
+            order_id: OrderId,
+            backtest_id: BacktestId,
+        ) -> impl Future<Output = Result<()>> {
+            if let Some(()) = self.state.delete_order(order_id, backtest_id) {
+                return future::ready(Ok(()));
             } else {
                 return future::ready(Err(Error::new(UistV1Error::UnknownBacktest)));
             }
         }
 
-        fn fetch_quotes(&mut self, backtest_id: BacktestId) -> impl Future<Output = Result<FetchQuotesResponse>> {
-            if let Some(state) = self.state.exchanges.get_mut(&backtest_id) {
-                future::ready(Ok(FetchQuotesResponse {
-                    quotes: state.exchange.fetch_quotes(),
-                }))
+        fn fetch_quotes(
+            &mut self,
+            backtest_id: BacktestId,
+        ) -> impl Future<Output = Result<FetchQuotesResponse>> {
+            if let Some(quotes) = self.state.fetch_quotes(backtest_id) {
+                return future::ready(Ok(FetchQuotesResponse {
+                    quotes: quotes.to_owned(),
+                }));
             } else {
                 return future::ready(Err(Error::new(UistV1Error::UnknownBacktest)));
-            }   
+            }
         }
 
         fn info(&mut self, backtest_id: BacktestId) -> impl Future<Output = Result<InfoResponse>> {
-            if let Some(state) = self.state.exchanges.get_mut(&backtest_id) {
-                let info = state.exchange.info();
-                future::ready(Ok(InfoResponse {
-                    version: info.version,
-                    dataset: info.dataset,
-                }))
+            if let Some(backtest) = self.state.backtests.get(&backtest_id) {
+                return future::ready(Ok(InfoResponse {
+                    version: "v1".to_string(),
+                    dataset: backtest.dataset_name.clone(),
+                }));
             } else {
                 return future::ready(Err(Error::new(UistV1Error::UnknownBacktest)));
             }
@@ -95,9 +241,9 @@ pub mod uistv1_client {
     }
 
     impl TestClient {
-        pub fn new(datasets: &mut std::collections::HashMap<String, UistV1>) -> Self {
+        pub fn single(name: &str, data: Penelope) -> Self {
             Self {
-                state: AppState::create(datasets)
+                state: AppState::single(name, data),
             }
         }
     }
@@ -110,7 +256,8 @@ pub mod uistv1_client {
 
     impl UistClient for Client {
         async fn tick(&mut self, backtest_id: BacktestId) -> Result<TickResponse> {
-            Ok(self.client
+            Ok(self
+                .client
                 .get(self.path.clone() + format!("/backtest/{backtest_id}/tick").as_str())
                 .send()
                 .await?
@@ -120,7 +267,8 @@ pub mod uistv1_client {
 
         async fn delete_order(&mut self, order_id: OrderId, backtest_id: BacktestId) -> Result<()> {
             let req = DeleteOrderRequest { order_id };
-            Ok(self.client
+            Ok(self
+                .client
                 .post(self.path.clone() + format!("/backtest/{backtest_id}/delete_order").as_str())
                 .json(&req)
                 .send()
@@ -131,7 +279,8 @@ pub mod uistv1_client {
 
         async fn insert_order(&mut self, order: Order, backtest_id: BacktestId) -> Result<()> {
             let req = InsertOrderRequest { order };
-            Ok(self.client
+            Ok(self
+                .client
                 .post(self.path.clone() + format!("/backtest/{backtest_id}/insert_order").as_str())
                 .json(&req)
                 .send()
@@ -141,7 +290,8 @@ pub mod uistv1_client {
         }
 
         async fn fetch_quotes(&mut self, backtest_id: BacktestId) -> Result<FetchQuotesResponse> {
-            Ok(self.client
+            Ok(self
+                .client
                 .get(self.path.clone() + format!("/backtest/{backtest_id}/fetch_quotes").as_str())
                 .send()
                 .await?
@@ -150,7 +300,8 @@ pub mod uistv1_client {
         }
 
         async fn init(&mut self, dataset_name: String) -> Result<InitResponse> {
-            Ok(self.client
+            Ok(self
+                .client
                 .get(self.path.clone() + format!("/init/{dataset_name}").as_str())
                 .send()
                 .await?
@@ -159,7 +310,8 @@ pub mod uistv1_client {
         }
 
         async fn info(&mut self, backtest_id: BacktestId) -> Result<InfoResponse> {
-            Ok(self.client
+            Ok(self
+                .client
                 .get(self.path.clone() + format!("/backtest/{backtest_id}/info").as_str())
                 .send()
                 .await?
@@ -179,62 +331,17 @@ pub mod uistv1_client {
 }
 
 pub mod uistv1_server {
-    use serde::{Deserialize, Serialize};
     use core::fmt;
-    use std::{collections::HashMap, error::Error, sync::Mutex};
+    use serde::{Deserialize, Serialize};
+    use std::{error::Error, sync::Mutex};
 
-    use crate::exchange::uist_v1::{InitMessage, Order, OrderId, Trade, UistQuote, UistV1};
+    use crate::exchange::uist_v1::{Order, OrderId, Trade};
+    use crate::input::penelope::PenelopeQuoteByDate;
     use actix_web::{get, post, web, ResponseError};
 
-    type BacktestId = u64;
+    use super::{AppState, BacktestId};
+
     pub type UistState = Mutex<AppState>;
-
-
-    pub struct BacktestState {
-        pub id: BacktestId,
-        pub position: i64,
-        pub exchange: UistV1,
-    }
-
-    pub struct AppState {
-        pub exchanges: HashMap<BacktestId, BacktestState>,
-        pub last: BacktestId,
-        pub datasets: HashMap<String, UistV1>,
-    }
-
-    impl AppState {
-        pub fn create(datasets: &mut HashMap<String, UistV1>) -> Self {
-            Self {
-                exchanges: HashMap::new(),
-                last: 0,
-                datasets: std::mem::take(datasets),
-            }
-        }
-
-        pub fn new_backtest(&mut self, dataset_name: String) -> Option<(BacktestId, InitMessage)> {
-            let new_id = self.last + 1;
-
-            if let Some(exchange) = self.datasets.get(&dataset_name) {
-                // Not efficient but it is easier than breaking the bind between the dataset and
-                // the exchange.
-                let copied_exchange = exchange.clone();
-
-                let init_message = copied_exchange.init();
-
-                let backtest = BacktestState {
-                    id: new_id,
-                    position: 0,
-                    exchange: copied_exchange,
-                };
-
-                self.exchanges.insert(new_id, backtest);
-
-                self.last = new_id;
-                return Some((new_id, init_message));
-            }
-            None
-        }
-    }
 
     #[derive(Debug)]
     pub enum UistV1Error {
@@ -242,7 +349,7 @@ pub mod uistv1_server {
         UnknownDataset,
     }
 
-    impl Error for UistV1Error { }
+    impl Error for UistV1Error {}
 
     impl fmt::Display for UistV1Error {
         fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -277,12 +384,11 @@ pub mod uistv1_server {
         let mut uist = app.lock().unwrap();
         let (backtest_id,) = path.into_inner();
 
-        if let Some(state) = uist.exchanges.get_mut(&backtest_id) {
-            let tick = state.exchange.tick();
+        if let Some(result) = uist.tick(backtest_id) {
             Ok(web::Json(TickResponse {
-                inserted_orders: tick.2,
-                executed_trades: tick.1,
-                has_next: tick.0,
+                inserted_orders: result.1,
+                executed_trades: result.0,
+                has_next: true,
             }))
         } else {
             Err(UistV1Error::UnknownBacktest)
@@ -303,8 +409,7 @@ pub mod uistv1_server {
         let mut uist = app.lock().unwrap();
         let (backtest_id,) = path.into_inner();
 
-        if let Some(state) = uist.exchanges.get_mut(&backtest_id) {
-            state.exchange.delete_order(delete_order.order_id);
+        if let Some(()) = uist.delete_order(delete_order.order_id, backtest_id) {
             Ok(web::Json(()))
         } else {
             Err(UistV1Error::UnknownBacktest)
@@ -324,8 +429,7 @@ pub mod uistv1_server {
     ) -> Result<web::Json<()>, UistV1Error> {
         let mut uist = app.lock().unwrap();
         let (backtest_id,) = path.into_inner();
-        if let Some(state) = uist.exchanges.get_mut(&backtest_id) {
-            state.exchange.insert_order(insert_order.order.clone());
+        if let Some(()) = uist.insert_order(insert_order.order.clone(), backtest_id) {
             Ok(web::Json(()))
         } else {
             Err(UistV1Error::UnknownBacktest)
@@ -334,7 +438,7 @@ pub mod uistv1_server {
 
     #[derive(Debug, Deserialize, Serialize)]
     pub struct FetchQuotesResponse {
-        pub quotes: Vec<UistQuote>,
+        pub quotes: PenelopeQuoteByDate,
     }
 
     #[get("/backtest/{backtest_id}/fetch_quotes")]
@@ -342,13 +446,11 @@ pub mod uistv1_server {
         app: web::Data<UistState>,
         path: web::Path<(BacktestId,)>,
     ) -> Result<web::Json<FetchQuotesResponse>, UistV1Error> {
-        let mut uist = app.lock().unwrap();
+        let uist = app.lock().unwrap();
         let (backtest_id,) = path.into_inner();
 
-        if let Some(state) = uist.exchanges.get_mut(&backtest_id) {
-            Ok(web::Json(FetchQuotesResponse {
-                quotes: state.exchange.fetch_quotes(),
-            }))
+        if let Some(quotes) = uist.fetch_quotes(backtest_id) {
+            Ok(web::Json(FetchQuotesResponse { quotes: quotes.clone() }))
         } else {
             Err(UistV1Error::UnknownBacktest)
         }
@@ -357,8 +459,6 @@ pub mod uistv1_server {
     #[derive(Debug, Deserialize, Serialize)]
     pub struct InitResponse {
         pub backtest_id: BacktestId,
-        pub start: i64,
-        pub frequency: u8,
     }
 
     #[get("/init/{dataset_name}")]
@@ -369,12 +469,8 @@ pub mod uistv1_server {
         let mut uist = app.lock().unwrap();
         let (dataset_name,) = path.into_inner();
 
-        if let Some(backtest) = uist.new_backtest(dataset_name) {
-            Ok(web::Json(InitResponse {
-                backtest_id: backtest.0,
-                start: backtest.1.start,
-                frequency: backtest.1.frequency,
-            }))
+        if let Some(backtest_id) = uist.init(dataset_name) {
+            Ok(web::Json(InitResponse { backtest_id }))
         } else {
             Err(UistV1Error::UnknownDataset)
         }
@@ -391,13 +487,13 @@ pub mod uistv1_server {
         app: web::Data<UistState>,
         path: web::Path<(BacktestId,)>,
     ) -> Result<web::Json<InfoResponse>, UistV1Error> {
-        let mut uist = app.lock().unwrap();
+        let uist = app.lock().unwrap();
         let (backtest_id,) = path.into_inner();
-        if let Some(state) = uist.exchanges.get_mut(&backtest_id) {
-            let info = state.exchange.info();
+
+        if let Some(resp) = uist.backtests.get(&backtest_id) {
             Ok(web::Json(InfoResponse {
-                version: info.version,
-                dataset: info.dataset,
+                version: "v1".to_string(),
+                dataset: resp.dataset_name.clone(),
             }))
         } else {
             Err(UistV1Error::UnknownBacktest)
@@ -409,20 +505,20 @@ pub mod uistv1_server {
 mod tests {
     use actix_web::{test, web, App};
 
-    use crate::exchange::uist_v1::{random_uist_generator, Order};
+    use crate::exchange::uist_v1::Order;
+    use crate::input::penelope::Penelope;
+    use crate::http::jura::AppState;
 
     use super::uistv1_server::*;
-    use std::{collections::HashMap, sync::Mutex};
+    use std::sync::Mutex;
 
     #[actix_web::test]
-    async fn test_single_trade_loop() {
-        let uist = random_uist_generator(3000);
-        let dataset_name = "random";
+    async fn test_single_trade_loop_uist() {
+        let uist = Penelope::random(100);
+        let dataset_name = "fake";
+        let state = AppState::single(dataset_name, uist);
 
-        let mut datasets = HashMap::new();
-        datasets.insert(dataset_name.to_string(), uist.0);
-
-        let app_state = Mutex::new(AppState::create(&mut datasets));
+        let app_state = Mutex::new(state);
         let uist_state = web::Data::new(app_state);
 
         let app = test::init_service(
@@ -441,7 +537,6 @@ mod tests {
             .uri(format!("/init/{dataset_name}").as_str())
             .to_request();
         let resp: InitResponse = test::call_and_read_body_json(&app, req).await;
-        assert!(resp.frequency == 0);
 
         let backtest_id = resp.backtest_id;
 
@@ -472,3 +567,4 @@ mod tests {
         assert!(resp4.executed_trades.get(0).unwrap().symbol == "ABC")
     }
 }
+
