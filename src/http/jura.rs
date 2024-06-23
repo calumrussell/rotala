@@ -1,3 +1,132 @@
+use std::collections::HashMap;
+
+use crate::{exchange::jura_v1::{Fill, JuraV1, Order, OrderId}, input::penelope::{Penelope, PenelopeQuoteByDate}};
+
+type BacktestId = u64;
+
+pub struct BacktestState {
+    pub id: BacktestId,
+    pub date: i64,
+    pub exchange: JuraV1,
+    pub dataset_name: String,
+}
+
+pub struct AppState {
+    pub backtests: HashMap<BacktestId, BacktestState>,
+    pub last: BacktestId,
+    pub datasets: HashMap<String, Penelope>,
+}
+
+impl AppState {
+    pub fn create(datasets: &mut HashMap<String, Penelope>) -> Self {
+        Self {
+            backtests: HashMap::new(),
+            last: 0,
+            datasets: std::mem::take(datasets),
+        }
+    }
+
+    pub fn single(name: &str, data: Penelope) -> Self {
+        let exchange = JuraV1::new();
+        let backtest = BacktestState {
+            id: 0,
+            date: data.get_first_date().clone(),
+            exchange,
+            dataset_name: name.into(),
+        };
+
+        let mut datasets = HashMap::new();
+        datasets.insert(name.into(), data);
+
+        let mut backtests = HashMap::new();
+        backtests.insert(0, backtest);
+
+        Self {
+            backtests,
+            last: 1,
+            datasets,
+        }
+    }
+
+    pub fn tick(&mut self, backtest_id: BacktestId) -> Option<(Vec<Fill>, Vec<Order>, Vec<u64>)> {
+        if let Some(backtest) = self.backtests.get_mut(&backtest_id) {
+            if let Some(dataset) = self.datasets.get(&backtest.dataset_name) {
+                if let Some(quotes) = dataset.get_quotes(&backtest.date) {
+                    let next_date = dataset.get_next_date(&backtest.date);
+
+                    let res = backtest.exchange.tick(&quotes);
+                    backtest.date = next_date.clone();
+                    return Some((res.0, res.1, res.2));
+                }
+            }
+        }
+        None
+    }
+
+    pub fn fetch_quotes(&self, backtest_id: BacktestId) -> Option<&PenelopeQuoteByDate> {
+        if let Some(backtest) = self.backtests.get(&backtest_id) {
+            if let Some(dataset) = self.datasets.get(&backtest.dataset_name) {
+                return dataset.get_quotes(&backtest.date);
+            }
+        }
+        None
+    }
+
+    pub fn init(&mut self, dataset_name: String) -> Option<BacktestId> {
+        if let Some(dataset) = self.datasets.get(&dataset_name) {
+            let new_id = self.last + 1;
+            let exchange = JuraV1::new();
+            let backtest = BacktestState {
+                id: new_id,
+                date: dataset.get_first_date().clone(),
+                exchange,
+                dataset_name: dataset_name.into(),
+            };
+            self.backtests.insert(new_id, backtest);
+            return Some(new_id);
+        }
+        None
+    }
+
+    pub fn insert_order(&mut self, order: Order, backtest_id: BacktestId) -> Option<()> {
+        if let Some(backtest) = self.backtests.get_mut(&backtest_id) {
+            backtest.exchange.insert_order(order);
+            return Some(());
+        }
+        None
+    }
+
+    pub fn delete_order(&mut self, asset: u64, order_id: OrderId, backtest_id: BacktestId) -> Option<()> {
+        if let Some(backtest) = self.backtests.get_mut(&backtest_id) {
+            backtest.exchange.delete_order(asset, order_id);
+            return Some(());
+        }
+        None
+    }
+
+    pub fn new_backtest(&mut self, dataset_name: &str) -> Option<BacktestId> {
+        let new_id = self.last + 1;
+
+        // Check that dataset exists
+        if let Some(dataset) = self.datasets.get(dataset_name) {
+            let exchange = JuraV1::new();
+
+            let backtest = BacktestState {
+                id: new_id,
+                date: dataset.get_first_date().clone(),
+                exchange,
+                dataset_name: dataset_name.into(),
+            };
+
+            self.backtests.insert(new_id, backtest);
+
+            self.last = new_id;
+            return Some(new_id);
+        }
+        None
+    }
+}
+
 pub mod jurav1_client {
 
     use reqwest::Result;
@@ -101,54 +230,11 @@ pub mod jurav1_server {
     };
     use derive_more::{Display, Error};
 
+    use super::AppState;
+
     type BacktestId = u64;
     pub type JuraState = Mutex<AppState>;
 
-    pub struct BacktestState {
-        pub id: BacktestId,
-        pub position: i64,
-        pub exchange: JuraV1,
-    }
-
-    pub struct AppState {
-        pub exchanges: HashMap<BacktestId, BacktestState>,
-        pub last: BacktestId,
-        pub datasets: HashMap<String, JuraV1>,
-    }
-
-    impl AppState {
-        pub fn create(datasets: &mut HashMap<String, JuraV1>) -> Self {
-            Self {
-                exchanges: HashMap::new(),
-                last: 0,
-                datasets: std::mem::take(datasets),
-            }
-        }
-
-        pub fn new_backtest(&mut self, dataset_name: String) -> Option<(BacktestId, InitMessage)> {
-            let new_id = self.last + 1;
-
-            if let Some(exchange) = self.datasets.get(&dataset_name) {
-                // Not efficient but it is easier than breaking the bind between the dataset and
-                // the exchange.
-                let copied_exchange = exchange.clone();
-
-                let init_message = copied_exchange.init();
-
-                let backtest = BacktestState {
-                    id: new_id,
-                    position: 0,
-                    exchange: copied_exchange,
-                };
-
-                self.exchanges.insert(new_id, backtest);
-
-                self.last = new_id;
-                return Some((new_id, init_message));
-            }
-            None
-        }
-    }
 
     #[derive(Debug, Display, Error)]
     pub enum JuraV1Error {
@@ -316,20 +402,20 @@ pub mod jurav1_server {
 mod tests {
     use actix_web::{test, web, App};
 
-    use crate::exchange::jura_v1::{random_jura_generator, Order};
-
+    use crate::exchange::jura_v1::Order;
+    use crate::input::penelope::Penelope;
+    use super::AppState;
     use super::jurav1_server::*;
-    use std::{collections::HashMap, sync::Mutex};
+
+    use std::sync::Mutex;
 
     #[actix_web::test]
     async fn test_single_trade_loop() {
-        let jura = random_jura_generator(3000);
-        let dataset_name = "random";
+        let jura = Penelope::random(100);
+        let dataset_name = "fake";
+        let state = AppState::single(dataset_name, jura);
 
-        let mut datasets = HashMap::new();
-        datasets.insert(dataset_name.to_string(), jura.0);
-
-        let app_state = Mutex::new(AppState::create(&mut datasets));
+        let app_state = Mutex::new(state);
         let jura_state = web::Data::new(app_state);
 
         let app = test::init_service(
@@ -348,7 +434,6 @@ mod tests {
             .uri(format!("/init/{dataset_name}").as_str())
             .to_request();
         let resp: InitResponse = test::call_and_read_body_json(&app, req).await;
-        assert!(resp.frequency == 0);
 
         let backtest_id = resp.backtest_id;
 
