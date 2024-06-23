@@ -129,85 +129,108 @@ impl AppState {
 
 pub mod jurav1_client {
 
-    use reqwest::Result;
+    use std::future::Future;
 
-    use super::jurav1_server::{
-        DeleteOrderRequest, FetchQuotesResponse, InsertOrderRequest, TickResponse,
-    };
+    use anyhow::Result;
 
-    use crate::exchange::jura_v1::{InfoMessage, InitMessage, Order, OrderId};
+    use super::{jurav1_server::{
+        DeleteOrderRequest, FetchQuotesResponse, InfoResponse, InitResponse, InsertOrderRequest, TickResponse
+    }, BacktestId};
 
-    type BacktestId = u64;
+    use crate::exchange::jura_v1::{Order, OrderId};
+
+    pub trait JuraClient {
+        fn tick(&mut self, backtest_id: BacktestId) -> impl Future<Output = Result<TickResponse>>;
+        fn delete_order(
+            &mut self,
+            asset: u64,
+            order_id: OrderId,
+            backtest_id: BacktestId,
+        ) -> impl Future<Output = Result<()>>;
+        fn insert_order(
+            &mut self,
+            order: Order,
+            backtest_id: BacktestId,
+        ) -> impl Future<Output = Result<()>>;
+        fn fetch_quotes(
+            &mut self,
+            backtest_id: BacktestId,
+        ) -> impl Future<Output = Result<FetchQuotesResponse>>;
+        fn init(&mut self, dataset_name: String) -> impl Future<Output = Result<InitResponse>>;
+        fn info(&mut self, backtest_id: BacktestId) -> impl Future<Output = Result<InfoResponse>>;
+    }
 
     pub struct Client {
         pub path: String,
         pub client: reqwest::Client,
     }
 
-    impl Client {
-        pub async fn tick(&self, backtest_id: BacktestId) -> Result<TickResponse> {
-            self.client
+    impl JuraClient for Client {
+        async fn tick(&mut self, backtest_id: BacktestId) -> Result<TickResponse> {
+            Ok(self.client
                 .get(self.path.clone() + format!("/backtest/{backtest_id}/tick").as_str())
                 .send()
                 .await?
                 .json::<TickResponse>()
-                .await
+                .await?)
         }
 
-        pub async fn delete_order(
-            &self,
+        async fn delete_order(
+            &mut self,
             asset: u64,
             order_id: OrderId,
             backtest_id: BacktestId,
         ) -> Result<()> {
             let req = DeleteOrderRequest { asset, order_id };
-            self.client
+            Ok(self.client
                 .post(self.path.clone() + format!("/backtest/{backtest_id}/delete_order").as_str())
                 .json(&req)
                 .send()
                 .await?
                 .json::<()>()
-                .await
+                .await?)
         }
 
-        pub async fn insert_order(&self, order: Order, backtest_id: BacktestId) -> Result<()> {
+        async fn insert_order(&mut self, order: Order, backtest_id: BacktestId) -> Result<()> {
             let req = InsertOrderRequest { order };
-            self.client
+            Ok(self.client
                 .post(self.path.clone() + format!("/backtest/{backtest_id}/insert_order").as_str())
                 .json(&req)
                 .send()
                 .await?
                 .json::<()>()
-                .await
+                .await?)
         }
 
-        pub async fn fetch_quotes(&self, backtest_id: BacktestId) -> Result<FetchQuotesResponse> {
-            self.client
+        async fn fetch_quotes(&mut self, backtest_id: BacktestId) -> Result<FetchQuotesResponse> {
+            Ok(self.client
                 .get(self.path.clone() + format!("/backtest/{backtest_id}/fetch_quotes").as_str())
                 .send()
                 .await?
                 .json::<FetchQuotesResponse>()
-                .await
+                .await?)
         }
 
-        pub async fn init(&self, dataset_name: String) -> Result<InitMessage> {
-            self.client
+        async fn init(&mut self, dataset_name: String) -> Result<InitResponse> {
+            Ok(self.client
                 .get(self.path.clone() + format!("/init/{dataset_name}").as_str())
                 .send()
                 .await?
-                .json::<InitMessage>()
-                .await
+                .json::<InitResponse>()
+                .await?)
         }
 
-        pub async fn info(&self, backtest_id: BacktestId) -> Result<InfoMessage> {
-            self.client
+        async fn info(&mut self, backtest_id: BacktestId) -> Result<InfoResponse> {
+            Ok(self.client
                 .get(self.path.clone() + format!("/backtest/{backtest_id}/info").as_str())
                 .send()
                 .await?
-                .json::<InfoMessage>()
-                .await
+                .json::<InfoResponse>()
+                .await?)
         }
+    }
 
+    impl Client {
         pub fn new(path: String) -> Self {
             Self {
                 path,
@@ -219,10 +242,10 @@ pub mod jurav1_client {
 
 pub mod jurav1_server {
     use serde::{Deserialize, Serialize};
-    use std::collections::HashMap;
     use std::sync::Mutex;
 
-    use crate::exchange::jura_v1::{Fill, InitMessage, JuraQuote, JuraV1, Order, OrderId};
+    use crate::input::penelope::PenelopeQuoteByDate;
+    use crate::exchange::jura_v1::{Fill, Order, OrderId};
     use actix_web::{
         error, get, post,
         web::{self, Path},
@@ -266,12 +289,11 @@ pub mod jurav1_server {
         let mut jura = app.lock().unwrap();
         let (backtest_id,) = path.into_inner();
 
-        if let Some(state) = jura.exchanges.get_mut(&backtest_id) {
-            let tick = state.exchange.tick();
+        if let Some(result) = jura.tick(backtest_id) {
             Ok(web::Json(TickResponse {
-                inserted_orders: tick.2,
-                executed_trades: tick.1,
-                has_next: tick.0,
+                inserted_orders: result.1,
+                executed_trades: result.0,
+                has_next: true,
             }))
         } else {
             Err(JuraV1Error::UnknownBacktest)
@@ -292,10 +314,8 @@ pub mod jurav1_server {
     ) -> Result<web::Json<()>, JuraV1Error> {
         let mut jura = app.lock().unwrap();
         let (backtest_id,) = path.into_inner();
-        if let Some(state) = jura.exchanges.get_mut(&backtest_id) {
-            state
-                .exchange
-                .delete_order(delete_order.asset, delete_order.order_id);
+
+        if let Some(()) = jura.delete_order(delete_order.asset, delete_order.order_id, backtest_id) {
             Ok(web::Json(()))
         } else {
             Err(JuraV1Error::UnknownBacktest)
@@ -315,9 +335,7 @@ pub mod jurav1_server {
     ) -> Result<web::Json<()>, JuraV1Error> {
         let mut jura = app.lock().unwrap();
         let (backtest_id,) = path.into_inner();
-
-        if let Some(state) = jura.exchanges.get_mut(&backtest_id) {
-            state.exchange.insert_order(insert_order.order.clone());
+        if let Some(()) = jura.insert_order(insert_order.order.clone(), backtest_id) {
             Ok(web::Json(()))
         } else {
             Err(JuraV1Error::UnknownBacktest)
@@ -326,7 +344,7 @@ pub mod jurav1_server {
 
     #[derive(Debug, Deserialize, Serialize)]
     pub struct FetchQuotesResponse {
-        pub quotes: Vec<JuraQuote>,
+        pub quotes: PenelopeQuoteByDate,
     }
 
     #[get("/backtest/{backtest_id}/fetch_quotes")]
@@ -334,13 +352,11 @@ pub mod jurav1_server {
         app: web::Data<JuraState>,
         path: Path<(BacktestId,)>,
     ) -> Result<web::Json<FetchQuotesResponse>, JuraV1Error> {
-        let mut jura = app.lock().unwrap();
+        let jura = app.lock().unwrap();
         let (backtest_id,) = path.into_inner();
 
-        if let Some(state) = jura.exchanges.get_mut(&backtest_id) {
-            Ok(web::Json(FetchQuotesResponse {
-                quotes: state.exchange.fetch_quotes(),
-            }))
+        if let Some(quotes) = jura.fetch_quotes(backtest_id) {
+            Ok(web::Json(FetchQuotesResponse { quotes: quotes.clone() }))
         } else {
             Err(JuraV1Error::UnknownBacktest)
         }
@@ -349,8 +365,6 @@ pub mod jurav1_server {
     #[derive(Debug, Deserialize, Serialize)]
     pub struct InitResponse {
         pub backtest_id: BacktestId,
-        pub start: i64,
-        pub frequency: u8,
     }
 
     #[get("/init/{dataset_name}")]
@@ -361,12 +375,8 @@ pub mod jurav1_server {
         let mut jura = app.lock().unwrap();
         let (dataset_name,) = path.into_inner();
 
-        if let Some(backtest) = jura.new_backtest(dataset_name) {
-            Ok(web::Json(InitResponse {
-                backtest_id: backtest.0,
-                start: backtest.1.start,
-                frequency: backtest.1.frequency,
-            }))
+        if let Some(backtest_id) = jura.init(dataset_name) {
+            Ok(web::Json(InitResponse { backtest_id }))
         } else {
             Err(JuraV1Error::UnknownDataset)
         }
@@ -383,14 +393,13 @@ pub mod jurav1_server {
         app: web::Data<JuraState>,
         path: Path<(BacktestId,)>,
     ) -> Result<web::Json<InfoResponse>, JuraV1Error> {
-        let mut jura = app.lock().unwrap();
+        let jura = app.lock().unwrap();
         let (backtest_id,) = path.into_inner();
 
-        if let Some(state) = jura.exchanges.get_mut(&backtest_id) {
-            let info = state.exchange.info();
+        if let Some(resp) = jura.backtests.get(&backtest_id) {
             Ok(web::Json(InfoResponse {
-                version: info.version,
-                dataset: info.dataset,
+                version: "v1".to_string(),
+                dataset: resp.dataset_name.clone(),
             }))
         } else {
             Err(JuraV1Error::UnknownBacktest)
