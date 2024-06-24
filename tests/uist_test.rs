@@ -1,11 +1,12 @@
-use rotala::exchange::uist_v1::{random_uist_generator, Order};
+use rotala::{exchange::uist_v1::{Order, UistV1}, input::penelope::Penelope};
 
 #[test]
 fn test_that_uist_works() {
-    let (mut exchange, _clock) = random_uist_generator(1000);
-
-    let _init = exchange.init();
+    let source = Penelope::random(1000);
+    let mut exchange = UistV1::new();
 
     let order = Order::market_buy("ABC", 100.0);
     exchange.insert_order(order);
+
+    exchange.tick(source.get_quotes_unchecked(&100));
 }
