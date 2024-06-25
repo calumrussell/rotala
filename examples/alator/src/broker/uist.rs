@@ -1,3 +1,4 @@
+use futures::executor;
 use itertools::Itertools;
 use std::{
     collections::HashMap,
@@ -9,18 +10,14 @@ use std::{
 use log::info;
 use rotala::exchange::uist_v1::{Order, OrderType, Trade, TradeType, UistQuote, UistV1};
 use rotala::http::uist::uistv1_client::Client;
-use rotala::{
-    clock::DateTime,
-    http::uist::uistv1_client::{BacktestId, UistClient},
-};
+use rotala::http::uist::uistv1_client::{BacktestId, UistClient};
 
 use crate::{strategy::staticweight::StaticWeightBroker, types::{
-    CashValue, PortfolioAllocation, PortfolioHoldings, PortfolioQty, PortfolioValues, Price,
+    CashValue, DateTime, PortfolioAllocation, PortfolioHoldings, PortfolioQty, PortfolioValues, Price
 }};
 
 use super::{
-    BrokerCost, BrokerEvent, BrokerOperations, BrokerState, BrokerStates, CashOperations,
-    Portfolio, Quote, SendOrder, Update,
+    BrokerCost, BrokerEvent, BrokerOperations, BrokerState, BrokerStates, CashOperations, Clock, Portfolio, Quote, SendOrder, Update
 };
 
 type UistBrokerEvent = BrokerEvent<Order>;
@@ -233,10 +230,11 @@ impl<C: UistClient> Update for UistBroker<C> {
     async fn check(&mut self) {
         if let Ok(tick_response) = self.http_client.tick(self.backtest_id).await {
             if let Ok(quotes_response) = self.http_client.fetch_quotes(self.backtest_id).await {
+
                 //Update prices, these prices are not tradable
-                for quote in &quotes_response.quotes {
+                for (symbol, quote) in &quotes_response.quotes {
                     self.latest_quotes
-                        .insert(quote.symbol.clone(), quote.clone());
+                        .insert(symbol.clone(), quote.clone().into());
                 }
 
                 for trade in tick_response.executed_trades {
@@ -290,6 +288,20 @@ impl<C: UistClient> UistBroker<C> {
     }
 }
 
+impl<C: UistClient> Clock for UistBroker<C> {
+
+    fn now(&mut self) -> i64 {
+        let res = executor::block_on(self.http_client.now(self.backtest_id));
+        res.unwrap().now
+    }
+
+    fn has_next(&mut self) -> bool {
+        let res = executor::block_on(self.http_client.now(self.backtest_id));
+        res.unwrap().has_next
+    }
+
+}
+
 pub struct UistBrokerBuilder<C: UistClient> {
     trade_costs: Vec<BrokerCost>,
     client: Option<C>,
@@ -309,8 +321,8 @@ impl<C: UistClient> UistBrokerBuilder<C> {
         //`DataSource` to provide a first tick
         let mut first_quotes = HashMap::new();
         let quote_response = client.fetch_quotes(backtest_id).await.unwrap();
-        for quote in &quote_response.quotes {
-            first_quotes.insert(quote.symbol.clone(), quote.clone());
+        for (symbol, quote) in &quote_response.quotes {
+            first_quotes.insert(symbol.clone(), quote.clone().into());
         }
 
         let holdings = PortfolioHoldings::new();
@@ -451,37 +463,30 @@ mod tests {
         BrokerCashEvent, BrokerCost, BrokerOperations, CashOperations, Portfolio, SendOrder, Update,
     };
     use crate::types::{CashValue, PortfolioAllocation, PortfolioQty};
-    use rotala::clock::{ClockBuilder, Frequency};
     use rotala::exchange::uist_v1::{
-        random_uist_generator, Order, OrderType, Trade, TradeType, UistV1,
+        Order, OrderType, Trade, TradeType, UistV1,
     };
     use rotala::http::uist::uistv1_client::{Client, TestClient, UistClient};
-
-    use rotala::input::penelope::PenelopeBuilder;
+    use rotala::input::penelope::Penelope;
 
     use super::{UistBroker, UistBrokerBuilder, UistBrokerEvent, UistBrokerLog};
 
     async fn setup() -> UistBroker<TestClient> {
-        let mut source_builder = PenelopeBuilder::new();
+        let mut source = Penelope::new();
 
-        source_builder.add_quote(100.00, 101.00, 100, "ABC");
-        source_builder.add_quote(10.00, 11.00, 100, "BCD");
+        source.add_quote(100.00, 101.00, 100, "ABC");
+        source.add_quote(10.00, 11.00, 100, "BCD");
 
-        source_builder.add_quote(104.00, 105.00, 101, "ABC");
-        source_builder.add_quote(14.00, 15.00, 101, "BCD");
+        source.add_quote(104.00, 105.00, 101, "ABC");
+        source.add_quote(14.00, 15.00, 101, "BCD");
 
-        source_builder.add_quote(95.00, 96.00, 102, "ABC");
-        source_builder.add_quote(10.00, 11.00, 102, "BCD");
+        source.add_quote(95.00, 96.00, 102, "ABC");
+        source.add_quote(10.00, 11.00, 102, "BCD");
 
-        source_builder.add_quote(95.00, 96.00, 103, "ABC");
-        source_builder.add_quote(10.00, 11.00, 103, "BCD");
+        source.add_quote(95.00, 96.00, 103, "ABC");
+        source.add_quote(10.00, 11.00, 103, "BCD");
 
-        let mut exchange = UistV1::from_penelope_builder(&mut source_builder, "Fake", rotala::clock::Frequency::Second);
-
-        let mut datasets = HashMap::new();
-        datasets.insert("Random".to_string(), exchange);
-        let mut client = TestClient::new(&mut datasets);
-
+        let mut client = TestClient::single("Random", source);
         let resp = client.init("Random".to_string()).await.unwrap();
 
         let brkr = UistBrokerBuilder::new()
@@ -641,25 +646,22 @@ mod tests {
         //bank holiday, and if the broker is attempting to value the portfolio on that day
         //they will ask for a quote, not find one, and then use a value of zero which is
         //incorrect.
-        let mut source_builder = PenelopeBuilder::new();
-        source_builder.add_quote(100.00, 101.00, 100, "ABC");
-        source_builder.add_quote(10.00, 11.00, 100, "BCD");
+        let mut source= Penelope::new();
+        source.add_quote(100.00, 101.00, 100, "ABC");
+        source.add_quote(10.00, 11.00, 100, "BCD");
 
         //Trades execute here
-        source_builder.add_quote(100.00, 101.00, 101, "ABC");
-        source_builder.add_quote(10.00, 11.00, 101, "BCD");
+        source.add_quote(100.00, 101.00, 101, "ABC");
+        source.add_quote(10.00, 11.00, 101, "BCD");
 
         //We are missing a quote for BCD on 101, but the broker should return the last seen value
-        source_builder.add_quote(104.00, 105.00, 102, "ABC");
+        source.add_quote(104.00, 105.00, 102, "ABC");
 
         //And when we check the next date, it updates correctly
-        source_builder.add_quote(104.00, 105.00, 103, "ABC");
-        source_builder.add_quote(12.00, 13.00, 103, "BCD");
+        source.add_quote(104.00, 105.00, 103, "ABC");
+        source.add_quote(12.00, 13.00, 103, "BCD");
 
-        let mut exchange = UistV1::from_penelope_builder(&mut source_builder, "Random", rotala::clock::Frequency::Second);
-        let mut datasets = HashMap::new();
-        datasets.insert("Random".to_string(), exchange);
-        let mut client = TestClient::new(&mut datasets);
+        let mut client = TestClient::single("Random", source);
         let resp = client.init("Random".to_string()).await.unwrap();
 
         let mut brkr = UistBrokerBuilder::new()
@@ -703,15 +705,12 @@ mod tests {
         //For example, if orders are issued for 100% of the portfolio then if prices rises then we
         //can end up with negative balances.
 
-        let mut source_builder = PenelopeBuilder::new();
-        source_builder.add_quote(100.00, 101.00, 100, "ABC");
-        source_builder.add_quote(150.00, 151.00, 101, "ABC");
-        source_builder.add_quote(150.00, 151.00, 102, "ABC");
+        let mut source= Penelope::new();
+        source.add_quote(100.00, 101.00, 100, "ABC");
+        source.add_quote(150.00, 151.00, 101, "ABC");
+        source.add_quote(150.00, 151.00, 102, "ABC");
 
-        let mut exchange = UistV1::from_penelope_builder(&mut source_builder, "Random", rotala::clock::Frequency::Second);
-        let mut datasets = HashMap::new();
-        datasets.insert("Random".to_string(), exchange);
-        let mut client = TestClient::new(&mut datasets);
+        let mut client = TestClient::single("Random", source);
         let resp = client.init("Random".to_string()).await.unwrap();
 
         let mut brkr = UistBrokerBuilder::new()
@@ -739,17 +738,14 @@ mod tests {
 
     #[tokio::test]
     async fn test_that_broker_stops_when_liquidation_fails() {
-        let mut source_builder = PenelopeBuilder::new();
-        source_builder.add_quote(100.00, 101.00, 100, "ABC");
+        let mut source = Penelope::new();
+        source.add_quote(100.00, 101.00, 100, "ABC");
         //Price doubles over one tick so that the broker is trading on information that has become
         //very inaccurate
-        source_builder.add_quote(200.00, 201.00, 101, "ABC");
-        source_builder.add_quote(200.00, 201.00, 101, "ABC");
+        source.add_quote(200.00, 201.00, 101, "ABC");
+        source.add_quote(200.00, 201.00, 101, "ABC");
 
-        let mut exchange = UistV1::from_penelope_builder(&mut source_builder, "Random", rotala::clock::Frequency::Second);
-        let mut datasets = HashMap::new();
-        datasets.insert("Random".to_string(), exchange);
-        let mut client = TestClient::new(&mut datasets);
+        let mut client = TestClient::single("Random", source);
         let resp = client.init("Random".to_string()).await.unwrap();
 
         let mut brkr = UistBrokerBuilder::new()
@@ -860,11 +856,8 @@ mod tests {
 
     #[tokio::test]
     async fn diff_direction_correct_if_need_to_buy() {
-        let (uist, clock) = random_uist_generator(100);
-
-        let mut datasets = HashMap::new();
-        datasets.insert("Random".to_string(), uist);
-        let mut client = TestClient::new(&mut datasets);
+        let source = Penelope::random(100, vec!["ABC"]);
+        let mut client = TestClient::single("Random", source);
         let resp = client.init("Random".to_string()).await.unwrap();
 
         let mut brkr = UistBrokerBuilder::new()
@@ -893,11 +886,8 @@ mod tests {
     async fn diff_direction_correct_if_need_to_sell() {
         //This is connected to the previous test, if the above fails then this will never pass.
         //However, if the above passes this could still fail.
-
-        let (uist, clock) = random_uist_generator(100);
-        let mut datasets = HashMap::new();
-        datasets.insert("Random".to_string(), uist);
-        let mut client = TestClient::new(&mut datasets);
+        let source = Penelope::random(100, vec!["ABC"]);
+        let mut client = TestClient::single("Random", source);
         let resp = client.init("Random".to_string()).await.unwrap();
 
         let mut brkr = UistBrokerBuilder::new()
@@ -937,10 +927,8 @@ mod tests {
         //In this scenario, the user has inserted incorrect information but this scenario can also occur if there is no quote
         //for a given security on a certain date. We are interested in the latter case, not the former but it is more
         //difficult to test for the latter, and the code should be the same.
-        let (uist, clock) = random_uist_generator(100);
-        let mut datasets = HashMap::new();
-        datasets.insert("Random".to_string(), uist);
-        let mut client = TestClient::new(&mut datasets);
+        let source = Penelope::random(100, vec!["ABC"]);
+        let mut client = TestClient::single("Random", source);
         let resp = client.init("Random".to_string()).await.unwrap();
 
         let mut brkr = UistBrokerBuilder::new()
@@ -967,10 +955,8 @@ mod tests {
     async fn diff_panics_if_brkr_has_no_cash() {
         //If we get to a point where the client is diffing without cash, we can assume that no further operations are possible
         //and we should panic
-        let (uist, clock) = random_uist_generator(100);
-        let mut datasets = HashMap::new();
-        datasets.insert("Random".to_string(), uist);
-        let mut client = TestClient::new(&mut datasets);
+        let source = Penelope::random(100, vec!["ABC"]);
+        let mut client = TestClient::single("Random", source);
         let resp = client.init("Random".to_string()).await.unwrap();
 
         let mut brkr = UistBrokerBuilder::new()
@@ -1020,15 +1006,12 @@ mod tests {
         //This is not possible without earlier price data either. If there is no price data then
         //the diff will be unable to work out how many shares are required. So the test case is
         //some price but no price for the execution period.
-        let mut source_builder = PenelopeBuilder::new();
-        source_builder.add_quote(100.00, 100.00, 100, "ABC");
-        source_builder.add_quote(100.00, 100.00, 101, "ABC");
-        source_builder.add_quote(100.00, 100.00, 103, "ABC");
+        let mut source = Penelope::new();
+        source.add_quote(100.00, 100.00, 100, "ABC");
+        source.add_quote(100.00, 100.00, 101, "ABC");
+        source.add_quote(100.00, 100.00, 103, "ABC");
 
-        let mut exchange = UistV1::from_penelope_builder(&mut source_builder, "Random", rotala::clock::Frequency::Second);
-        let mut datasets = HashMap::new();
-        datasets.insert("Random".to_string(), exchange);
-        let mut client = TestClient::new(&mut datasets);
+        let mut client = TestClient::single("Random", source);
         let resp = client.init("Random".to_string()).await.unwrap();
 
         let mut brkr = UistBrokerBuilder::new()
@@ -1067,15 +1050,12 @@ mod tests {
         //missing, and we try to rebalance by buying but the pending order is for a significantly
         //greater amount of shares than we now need (e.g. we have a price of X, we miss a price,
         //and then it drops 20%).
-        let mut source_builder = PenelopeBuilder::new();
-        source_builder.add_quote(100.00, 100.00, 100, "ABC");
-        source_builder.add_quote(75.00, 75.00, 103, "ABC");
-        source_builder.add_quote(75.00, 75.00, 104, "ABC");
+        let mut source = Penelope::new();
+        source.add_quote(100.00, 100.00, 100, "ABC");
+        source.add_quote(75.00, 75.00, 103, "ABC");
+        source.add_quote(75.00, 75.00, 104, "ABC");
 
-        let mut exchange = UistV1::from_penelope_builder(&mut source_builder, "Random", rotala::clock::Frequency::Second);
-        let mut datasets = HashMap::new();
-        datasets.insert("Random".to_string(), exchange);
-        let mut client = TestClient::new(&mut datasets);
+        let mut client = TestClient::single("Random", source);
         let resp = client.init("Random".to_string()).await.unwrap();
 
         let mut brkr = UistBrokerBuilder::new()

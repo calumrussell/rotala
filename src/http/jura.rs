@@ -51,15 +51,17 @@ impl AppState {
         }
     }
 
-    pub fn tick(&mut self, backtest_id: BacktestId) -> Option<(Vec<Fill>, Vec<Order>, Vec<u64>)> {
+    pub fn tick(&mut self, backtest_id: BacktestId) -> Option<(bool, Vec<Fill>, Vec<Order>, Vec<u64>)> {
         if let Some(backtest) = self.backtests.get_mut(&backtest_id) {
             if let Some(dataset) = self.datasets.get(&backtest.dataset_name) {
                 if let Some(quotes) = dataset.get_quotes(&backtest.date) {
-                    let next_date = dataset.get_next_date(&backtest.date);
-
                     let res = backtest.exchange.tick(quotes);
-                    backtest.date = *next_date;
-                    return Some((res.0, res.1, res.2));
+                    let mut has_next = false;
+                    if let Some(next_date) = dataset.get_next_date(&backtest.date) {
+                        has_next = true;
+                        backtest.date = *next_date;
+                    }
+                    return Some((has_next, res.0, res.1, res.2));
                 }
             }
         }
@@ -308,9 +310,9 @@ pub mod jurav1_server {
 
         if let Some(result) = jura.tick(backtest_id) {
             Ok(web::Json(TickResponse {
-                inserted_orders: result.1,
-                executed_trades: result.0,
-                has_next: true,
+                inserted_orders: result.2,
+                executed_trades: result.1,
+                has_next: result.0,
             }))
         } else {
             Err(JuraV1Error::UnknownBacktest)

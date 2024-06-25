@@ -1,10 +1,9 @@
 //! Defines types that are used by multiple components.
 
 use itertools::Itertools;
+use time::{format_description, Date, Month, OffsetDateTime, Weekday};
 use std::ops::Deref;
 use std::{collections::HashMap, ops::Add};
-
-use rotala::clock::DateTime;
 
 #[derive(Clone, Debug, PartialEq, PartialOrd)]
 pub struct CashValue(f64);
@@ -254,5 +253,74 @@ impl StrategySnapshot {
             net_cash_flow,
             inflation,
         }
+    }
+}
+
+///[DateTime] is a wrapper around the epoch time as i64. This type also functions as a wrapper
+///around the time package which offers some of the more useful datetime functionality that is
+///required in the schedule module.
+//The internal representation with the time package should remain hidden from clients. Whilst this
+//results in some duplication of the API, this retains the option to get rid of the dependency on
+//time or change individual functions later.
+#[derive(Clone, Debug, Hash, Eq, PartialEq, PartialOrd, Copy, Ord)]
+pub struct DateTime(i64);
+
+impl DateTime {
+    pub fn day(&self) -> u8 {
+        let date: OffsetDateTime = (*self).into();
+        date.day()
+    }
+
+    pub fn weekday(&self) -> Weekday {
+        let date: OffsetDateTime = (*self).into();
+        date.weekday().into()
+    }
+
+    pub fn month(&self) -> Month {
+        let date: OffsetDateTime = (*self).into();
+        date.month().into()
+    }
+
+    pub fn from_date_string(val: &str, date_fmt: &str) -> Self {
+        let format = format_description::parse(date_fmt).unwrap();
+        let parsed_date = Date::parse(val, &format).unwrap();
+        let parsed_time = parsed_date.with_time(time::macros::time!(09:00));
+        Self::from(parsed_time.assume_utc().unix_timestamp())
+    }
+}
+
+impl Deref for DateTime {
+    type Target = i64;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+impl From<OffsetDateTime> for DateTime {
+    fn from(value: OffsetDateTime) -> Self {
+        value.unix_timestamp().into()
+    }
+}
+
+impl From<DateTime> for OffsetDateTime {
+    fn from(v: DateTime) -> Self {
+        if let Ok(date) = OffsetDateTime::from_unix_timestamp(i64::from(v)) {
+            date
+        } else {
+            panic!("Tried to convert non-date value");
+        }
+    }
+}
+
+impl From<DateTime> for i64 {
+    fn from(v: DateTime) -> Self {
+        v.0
+    }
+}
+
+impl From<i64> for DateTime {
+    fn from(v: i64) -> Self {
+        DateTime(v)
     }
 }
