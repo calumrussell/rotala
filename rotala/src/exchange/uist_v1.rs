@@ -486,7 +486,7 @@ mod tests {
 
         assert_eq!(res.1.len(), 3);
         assert_eq!(
-            res.1.get(0).unwrap().clone().order_type,
+            res.1.first().unwrap().clone().order_type,
             OrderType::MarketSell
         )
     }

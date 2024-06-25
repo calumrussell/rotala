@@ -478,13 +478,11 @@ mod tests {
         let mut client = TestClient::single("Random", source);
         let resp = client.init("Random".to_string()).await.unwrap();
 
-        let brkr = UistBrokerBuilder::new()
+        UistBrokerBuilder::new()
             .with_trade_costs(vec![BrokerCost::PctOfValue(0.01)])
             .with_client(client, resp.backtest_id)
             .build()
-            .await;
-
-        brkr
+            .await
     }
 
     #[tokio::test]
@@ -667,7 +665,7 @@ mod tests {
 
         //Missing live quote for BCD
         brkr.check().await;
-        let value = brkr.get_position_value("BCD").unwrap_or(f64::from(0.0));
+        let value = brkr.get_position_value("BCD").unwrap_or(0.0);
         println!("{:?}", value);
         //We test against the bid price, which gives us the value exclusive of the price paid at ask
         assert!(value == 10.0 * 100.0);
@@ -675,7 +673,7 @@ mod tests {
         //BCD has quote again
         brkr.check().await;
 
-        let value1 = brkr.get_position_value("BCD").unwrap_or(f64::from(0.0));
+        let value1 = brkr.get_position_value("BCD").unwrap_or(0.0);
         println!("{:?}", value1);
         assert!(value1 == 12.0 * 100.0);
     }
