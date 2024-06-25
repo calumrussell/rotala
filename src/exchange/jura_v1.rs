@@ -299,27 +299,6 @@ impl InnerOrder {
     }
 }
 
-#[derive(Debug, Clone, Deserialize, Serialize)]
-pub struct InitMessage {
-    pub start: i64,
-    pub frequency: u8,
-}
-
-#[derive(Debug, Clone, Deserialize, Serialize)]
-pub struct InfoMessage {
-    pub version: String,
-    pub dataset: String,
-}
-
-impl InfoMessage {
-    fn v1(dataset: String) -> InfoMessage {
-        InfoMessage {
-            version: "1.0".to_string(),
-            dataset,
-        }
-    }
-}
-
 #[derive(Clone, Debug)]
 pub struct JuraV1 {
     orderbook: OrderBook,
@@ -360,21 +339,22 @@ impl JuraV1 {
     }
 
     pub fn tick(&mut self, quotes: &PenelopeQuoteByDate) -> (Vec<Fill>, Vec<Order>, Vec<u64>) {
+        //To eliminate lookahead bias, we only insert new orders after we have executed any orders
+        //that were on the stack first
+        let (fills, triggered_order_ids) = self.orderbook.execute_orders(quotes);
+        for fill in &fills {
+            self.trade_log.push(fill.clone());
+        }
+
         self.sort_order_buffer();
         for order in self.order_buffer.iter_mut() {
             self.orderbook.insert_order(order.clone());
         }
 
-        let (fills, triggered_order_ids) = self.orderbook.execute_orders(quotes);
-        for fill in &fills {
-            self.trade_log.push(fill.clone());
-        }
+        println!("{:?}", self.orderbook);
+
         let inserted_orders = std::mem::take(&mut self.order_buffer);
-        (
-            fills,
-            inserted_orders,
-            triggered_order_ids,
-        )
+        (fills, inserted_orders, triggered_order_ids)
     }
 }
 
@@ -678,12 +658,10 @@ impl OrderBook {
     }
 }
 
-
-
 #[cfg(test)]
 mod tests {
     use super::{JuraV1, Order};
-    use crate::{exchange::jura_v1::Side, input::penelope::Penelope};
+    use crate::input::penelope::Penelope;
 
     fn setup() -> (Penelope, JuraV1) {
         let mut source = Penelope::new();
@@ -702,6 +680,7 @@ mod tests {
 
         exchange.insert_order(Order::market_buy(0_u64, "100.0", "102.00"));
         exchange.tick(source.get_quotes_unchecked(&100));
+        exchange.tick(source.get_quotes_unchecked(&101));
 
         //TODO: no abstraction!
         assert_eq!(exchange.trade_log.len(), 1);
@@ -712,11 +691,13 @@ mod tests {
         let (source, mut exchange) = setup();
 
         exchange.insert_order(Order::market_buy(0_u64, "25.0", "102.00"));
+
         exchange.insert_order(Order::market_buy(0_u64, "25.0", "102.00"));
         exchange.insert_order(Order::market_buy(0_u64, "25.0", "102.00"));
         exchange.insert_order(Order::market_buy(0_u64, "25.0", "102.00"));
 
         exchange.tick(source.get_quotes_unchecked(&100));
+        exchange.tick(source.get_quotes_unchecked(&101));
         assert_eq!(exchange.trade_log.len(), 4);
     }
 
@@ -730,6 +711,7 @@ mod tests {
         exchange.insert_order(Order::market_buy(0_u64, "25.0", "102.00"));
         exchange.insert_order(Order::market_buy(0_u64, "25.0", "102.00"));
         exchange.tick(source.get_quotes_unchecked(&101));
+        exchange.tick(source.get_quotes_unchecked(&102));
 
         assert_eq!(exchange.trade_log.len(), 4);
     }
@@ -741,6 +723,7 @@ mod tests {
 
         exchange.insert_order(Order::market_buy(0_u64, "100.0", "102.00"));
         exchange.tick(source.get_quotes_unchecked(&100));
+        exchange.tick(source.get_quotes_unchecked(&101));
 
         assert_eq!(exchange.trade_log.len(), 1);
         let trade = exchange.trade_log.remove(0);
@@ -756,6 +739,7 @@ mod tests {
 
         exchange.insert_order(Order::market_sell(0_u64, "100.0", "101.00"));
         exchange.tick(source.get_quotes_unchecked(&100));
+        exchange.tick(source.get_quotes_unchecked(&101));
 
         assert_eq!(exchange.trade_log.len(), 1);
         let trade = exchange.trade_log.remove(0);
@@ -798,7 +782,7 @@ mod tests {
         //Orderbook should have one order and trade log has no executed trades
         assert_eq!(exchange.trade_log.len(), 0);
 
-        exchange.tick(source.get_quotes_unchecked(&101));
+        exchange.tick(source.get_quotes_unchecked(&102));
         //Order should execute now
         assert_eq!(exchange.trade_log.len(), 1);
     }

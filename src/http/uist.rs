@@ -450,7 +450,9 @@ pub mod uistv1_server {
         let (backtest_id,) = path.into_inner();
 
         if let Some(quotes) = uist.fetch_quotes(backtest_id) {
-            Ok(web::Json(FetchQuotesResponse { quotes: quotes.clone() }))
+            Ok(web::Json(FetchQuotesResponse {
+                quotes: quotes.clone(),
+            }))
         } else {
             Err(UistV1Error::UnknownBacktest)
         }
@@ -507,14 +509,14 @@ mod tests {
 
     use crate::exchange::uist_v1::Order;
     use crate::input::penelope::Penelope;
-    use crate::http::jura::AppState;
 
     use super::uistv1_server::*;
+    use super::AppState;
     use std::sync::Mutex;
 
     #[actix_web::test]
-    async fn test_single_trade_loop_uist() {
-        let uist = Penelope::random(100);
+    async fn test_single_trade_loop() {
+        let uist = Penelope::random(100, vec!["ABC", "BCD"]);
         let dataset_name = "fake";
         let state = AppState::single(dataset_name, uist);
 
@@ -561,10 +563,14 @@ mod tests {
         let req4 = test::TestRequest::get()
             .uri(format!("/backtest/{backtest_id}/tick").as_str())
             .to_request();
-        let resp4: TickResponse = test::call_and_read_body_json(&app, req4).await;
+        let _resp4: TickResponse = test::call_and_read_body_json(&app, req4).await;
 
-        assert!(resp4.executed_trades.len() == 1);
-        assert!(resp4.executed_trades.get(0).unwrap().symbol == "ABC")
+        let req5 = test::TestRequest::get()
+            .uri(format!("/backtest/{backtest_id}/tick").as_str())
+            .to_request();
+        let resp5: TickResponse = test::call_and_read_body_json(&app, req5).await;
+
+        assert!(resp5.executed_trades.len() == 1);
+        assert!(resp5.executed_trades.get(0).unwrap().symbol == "ABC")
     }
 }
-
