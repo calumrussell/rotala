@@ -12,17 +12,10 @@ use rotala::exchange::uist_v1::{Order, OrderType, Trade, TradeType, UistQuote, U
 use rotala::http::uist::uistv1_client::Client;
 use rotala::http::uist::uistv1_client::{BacktestId, UistClient};
 
-use crate::{
-    strategy::staticweight::StaticWeightBroker,
-    types::{
-        CashValue, DateTime, PortfolioAllocation, PortfolioHoldings, PortfolioQty, PortfolioValues,
-        Price,
-    },
-};
+use crate::{broker::BrokerOrder, strategy::staticweight::StaticWeightBroker};
 
 use super::{
-    BrokerCost, BrokerEvent, BrokerOperations, BrokerState, BrokerStates, CashOperations, Clock,
-    Portfolio, Quote, SendOrder, Update,
+    BrokerCost, BrokerEvent, BrokerOperations, BrokerState, BrokerStates, CashOperations, Clock, DateTime, Portfolio, PortfolioHoldings, Quote, SendOrder, Update
 };
 
 type UistBrokerEvent = BrokerEvent<Order>;
@@ -30,7 +23,7 @@ type UistBrokerEvent = BrokerEvent<Order>;
 /// Implementation of broker that uses the [Uist](rotala::exchange::uist::UistV1) exchange.
 #[derive(Debug)]
 pub struct UistBroker<C: UistClient> {
-    cash: CashValue,
+    cash: f64,
     holdings: PortfolioHoldings,
     //Kept distinct from holdings because some perf calculations may need to distinguish between
     //trades that we know are booked vs ones that we think should get booked
@@ -74,19 +67,19 @@ impl<C: UistClient> Portfolio<UistQuote> for UistBroker<C> {
         self.holdings.clone()
     }
 
-    fn get_cash_balance(&self) -> CashValue {
-        self.cash.clone()
+    fn get_cash_balance(&self) -> f64 {
+        self.cash
     }
 
-    fn update_cash_balance(&mut self, cash: CashValue) {
+    fn update_cash_balance(&mut self, cash: f64) {
         self.cash = cash;
     }
 
-    fn get_position_cost(&self, symbol: &str) -> Option<Price> {
+    fn get_position_cost(&self, symbol: &str) -> Option<f64> {
         self.log.cost_basis(symbol)
     }
 
-    fn update_holdings(&mut self, symbol: &str, change: PortfolioQty) {
+    fn update_holdings(&mut self, symbol: &str, change: f64) {
         //We have to take ownership for logging but it is easier just to use ref for symbol as that
         //is used throughout
         let symbol_own = symbol.to_string();
@@ -94,10 +87,10 @@ impl<C: UistClient> Portfolio<UistQuote> for UistBroker<C> {
             "BROKER: Incrementing holdings in {:?} by {:?}",
             symbol_own, change
         );
-        if (*change).eq(&0.0) {
-            self.holdings.remove(symbol.as_ref());
+        if (change).eq(&0.0) {
+            self.holdings.remove(symbol);
         } else {
-            self.holdings.insert(symbol.as_ref(), &change);
+            self.holdings.insert(symbol.to_string(), change);
         }
     }
 
@@ -149,7 +142,7 @@ impl<C: UistClient> SendOrder<Order> for UistBroker<C> {
                 };
 
                 if let Err(_err) =
-                    self.client_has_sufficient_cash::<OrderType>(&order, &Price::from(price))
+                    self.client_has_sufficient_cash::<OrderType>(&order, &price)
                 {
                     info!(
                         "BROKER: Unable to send {:?} order for {:?} shares of {:?} to exchange",
@@ -196,13 +189,14 @@ impl<C: UistClient> SendOrder<Order> for UistBroker<C> {
                     }
                 };
 
+                let symbol = order.get_symbol().to_string();
                 if let Some(position) = self.pending_orders.get(order.get_symbol()) {
                     let existing = *position + order_effect;
                     self.pending_orders
-                        .insert(order.get_symbol(), &PortfolioQty::from(existing));
+                        .insert(symbol, existing);
                 } else {
                     self.pending_orders
-                        .insert(order.get_symbol(), &PortfolioQty::from(order_effect));
+                        .insert(symbol, order_effect);
                 }
                 info!(
                     "BROKER: Successfully sent {:?} order for {:?} shares of {:?} to exchange",
@@ -249,17 +243,17 @@ impl<C: UistClient> Update for UistBroker<C> {
                     };
                     self.log.record::<Trade>(trade.clone());
 
-                    let curr_position = self.get_position_qty(&trade.symbol).unwrap_or_default();
+                    let curr_position = self.get_position_qty(&trade.symbol).unwrap_or(0.0);
 
                     let updated = match trade.typ {
-                        TradeType::Buy => *curr_position + trade.quantity,
-                        TradeType::Sell => *curr_position - trade.quantity,
+                        TradeType::Buy => curr_position + trade.quantity,
+                        TradeType::Sell => curr_position - trade.quantity,
                     };
-                    self.update_holdings(&trade.symbol, PortfolioQty::from(updated));
+                    self.update_holdings(&trade.symbol, updated);
 
                     //Because the order has completed, we should be able to unwrap pending_orders safetly
                     //If this fails then there must be an application bug and panic is required.
-                    let pending = self.pending_orders.get(&trade.symbol).unwrap_or_default();
+                    let pending = self.pending_orders.get(&trade.symbol).unwrap_or(&0.0);
 
                     let updated_pending = match trade.typ {
                         TradeType::Buy => *pending - trade.quantity,
@@ -269,7 +263,7 @@ impl<C: UistClient> Update for UistBroker<C> {
                         self.pending_orders.remove(&trade.symbol);
                     } else {
                         self.pending_orders
-                            .insert(&trade.symbol, &PortfolioQty::from(updated_pending));
+                            .insert(trade.symbol, updated_pending);
                     }
 
                     self.last_seen_trade += 1;
@@ -283,7 +277,7 @@ impl<C: UistClient> Update for UistBroker<C> {
 }
 
 impl<C: UistClient> UistBroker<C> {
-    pub fn cost_basis(&self, symbol: &str) -> Option<Price> {
+    pub fn cost_basis(&self, symbol: &str) -> Option<f64> {
         self.log.cost_basis(symbol)
     }
 
@@ -335,7 +329,7 @@ impl<C: UistClient> UistBrokerBuilder<C> {
             //Intialised as invalid so errors throw if client tries to run before init
             holdings,
             pending_orders,
-            cash: CashValue::from(0.0),
+            cash: 0.0,
             log,
             last_seen_trade: 0,
             trade_costs: self.trade_costs.clone(),
@@ -415,32 +409,32 @@ impl UistBrokerLog {
             .collect_vec()
     }
 
-    pub fn cost_basis(&self, symbol: &str) -> Option<Price> {
-        let mut cum_qty = PortfolioQty::default();
-        let mut cum_val = CashValue::default();
+    pub fn cost_basis(&self, symbol: &str) -> Option<f64> {
+        let mut cum_qty = 0.0;
+        let mut cum_val = f64::default();
         for event in &self.log {
             let UistRecordedEvent::TradeCompleted(trade) = event;
             if trade.symbol.eq(symbol) {
                 match trade.typ {
                     TradeType::Buy => {
-                        cum_qty = PortfolioQty::from(*cum_qty + trade.quantity);
-                        cum_val = CashValue::from(*cum_val + trade.value);
+                        cum_qty += trade.quantity;
+                        cum_val += trade.value;
                     }
                     TradeType::Sell => {
-                        cum_qty = PortfolioQty::from(*cum_qty - trade.quantity);
-                        cum_val = CashValue::from(*cum_val - trade.value);
+                        cum_qty -= trade.quantity;
+                        cum_val -= trade.value;
                     }
                 }
                 //reset the value if we are back to zero
-                if (*cum_qty).eq(&0.0) {
-                    cum_val = CashValue::default();
+                if (cum_qty).eq(&0.0) {
+                    cum_val = f64::default();
                 }
             }
         }
-        if (*cum_qty).eq(&0.0) {
+        if (cum_qty).eq(&0.0) {
             return None;
         }
-        Some(Price::from(*cum_val / *cum_qty))
+        Some(cum_val / cum_qty)
     }
 }
 
@@ -464,7 +458,6 @@ mod tests {
     use crate::broker::{
         BrokerCashEvent, BrokerCost, BrokerOperations, CashOperations, Portfolio, SendOrder, Update,
     };
-    use crate::types::{CashValue, PortfolioAllocation, PortfolioQty};
     use rotala::exchange::uist_v1::{Order, OrderType, Trade, TradeType, UistV1};
     use rotala::http::uist::uistv1_client::{Client, TestClient, UistClient};
     use rotala::input::penelope::Penelope;
@@ -547,12 +540,12 @@ mod tests {
         brkr.check().await;
 
         let cash = brkr.get_cash_balance();
-        assert!(*cash < 100_000.0);
+        assert!(cash < 100_000.0);
 
         let qty = brkr
             .get_position_qty("ABC")
-            .unwrap_or(PortfolioQty::from(0.0));
-        assert_eq!(*qty.clone(), 495.00);
+            .unwrap_or(0.0);
+        assert_eq!(qty, 495.00);
     }
 
     #[tokio::test]
@@ -566,7 +559,7 @@ mod tests {
         brkr.check().await;
 
         let cash = brkr.get_cash_balance();
-        assert!(*cash == 100.0);
+        assert!(cash == 100.0);
     }
 
     #[tokio::test]
@@ -587,7 +580,7 @@ mod tests {
         //Checking that
         let qty = brkr.get_position_qty("ABC").unwrap_or_default();
         println!("{:?}", qty);
-        assert!((*qty.clone()).eq(&100.0));
+        assert!(qty.eq(&100.0));
     }
 
     #[tokio::test]
@@ -608,8 +601,8 @@ mod tests {
         let cash0 = brkr.get_cash_balance();
 
         let qty = brkr.get_position_qty("ABC").unwrap_or_default();
-        assert_eq!(*qty, 200.0);
-        assert!(*cash0 > *cash);
+        assert_eq!(qty, 200.0);
+        assert!(cash0 > cash);
     }
 
     #[tokio::test]
@@ -637,7 +630,7 @@ mod tests {
         brkr.check().await;
 
         let profit = brkr.get_position_profit("ABC").unwrap();
-        assert_eq!(*profit, -4950.00);
+        assert_eq!(profit, -4950.00);
     }
 
     #[tokio::test]
@@ -682,19 +675,19 @@ mod tests {
         brkr.check().await;
         let value = brkr
             .get_position_value("BCD")
-            .unwrap_or(CashValue::from(0.0));
+            .unwrap_or(f64::from(0.0));
         println!("{:?}", value);
         //We test against the bid price, which gives us the value exclusive of the price paid at ask
-        assert!(*value == 10.0 * 100.0);
+        assert!(value == 10.0 * 100.0);
 
         //BCD has quote again
         brkr.check().await;
 
         let value1 = brkr
             .get_position_value("BCD")
-            .unwrap_or(CashValue::from(0.0));
+            .unwrap_or(f64::from(0.0));
         println!("{:?}", value1);
-        assert!(*value1 == 12.0 * 100.0);
+        assert!(value1 == 12.0 * 100.0);
     }
 
     #[tokio::test]
@@ -730,13 +723,13 @@ mod tests {
         brkr.check().await;
 
         let cash = brkr.get_cash_balance();
-        assert!(*cash < 0.0);
+        assert!(cash < 0.0);
 
         //Broker rebalances to raise cash
         brkr.check().await;
         brkr.check().await;
         let cash1 = brkr.get_cash_balance();
-        assert!(*cash1 > 0.0);
+        assert!(cash1 > 0.0);
     }
 
     #[tokio::test]
@@ -767,7 +760,7 @@ mod tests {
         brkr.check().await;
 
         let cash = brkr.get_cash_balance();
-        assert!(*cash < 0.0);
+        assert!(cash < 0.0);
 
         let res = brkr.send_order(Order::market_buy("ABC", 100.0));
         assert!(matches!(res, UistBrokerEvent::OrderInvalid { .. }));
@@ -791,13 +784,12 @@ mod tests {
         assert_eq!(
             *brkr
                 .get_holdings_with_pending()
-                .get("ABC")
-                .unwrap_or_default(),
+                .get("ABC").unwrap_or(&0.0),
             50.0
         );
         brkr.check().await;
         brkr.check().await;
-        assert_eq!(*brkr.get_holdings().get("ABC").unwrap_or_default(), 50.0);
+        assert_eq!(*brkr.get_holdings().get("ABC").unwrap_or(&0.0), 50.0);
 
         let res = brkr.send_order(Order::market_sell("ABC", 10.0));
         assert!(matches!(res, UistBrokerEvent::OrderSentToExchange(..)));
@@ -805,12 +797,12 @@ mod tests {
             *brkr
                 .get_holdings_with_pending()
                 .get("ABC")
-                .unwrap_or_default(),
+                .unwrap_or(&0.0),
             40.0
         );
         brkr.check().await;
         brkr.check().await;
-        assert_eq!(*brkr.get_holdings().get("ABC").unwrap_or_default(), 40.0);
+        assert_eq!(*brkr.get_holdings().get("ABC").unwrap_or(&0.0), 40.0);
 
         let res = brkr.send_order(Order::market_buy("ABC", 50.0));
         assert!(matches!(res, UistBrokerEvent::OrderSentToExchange(..)));
@@ -818,12 +810,12 @@ mod tests {
             *brkr
                 .get_holdings_with_pending()
                 .get("ABC")
-                .unwrap_or_default(),
+                .unwrap_or(&0.0),
             90.0
         );
         brkr.check().await;
         brkr.check().await;
-        assert_eq!(*brkr.get_holdings().get("ABC").unwrap_or_default(), 90.0)
+        assert_eq!(*brkr.get_holdings().get("ABC").unwrap_or(&0.0), 90.0)
     }
 
     fn setup_log() -> UistBrokerLog {
@@ -856,8 +848,8 @@ mod tests {
         let abc_cost = log.cost_basis("ABC").unwrap();
         let bcd_cost = log.cost_basis("BCD").unwrap();
 
-        assert_eq!(*abc_cost, 6.0);
-        assert_eq!(*bcd_cost, 1.0);
+        assert_eq!(abc_cost, 6.0);
+        assert_eq!(bcd_cost, 1.0);
     }
 
     #[tokio::test]
@@ -872,8 +864,8 @@ mod tests {
             .build()
             .await;
 
-        let mut weights = PortfolioAllocation::new();
-        weights.insert("ABC", 1.0);
+        let mut weights = HashMap::new();
+        weights.insert("ABC".to_string(), 1.0);
 
         brkr.deposit_cash(&100_000.0);
         brkr.check().await;
@@ -902,8 +894,8 @@ mod tests {
             .build()
             .await;
 
-        let mut weights = PortfolioAllocation::new();
-        weights.insert("ABC", 1.0);
+        let mut weights = HashMap::new();
+        weights.insert("ABC".to_string(), 1.0);
 
         brkr.deposit_cash(&100_000.0);
         let orders = brkr.diff_brkr_against_target_weights(&weights);
@@ -913,11 +905,11 @@ mod tests {
 
         brkr.check().await;
 
-        let mut weights1 = PortfolioAllocation::new();
+        let mut weights1 = HashMap::new();
         //This weight needs to very small because it is possible for the data generator to generate
         //a price that drops significantly meaning that rebalancing requires a buy not a sell. This
         //is unlikely but seems to happen eventually.
-        weights1.insert("ABC", 0.01);
+        weights1.insert("ABC".to_string(), 0.01);
         let orders1 = brkr.diff_brkr_against_target_weights(&weights1);
 
         println!("{:?}", orders1);
@@ -943,12 +935,12 @@ mod tests {
             .build()
             .await;
 
-        let mut weights = PortfolioAllocation::new();
-        weights.insert("ABC", 0.5);
+        let mut weights = HashMap::new();
+        weights.insert("ABC".to_string(), 0.5);
         //There is no quote for this security in the underlying data, code should make the assumption (that doesn't apply here)
         //that there is some quote for this security at a later date and continues to generate order for ABC without throwing
         //error
-        weights.insert("XYZ", 0.5);
+        weights.insert("XYZ".to_string(), 0.5);
 
         brkr.deposit_cash(&100_000.0);
         brkr.check().await;
@@ -971,8 +963,8 @@ mod tests {
             .build()
             .await;
 
-        let mut weights = PortfolioAllocation::new();
-        weights.insert("ABC", 1.0);
+        let mut weights = HashMap::new();
+        weights.insert("ABC".to_string(), 1.0);
 
         brkr.check().await;
         brkr.diff_brkr_against_target_weights(&weights);
@@ -985,21 +977,21 @@ mod tests {
         let pct = BrokerCost::pct_of_value(0.01);
 
         let res = pershare.trade_impact(&1000.0, &1.0, true);
-        assert!((*res.1).eq(&1.1));
+        assert!((res.1).eq(&1.1));
 
         let res = pershare.trade_impact(&1000.0, &1.0, false);
-        assert!((*res.1).eq(&0.9));
+        assert!((res.1).eq(&0.9));
 
         let res = flat.trade_impact(&1000.0, &1.0, true);
-        assert!((*res.0).eq(&990.00));
+        assert!((res.0).eq(&990.00));
 
         let res = pct.trade_impact(&100.0, &1.0, true);
-        assert!((*res.0).eq(&99.0));
+        assert!((res.0).eq(&99.0));
 
         let costs = vec![pershare, flat];
         let initial = BrokerCost::trade_impact_total(&costs, &1000.0, &1.0, true);
-        assert!((*initial.0).eq(&990.00));
-        assert!((*initial.1).eq(&1.1));
+        assert!((initial.0).eq(&990.00));
+        assert!((initial.1).eq(&1.1));
     }
 
     #[tokio::test]
@@ -1032,8 +1024,8 @@ mod tests {
 
         brkr.check().await;
 
-        let mut target_weights = PortfolioAllocation::new();
-        target_weights.insert("ABC", 0.9);
+        let mut target_weights = HashMap::new();
+        target_weights.insert("ABC".to_string(), 0.9);
 
         let orders = brkr.diff_brkr_against_target_weights(&target_weights);
         brkr.send_orders(&orders);
@@ -1047,7 +1039,7 @@ mod tests {
 
         dbg!(brkr.get_position_qty("ABC"));
         //If the logic isn't correct the orders will have doubled up to 1800
-        assert_eq!(*brkr.get_position_qty("ABC").unwrap(), 900.0);
+        assert_eq!(brkr.get_position_qty("ABC").unwrap(), 900.0);
     }
 
     #[tokio::test]
@@ -1072,8 +1064,8 @@ mod tests {
 
         brkr.deposit_cash(&100_000.0);
 
-        let mut target_weights = PortfolioAllocation::new();
-        target_weights.insert("ABC", 0.9);
+        let mut target_weights = HashMap::new();
+        target_weights.insert("ABC".to_string(), 0.9);
         let orders = brkr.diff_brkr_against_target_weights(&target_weights);
         println!("{:?}", orders);
 
@@ -1097,6 +1089,6 @@ mod tests {
         println!("{:?}", brkr.get_holdings());
         //If the logic isn't correct then the order will be for less shares than is actually
         //required by the newest price
-        assert_eq!(*brkr.get_position_qty("ABC").unwrap(), 1200.0);
+        assert_eq!(brkr.get_position_qty("ABC").unwrap(), 1200.0);
     }
 }

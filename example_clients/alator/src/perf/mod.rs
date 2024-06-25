@@ -1,7 +1,8 @@
 //! Generates performance stats for backtest
 
-use crate::types::StrategySnapshot;
 use itertools::Itertools;
+
+use crate::broker::StrategySnapshot;
 
 ///The frequency of a process.
 #[derive(Clone, Debug)]
@@ -220,10 +221,10 @@ impl PerformanceCalculator {
 
         for i in 0..states.len() {
             dates.push(*states.get(i).unwrap().date);
-            total_values.push(*states.get(i).unwrap().portfolio_value);
+            total_values.push(states.get(i).unwrap().portfolio_value);
             if i != 0 {
-                let last = *states.get(i - 1).unwrap().net_cash_flow.clone();
-                let curr = *states.get(i).unwrap().net_cash_flow.clone();
+                let last = states.get(i - 1).unwrap().net_cash_flow;
+                let curr = states.get(i).unwrap().net_cash_flow;
                 let diff = curr - last;
                 cash_flows.push(diff)
             }
@@ -280,6 +281,8 @@ impl PerformanceCalculator {
 
 #[cfg(test)]
 mod tests {
+    use std::collections::HashMap;
+
     use rotala::http::uist::uistv1_client::TestClient;
     use rotala::http::uist::uistv1_client::UistClient;
     use rotala::input::penelope::Penelope;
@@ -289,7 +292,6 @@ mod tests {
     use crate::broker::BrokerCost;
     use crate::perf::StrategySnapshot;
     use crate::strategy::staticweight::StaticWeightStrategyBuilder;
-    use crate::types::PortfolioAllocation;
 
     use super::Frequency;
     use super::PerformanceCalculator;
@@ -343,9 +345,9 @@ mod tests {
         let brkr = setup().await;
         //We use less than 100% because some bugs become possible when you are allocating the full
         //portfolio which perturb the order of operations leading to different perf outputs.
-        let mut target_weights = PortfolioAllocation::new();
-        target_weights.insert("ABC", 0.4);
-        target_weights.insert("BCD", 0.4);
+        let mut target_weights = HashMap::new();
+        target_weights.insert("ABC".to_string(), 0.4);
+        target_weights.insert("BCD".to_string(), 0.4);
 
         let mut strat = StaticWeightStrategyBuilder::new()
             .with_brkr(brkr)

@@ -1,15 +1,14 @@
+use std::collections::HashMap;
 use std::marker::PhantomData;
 
 use log::info;
 
 use crate::broker::{
-    BrokerCashEvent, BrokerOperations, BrokerOrder, BrokerQuote, BrokerStates, CashOperations,
-    Clock, Portfolio, SendOrder, Update,
+    BrokerCashEvent, BrokerOperations, BrokerOrder, BrokerQuote, BrokerStates, CashOperations, Clock, Portfolio, SendOrder, StrategySnapshot, Update
 };
 use crate::perf::{BacktestOutput, PerformanceCalculator};
 use crate::schedule::{DefaultTradingSchedule, TradingSchedule};
 use crate::strategy::StrategyEvent;
-use crate::types::{CashValue, PortfolioAllocation, StrategySnapshot};
 
 pub trait StaticWeightBroker<Q: BrokerQuote, O: BrokerOrder>:
     CashOperations<Q>
@@ -21,6 +20,8 @@ pub trait StaticWeightBroker<Q: BrokerQuote, O: BrokerOrder>:
     + Clock
 {
 }
+
+pub type PortfolioAllocation = HashMap<String, f64>;
 
 pub struct StaticWeightStrategyBuilder<Q: BrokerQuote, O: BrokerOrder, B: StaticWeightBroker<Q, O>>
 {
@@ -44,7 +45,7 @@ impl<Q: BrokerQuote, O: BrokerOrder, B: StaticWeightBroker<Q, O>>
         StaticWeightStrategy {
             brkr: brkr.unwrap(),
             target_weights: weights.unwrap(),
-            net_cash_flow: 0.0.into(),
+            net_cash_flow: 0.0,
             history: Vec::new(),
             _quote: PhantomData,
             _order: PhantomData,
@@ -84,7 +85,7 @@ impl<Q: BrokerQuote, O: BrokerOrder, B: StaticWeightBroker<Q, O>> Default
 pub struct StaticWeightStrategy<Q: BrokerQuote, O: BrokerOrder, B: StaticWeightBroker<Q, O>> {
     brkr: B,
     target_weights: PortfolioAllocation,
-    net_cash_flow: CashValue,
+    net_cash_flow: f64,
     history: Vec<StrategySnapshot>,
     _quote: PhantomData<Q>,
     _order: PhantomData<O>,
@@ -110,7 +111,7 @@ impl<Q: BrokerQuote, O: BrokerOrder, B: StaticWeightBroker<Q, O>> StaticWeightSt
         StrategySnapshot {
             date: now.into(),
             portfolio_value: self.brkr.get_total_value(),
-            net_cash_flow: self.net_cash_flow.clone(),
+            net_cash_flow: self.net_cash_flow,
             inflation: 0.0,
         }
     }
@@ -145,18 +146,18 @@ impl<Q: BrokerQuote, O: BrokerOrder, B: StaticWeightBroker<Q, O>> StaticWeightSt
     fn deposit_cash(&mut self, cash: &f64) -> StrategyEvent {
         info!("STRATEGY: Depositing {:?} into strategy", cash);
         self.brkr.deposit_cash(cash);
-        self.net_cash_flow = CashValue::from(cash + *self.net_cash_flow);
-        StrategyEvent::DepositSuccess(CashValue::from(*cash))
+        self.net_cash_flow += self.net_cash_flow;
+        StrategyEvent::DepositSuccess(*cash)
     }
 
     pub fn withdraw_cash(&mut self, cash: &f64) -> StrategyEvent {
         if let BrokerCashEvent::WithdrawSuccess(withdrawn) = self.brkr.withdraw_cash(cash) {
             info!("STRATEGY: Succesfully withdrew {:?} from strategy", cash);
-            self.net_cash_flow = CashValue::from(*self.net_cash_flow - *withdrawn);
-            return StrategyEvent::WithdrawSuccess(CashValue::from(*cash));
+            self.net_cash_flow -= withdrawn;
+            return StrategyEvent::WithdrawSuccess(*cash);
         }
         info!("STRATEGY: Failed to withdraw {:?} from strategy", cash);
-        StrategyEvent::WithdrawFailure(CashValue::from(*cash))
+        StrategyEvent::WithdrawFailure(*cash)
     }
 
     pub fn withdraw_cash_with_liquidation(&mut self, cash: &f64) -> StrategyEvent {
@@ -165,10 +166,10 @@ impl<Q: BrokerQuote, O: BrokerOrder, B: StaticWeightBroker<Q, O>> StaticWeightSt
             //complexity of this task vs standard withdraw
             self.brkr.withdraw_cash_with_liquidation(cash)
         {
-            self.net_cash_flow = CashValue::from(*self.net_cash_flow - *withdrawn);
-            return StrategyEvent::WithdrawSuccess(CashValue::from(*cash));
+            self.net_cash_flow -= withdrawn;
+            return StrategyEvent::WithdrawSuccess(*cash);
         }
-        StrategyEvent::WithdrawFailure(CashValue::from(*cash))
+        StrategyEvent::WithdrawFailure(*cash)
     }
 
     pub fn get_history(&self) -> Vec<StrategySnapshot> {

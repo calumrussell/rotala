@@ -1,8 +1,9 @@
+use std::collections::HashMap;
+
 use alator::broker::uist::UistBrokerBuilder;
 use alator::broker::BrokerCost;
 
-use alator::strategy::staticweight::StaticWeightStrategyBuilder;
-use alator::types::{CashValue, PortfolioAllocation};
+use alator::strategy::staticweight::{StaticWeightStrategyBuilder, PortfolioAllocation};
 use rotala::http::uist::uistv1_client::{TestClient, UistClient};
 use rotala::input::penelope::Penelope;
 
@@ -10,12 +11,12 @@ use rotala::input::penelope::Penelope;
 async fn staticweight_integration_test() {
     println!("{:?}", "Test");
     env_logger::init();
-    let initial_cash: CashValue = 100_000.0.into();
+    let initial_cash = 100_000.0;
     let length_in_days: i64 = 1000;
 
-    let mut weights: PortfolioAllocation = PortfolioAllocation::new();
-    weights.insert("ABC", 0.5);
-    weights.insert("BCD", 0.5);
+    let mut weights: PortfolioAllocation = HashMap::new();
+    weights.insert("ABC".to_string(), 0.5);
+    weights.insert("BCD".to_string(), 0.5);
 
     let source = Penelope::random(length_in_days, vec!["ABC", "BCD"]);
     let mut client = TestClient::single("Random", source);

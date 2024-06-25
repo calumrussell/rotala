@@ -13,11 +13,10 @@
 pub mod staticweight;
 
 #[allow(unused)]
-use crate::types::{CashValue, StrategySnapshot};
 
 /// Used to log cash flows which may be used in performance calculations.
 pub enum StrategyEvent {
-    WithdrawSuccess(CashValue),
-    WithdrawFailure(CashValue),
-    DepositSuccess(CashValue),
+    WithdrawSuccess(f64),
+    WithdrawFailure(f64),
+    DepositSuccess(f64),
 }

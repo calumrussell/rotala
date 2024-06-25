@@ -47,18 +47,14 @@
 //! with optional [BrokerCost].
 
 use std::{
-    error::Error,
-    fmt::{Display, Formatter},
+    collections::HashMap, error::Error, fmt::{Display, Formatter}, ops::Deref
 };
 
 use log::info;
 use rotala::exchange::uist_v1::{
     Order as UistOrder, OrderType as UistOrderType, Trade as UistTrade, UistQuote,
 };
-
-use crate::types::{
-    CashValue, PortfolioAllocation, PortfolioHoldings, PortfolioQty, PortfolioValues, Price,
-};
+use time::{format_description, Date, Month, OffsetDateTime, Weekday};
 
 pub mod uist;
 
@@ -187,10 +183,10 @@ pub enum BrokerEvent<O: BrokerOrder> {
 pub enum BrokerCashEvent {
     //Removed from [BrokerEvent] because there are situations when we want to handle these events
     //specifically and seperately
-    WithdrawSuccess(CashValue),
-    WithdrawFailure(CashValue),
-    DepositSuccess(CashValue),
-    OperationFailure(CashValue),
+    WithdrawSuccess(f64),
+    WithdrawFailure(f64),
+    DepositSuccess(f64),
+    OperationFailure(f64),
 }
 
 /// Broker has attempted to execute an order which cannot be completed due to insufficient cash.
@@ -224,14 +220,14 @@ impl Display for UnexecutableOrderError {
 /// are executed.
 #[derive(Clone, Debug)]
 pub enum BrokerCost {
-    PerShare(Price),
+    PerShare(f64),
     PctOfValue(f64),
-    Flat(CashValue),
+    Flat(f64),
 }
 
 impl BrokerCost {
     pub fn per_share(val: f64) -> Self {
-        BrokerCost::PerShare(Price::from(val))
+        BrokerCost::PerShare(val)
     }
 
     pub fn pct_of_value(val: f64) -> Self {
@@ -239,14 +235,14 @@ impl BrokerCost {
     }
 
     pub fn flat(val: f64) -> Self {
-        BrokerCost::Flat(CashValue::from(val))
+        BrokerCost::Flat(val)
     }
 
-    pub fn calc(&self, trade: impl BrokerTrade) -> CashValue {
+    pub fn calc(&self, trade: impl BrokerTrade) -> f64 {
         match self {
-            BrokerCost::PerShare(cost) => CashValue::from(*cost.clone() * trade.get_quantity()),
-            BrokerCost::PctOfValue(pct) => CashValue::from(trade.get_value() * *pct),
-            BrokerCost::Flat(val) => val.clone(),
+            BrokerCost::PerShare(cost) => cost * trade.get_quantity(),
+            BrokerCost::PctOfValue(pct) => trade.get_value() * *pct,
+            BrokerCost::Flat(val) => *val,
         }
     }
 
@@ -257,23 +253,23 @@ impl BrokerCost {
         gross_budget: &f64,
         gross_price: &f64,
         is_buy: bool,
-    ) -> (CashValue, Price) {
+    ) -> (f64, f64) {
         let mut net_budget = *gross_budget;
         let mut net_price = *gross_price;
         match self {
             BrokerCost::PerShare(val) => {
                 if is_buy {
-                    net_price += *val.clone();
+                    net_price += val;
                 } else {
-                    net_price -= *val.clone();
+                    net_price -= val;
                 }
             }
             BrokerCost::PctOfValue(pct) => {
                 net_budget *= 1.0 - pct;
             }
-            BrokerCost::Flat(val) => net_budget -= *val.clone(),
+            BrokerCost::Flat(val) => net_budget -= val,
         }
-        (CashValue::from(net_budget), Price::from(net_price))
+        (net_budget, net_price)
     }
 
     pub fn trade_impact_total(
@@ -281,8 +277,8 @@ impl BrokerCost {
         gross_budget: &f64,
         gross_price: &f64,
         is_buy: bool,
-    ) -> (CashValue, Price) {
-        let mut res = (CashValue::from(*gross_budget), Price::from(*gross_price));
+    ) -> (f64, f64) {
+        let mut res = (*gross_budget, *gross_price);
         for cost in trade_costs {
             res = cost.trade_impact(&res.0, &res.1, is_buy);
         }
@@ -316,12 +312,12 @@ pub trait SendOrder<O: BrokerOrder> {
 /// Note that `update_holdings` and `update_cash_balance` mutate state, these are not purely
 /// immutable calculations but operations that can change the portfolio.
 pub trait Portfolio<Q: BrokerQuote>: Quote<Q> {
-    fn get_position_profit(&self, symbol: &str) -> Option<CashValue> {
+    fn get_position_profit(&self, symbol: &str) -> Option<f64> {
         if let Some(cost) = self.get_position_cost(symbol) {
             if let Some(qty) = self.get_position_qty(symbol) {
                 if let Some(position_value) = self.get_position_value(symbol) {
-                    let price = *position_value / *qty.clone();
-                    let value = CashValue::from(*qty.clone() * (price - *cost));
+                    let price = position_value / qty;
+                    let value = qty * (price - cost);
                     return Some(value);
                 }
             }
@@ -329,10 +325,10 @@ pub trait Portfolio<Q: BrokerQuote>: Quote<Q> {
         None
     }
 
-    fn get_position_liquidation_value(&self, symbol: &str) -> Option<CashValue> {
+    fn get_position_liquidation_value(&self, symbol: &str) -> Option<f64> {
         if let Some(position_value) = self.get_position_value(symbol) {
             if let Some(qty) = self.get_position_qty(symbol) {
-                let price = Price::from(*position_value / *qty);
+                let price = position_value / qty;
                 let (value_after_costs, _price_after_costs) =
                     self.calc_trade_impact(&position_value, &price, false);
                 return Some(value_after_costs);
@@ -341,22 +337,22 @@ pub trait Portfolio<Q: BrokerQuote>: Quote<Q> {
         None
     }
 
-    fn get_total_value(&self) -> CashValue {
+    fn get_total_value(&self) -> f64 {
         let assets = self.get_positions();
         let mut value = self.get_cash_balance();
         for a in assets {
             if let Some(position_value) = self.get_position_value(&a) {
-                value = CashValue::from(*value + *position_value);
+                value += position_value;
             }
         }
         value
     }
 
-    fn get_liquidation_value(&self) -> CashValue {
+    fn get_liquidation_value(&self) -> f64 {
         let mut value = self.get_cash_balance();
         for asset in self.get_positions() {
             if let Some(asset_value) = self.get_position_liquidation_value(&asset) {
-                value = CashValue::from(*value + *asset_value);
+                value += asset_value;
             }
         }
         value
@@ -368,24 +364,24 @@ pub trait Portfolio<Q: BrokerQuote>: Quote<Q> {
         for a in assets {
             if let Some(_qty) = self.get_position_qty(&a) {
                 if let Some(value) = self.get_position_value(&a) {
-                    holdings.insert(&a, &value);
+                    holdings.insert(a, value);
                 }
             }
         }
         holdings
     }
 
-    fn get_position_qty(&self, symbol: &str) -> Option<PortfolioQty> {
-        self.get_holdings().get(symbol).to_owned()
+    fn get_position_qty(&self, symbol: &str) -> Option<f64> {
+        self.get_holdings().get(symbol).copied()
     }
 
-    fn get_position_value(&self, symbol: &str) -> Option<CashValue> {
+    fn get_position_value(&self, symbol: &str) -> Option<f64> {
         if let Some(quote) = self.get_quote(symbol) {
             //We only have long positions so we only need to look at the bid
             let price = quote.get_bid();
             if let Some(qty) = self.get_position_qty(symbol) {
-                let val = price * *qty;
-                return Some(CashValue::from(val));
+                let val = price * qty;
+                return Some(val);
             }
         }
         //This should only occur in cases when the client erroneously asks for a security with no
@@ -396,52 +392,52 @@ pub trait Portfolio<Q: BrokerQuote>: Quote<Q> {
     }
 
     fn get_positions(&self) -> Vec<String> {
-        self.get_holdings().keys()
+        self.get_holdings().keys().cloned().collect()
     }
 
     fn get_holdings_with_pending(&self) -> PortfolioHoldings {
         let mut merged_holdings = PortfolioHoldings::new();
-        for (key, value) in self.get_holdings().0.iter() {
-            if merged_holdings.0.contains_key(key) {
+        for (key, value) in self.get_holdings().iter() {
+            if merged_holdings.contains_key(key) {
                 if let Some(val) = merged_holdings.get(key) {
-                    let new_val = PortfolioQty::from(*val + **value);
-                    merged_holdings.insert(key, &new_val);
+                    let new_val = *val + *value;
+                    merged_holdings.insert(key.clone(), new_val);
                 }
             } else {
-                merged_holdings.insert(key, value);
+                merged_holdings.insert(key.clone(), *value);
             }
         }
 
-        for (key, value) in self.get_pending_orders().0.iter() {
-            if merged_holdings.0.contains_key(key) {
+        for (key, value) in self.get_pending_orders().iter() {
+            if merged_holdings.contains_key(key) {
                 if let Some(val) = merged_holdings.get(key) {
-                    let new_val = PortfolioQty::from(*val + **value);
-                    merged_holdings.insert(key, &new_val);
+                    let new_val = *val + *value;
+                    merged_holdings.insert(key.clone(), new_val);
                 }
             } else {
-                merged_holdings.insert(key, value);
+                merged_holdings.insert(key.clone(), *value);
             }
         }
         merged_holdings
     }
 
-    fn calculate_trade_costs(&self, trade: impl BrokerTrade) -> CashValue {
-        let mut cost = CashValue::default();
+    fn calculate_trade_costs(&self, trade: impl BrokerTrade) -> f64 {
+        let mut cost = 0.0;
         for trade_cost in &self.get_trade_costs() {
-            cost = CashValue::from(*cost + *trade_cost.calc(trade.clone()));
+            cost += trade_cost.calc(trade.clone());
         }
         cost
     }
 
-    fn calc_trade_impact(&self, budget: &f64, price: &f64, is_buy: bool) -> (CashValue, Price) {
+    fn calc_trade_impact(&self, budget: &f64, price: &f64, is_buy: bool) -> (f64, f64) {
         BrokerCost::trade_impact_total(&self.get_trade_costs(), budget, price, is_buy)
     }
 
-    fn get_cash_balance(&self) -> CashValue;
-    fn update_cash_balance(&mut self, cash: CashValue);
+    fn get_cash_balance(&self) -> f64;
+    fn update_cash_balance(&mut self, cash: f64);
     fn get_holdings(&self) -> PortfolioHoldings;
-    fn update_holdings(&mut self, symbol: &str, change: PortfolioQty);
-    fn get_position_cost(&self, symbol: &str) -> Option<Price>;
+    fn update_holdings(&mut self, symbol: &str, change: f64);
+    fn get_position_cost(&self, symbol: &str) -> Option<f64>;
     fn get_pending_orders(&self) -> PortfolioHoldings;
     fn get_trade_costs(&self) -> Vec<BrokerCost>;
 }
@@ -470,7 +466,7 @@ pub trait CashOperations<Q: BrokerQuote>: Portfolio<Q> + BrokerStates {
                     "BROKER: Attempted cash withdraw of {:?} but broker in Failed State",
                     cash,
                 );
-                BrokerCashEvent::OperationFailure(CashValue::from(*cash))
+                BrokerCashEvent::OperationFailure(*cash)
             }
             BrokerState::Ready => {
                 if cash > &self.get_cash_balance() {
@@ -479,7 +475,7 @@ pub trait CashOperations<Q: BrokerQuote>: Portfolio<Q> + BrokerStates {
                         cash,
                         self.get_cash_balance()
                     );
-                    return BrokerCashEvent::WithdrawFailure(CashValue::from(*cash));
+                    return BrokerCashEvent::WithdrawFailure(*cash);
                 }
                 info!(
                     "BROKER: Successful cash withdraw of {:?}, {:?} left in cash",
@@ -487,7 +483,7 @@ pub trait CashOperations<Q: BrokerQuote>: Portfolio<Q> + BrokerStates {
                     self.get_cash_balance()
                 );
                 self.debit(cash);
-                BrokerCashEvent::WithdrawSuccess(CashValue::from(*cash))
+                BrokerCashEvent::WithdrawSuccess(*cash)
             }
         }
     }
@@ -499,7 +495,7 @@ pub trait CashOperations<Q: BrokerQuote>: Portfolio<Q> + BrokerStates {
                     "BROKER: Attempted cash deposit of {:?} but broker in Failed State",
                     cash,
                 );
-                BrokerCashEvent::OperationFailure(CashValue::from(*cash))
+                BrokerCashEvent::OperationFailure(*cash)
             }
             BrokerState::Ready => {
                 info!(
@@ -508,7 +504,7 @@ pub trait CashOperations<Q: BrokerQuote>: Portfolio<Q> + BrokerStates {
                     self.get_cash_balance()
                 );
                 self.credit(cash);
-                BrokerCashEvent::DepositSuccess(CashValue::from(*cash))
+                BrokerCashEvent::DepositSuccess(*cash)
             }
         }
     }
@@ -521,8 +517,8 @@ pub trait CashOperations<Q: BrokerQuote>: Portfolio<Q> + BrokerStates {
             value,
             self.get_cash_balance()
         );
-        self.update_cash_balance(CashValue::from(*value + *self.get_cash_balance()));
-        BrokerCashEvent::DepositSuccess(CashValue::from(*value))
+        self.update_cash_balance(*value + self.get_cash_balance());
+        BrokerCashEvent::DepositSuccess(*value)
     }
 
     //Looks similar to withdraw_cash but distinguished because it represents
@@ -534,15 +530,15 @@ pub trait CashOperations<Q: BrokerQuote>: Portfolio<Q> + BrokerStates {
                 value,
                 self.get_cash_balance()
             );
-            return BrokerCashEvent::WithdrawFailure(CashValue::from(*value));
+            return BrokerCashEvent::WithdrawFailure(*value);
         }
         info!(
             "BROKER: Debited {:?} cash, current balance of {:?}",
             value,
             self.get_cash_balance()
         );
-        self.update_cash_balance(CashValue::from(*self.get_cash_balance() - *value));
-        BrokerCashEvent::WithdrawSuccess(CashValue::from(*value))
+        self.update_cash_balance(self.get_cash_balance() - *value);
+        BrokerCashEvent::WithdrawSuccess(*value)
     }
 
     fn debit_force(&mut self, value: &f64) -> BrokerCashEvent {
@@ -551,8 +547,8 @@ pub trait CashOperations<Q: BrokerQuote>: Portfolio<Q> + BrokerStates {
             value,
             self.get_cash_balance()
         );
-        self.update_cash_balance(CashValue::from(*self.get_cash_balance() - *value));
-        BrokerCashEvent::WithdrawSuccess(CashValue::from(*value))
+        self.update_cash_balance(self.get_cash_balance() - *value);
+        BrokerCashEvent::WithdrawSuccess(*value)
     }
 }
 
@@ -570,8 +566,8 @@ pub trait BrokerOperations<O: BrokerOrder, Q: BrokerQuote>:
         //Has to be less than, we can have zero value without needing to liquidate if we initialize
         //the portfolio but exchange doesn't execute any trades. This can happen if we are missing
         //prices at the start of the series
-        if *self.get_cash_balance() < 0.0 {
-            let shortfall = *self.get_cash_balance() * -1.0;
+        if self.get_cash_balance() < 0.0 {
+            let shortfall = self.get_cash_balance() * -1.0;
             //When we raise cash, we try to raise a small amount more to stop continuous
             //rebalancing, this amount is arbitrary atm
             let plus_buffer = shortfall + 1000.0;
@@ -607,7 +603,7 @@ pub trait BrokerOperations<O: BrokerOrder, Q: BrokerQuote>:
                 "BROKER: Failed to withdraw {:?} with liquidation. Deducting value from cash.",
                 cash
             );
-            BrokerCashEvent::WithdrawFailure(CashValue::from(*cash))
+            BrokerCashEvent::WithdrawFailure(*cash)
         } else {
             //This holds how much we have left to generate from the portfolio to produce the cash
             //required
@@ -618,19 +614,19 @@ pub trait BrokerOperations<O: BrokerOrder, Q: BrokerQuote>:
             for ticker in positions {
                 let position_value = self
                     .get_position_value(&ticker)
-                    .unwrap_or(CashValue::from(0.0));
+                    .unwrap_or(0.0);
                 //Position won't generate enough cash to fulfill total order
                 //Create orders for selling 100% of position, continue
                 //to next position to see if we can generate enough cash
                 //
                 //Sell 100% of position
-                if *position_value <= total_sold {
+                if position_value <= total_sold {
                     //Cannot be called without qty existing
                     if let Some(qty) = self.get_position_qty(&ticker) {
-                        let order = O::market_sell(ticker, *qty);
+                        let order = O::market_sell(ticker, qty);
                         info!("BROKER: Withdrawing {:?} with liquidation, queueing sale of {:?} shares of {:?}", cash, order.get_shares(), order.get_symbol());
                         sell_orders.push(order);
-                        total_sold -= *position_value;
+                        total_sold -= position_value;
                     }
                 } else {
                     //Position can generate all the cash we need
@@ -639,8 +635,8 @@ pub trait BrokerOperations<O: BrokerOrder, Q: BrokerQuote>:
                     //Cannot be called without quote existing so unwrap
                     let quote = self.get_quote(&ticker).unwrap();
                     let price = quote.get_bid();
-                    let shares_req = PortfolioQty::from((total_sold / price).ceil());
-                    let order = O::market_sell(ticker, *shares_req);
+                    let shares_req = (total_sold / price.ceil());
+                    let order = O::market_sell(ticker, shares_req);
                     info!("BROKER: Withdrawing {:?} with liquidation, queueing sale of {:?} shares of {:?}", cash, order.get_shares(), order.get_symbol());
                     sell_orders.push(order);
                     total_sold = 0.0;
@@ -652,7 +648,7 @@ pub trait BrokerOperations<O: BrokerOrder, Q: BrokerQuote>:
                 //We leave the portfolio in the wrong state for the client to deal with
                 self.send_orders(&sell_orders);
                 info!("BROKER: Succesfully withdrew {:?} with liquidation", cash);
-                BrokerCashEvent::WithdrawSuccess(CashValue::from(*cash))
+                BrokerCashEvent::WithdrawSuccess(*cash)
             } else {
                 //For whatever reason, we went through the above process and were unable to find
                 //the cash. Don't send any orders, leave portfolio in invalid state for client to
@@ -662,7 +658,7 @@ pub trait BrokerOperations<O: BrokerOrder, Q: BrokerQuote>:
                     "BROKER: Failed to withdraw {:?} with liquidation. Deducting value from cash.",
                     cash
                 );
-                BrokerCashEvent::WithdrawFailure(CashValue::from(*cash))
+                BrokerCashEvent::WithdrawFailure(*cash)
             }
         }
     }
@@ -670,10 +666,10 @@ pub trait BrokerOperations<O: BrokerOrder, Q: BrokerQuote>:
     fn client_has_sufficient_cash<T: Into<BrokerOrderType>>(
         &self,
         order: &O,
-        price: &Price,
+        price: &f64,
     ) -> Result<(), InsufficientCashError> {
         let shares = order.get_shares();
-        let value = CashValue::from(shares * **price);
+        let value = shares * *price;
         match order.get_order_type::<T>() {
             BrokerOrderType::MarketBuy => {
                 if self.get_cash_balance() > value {
@@ -692,7 +688,7 @@ pub trait BrokerOperations<O: BrokerOrder, Q: BrokerQuote>:
     ) -> Result<(), UnexecutableOrderError> {
         if let BrokerOrderType::MarketSell = order.get_order_type::<T>() {
             if let Some(holding) = self.get_position_qty(&order.get_symbol()) {
-                if *holding >= order.get_shares() {
+                if holding >= order.get_shares() {
                     return Ok(());
                 } else {
                     return Err(UnexecutableOrderError);
@@ -715,14 +711,14 @@ pub trait BrokerOperations<O: BrokerOrder, Q: BrokerQuote>:
     ///
     /// Brokers do not expect target wights, they merely respond to orders so this structure
     /// is not required to create backtests.
-    fn diff_brkr_against_target_weights(&mut self, target_weights: &PortfolioAllocation) -> Vec<O> {
+    fn diff_brkr_against_target_weights(&mut self, target_weights: &PortfolioValues) -> Vec<O> {
         //Returns orders so calling function has control over when orders are executed
         //Requires mutable reference to brkr because it calls get_position_value
         //Need liquidation value so we definitely have enough money to make all transactions after
         //costs
         info!("STRATEGY: Calculating diff of current allocation vs. target");
         let total_value = self.get_liquidation_value();
-        if (*total_value).eq(&0.0) {
+        if (total_value).eq(&0.0) {
             panic!("Client is attempting to trade a portfolio with zero value");
         }
         let mut orders: Vec<O> = Vec::new();
@@ -736,29 +732,29 @@ pub trait BrokerOperations<O: BrokerOrder, Q: BrokerQuote>:
             if diff_val.lt(&0.0) {
                 let price = quote.get_bid();
                 let costs = brkr.calc_trade_impact(&diff_val.abs(), &price, false);
-                let total = (*costs.0 / *costs.1).floor();
+                let total = (costs.0 / costs.1).floor();
                 -total
             } else {
                 let price = quote.get_ask();
                 let costs = brkr.calc_trade_impact(&diff_val.abs(), &price, true);
-                (*costs.0 / *costs.1).floor()
+                (costs.0 / costs.1).floor()
             }
         };
 
         for symbol in target_weights.keys() {
             let curr_val = self
-                .get_position_value(&symbol)
-                .unwrap_or(CashValue::from(0.0));
+                .get_position_value(symbol)
+                .unwrap_or(0.0);
             //Iterating over target_weights so will always find value
-            let target_val = CashValue::from(*total_value * **target_weights.get(&symbol).unwrap());
-            let diff_val = CashValue::from(*target_val - *curr_val);
-            if (*diff_val).eq(&0.0) {
+            let target_val = total_value * target_weights.get(symbol).unwrap();
+            let diff_val = target_val - curr_val;
+            if (diff_val).eq(&0.0) {
                 break;
             }
 
             //We do not throw an error here, we just proceed assuming that the client has passed in data that will
             //eventually prove correct if we are missing quotes for the current time.
-            if let Some(quote) = self.get_quote(&symbol) {
+            if let Some(quote) = self.get_quote(symbol) {
                 //This will be negative if the net is selling
                 let required_shares = calc_required_shares_with_costs(&diff_val, &quote, self);
                 //TODO: must be able to clear pending orders
@@ -792,3 +788,119 @@ pub trait Clock {
     fn now(&mut self) -> i64;
     fn has_next(&mut self) -> bool;
 }
+
+///[DateTime] is a wrapper around the epoch time as i64. This type also functions as a wrapper
+///around the time package which offers some of the more useful datetime functionality that is
+///required in the schedule module.
+//The internal representation with the time package should remain hidden from clients. Whilst this
+//results in some duplication of the API, this retains the option to get rid of the dependency on
+//time or change individual functions later.
+#[derive(Clone, Debug, Hash, Eq, PartialEq, PartialOrd, Copy, Ord)]
+pub struct DateTime(i64);
+
+impl DateTime {
+    pub fn day(&self) -> u8 {
+        let date: OffsetDateTime = (*self).into();
+        date.day()
+    }
+
+    pub fn weekday(&self) -> Weekday {
+        let date: OffsetDateTime = (*self).into();
+        date.weekday()
+    }
+
+    pub fn month(&self) -> Month {
+        let date: OffsetDateTime = (*self).into();
+        date.month()
+    }
+
+    pub fn from_date_string(val: &str, date_fmt: &str) -> Self {
+        let format = format_description::parse(date_fmt).unwrap();
+        let parsed_date = Date::parse(val, &format).unwrap();
+        let parsed_time = parsed_date.with_time(time::macros::time!(09:00));
+        Self::from(parsed_time.assume_utc().unix_timestamp())
+    }
+}
+
+impl Deref for DateTime {
+    type Target = i64;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+impl From<OffsetDateTime> for DateTime {
+    fn from(value: OffsetDateTime) -> Self {
+        value.unix_timestamp().into()
+    }
+}
+
+impl From<DateTime> for OffsetDateTime {
+    fn from(v: DateTime) -> Self {
+        if let Ok(date) = OffsetDateTime::from_unix_timestamp(i64::from(v)) {
+            date
+        } else {
+            panic!("Tried to convert non-date value");
+        }
+    }
+}
+
+impl From<DateTime> for i64 {
+    fn from(v: DateTime) -> Self {
+        v.0
+    }
+}
+
+impl From<i64> for DateTime {
+    fn from(v: i64) -> Self {
+        DateTime(v)
+    }
+}
+
+pub type PortfolioValues = HashMap<String, f64>;
+pub type PortfolioHoldings = HashMap<String, f64>;
+
+/// A point=in-time representation of the current state of a strategy. These statistics are currently
+/// recorded for use within performance calculations after the simulation has concluded. They are
+/// distinct from the transaction logging performed by brokers.
+///
+/// Inflation is calculated over the snapshot period. No manipulation of the value is conducted to
+/// change the frequency.
+///
+/// net_cash_flow variable is a sum, not a measure of flow within the period. To get flows, we have
+/// to diff each value with the previous one.
+#[derive(Clone, Debug)]
+pub struct StrategySnapshot {
+    pub date: DateTime,
+    pub portfolio_value: f64,
+    pub net_cash_flow: f64,
+    pub inflation: f64,
+}
+
+impl StrategySnapshot {
+    pub fn nominal(date: DateTime, portfolio_value: f64, net_cash_flow: f64) -> Self {
+        Self {
+            date,
+            portfolio_value,
+            net_cash_flow,
+            inflation: 0.0,
+        }
+    }
+
+    pub fn real(
+        date: DateTime,
+        portfolio_value: f64,
+        net_cash_flow: f64,
+        inflation: f64,
+    ) -> Self {
+        Self {
+            date,
+            portfolio_value,
+            net_cash_flow,
+            inflation,
+        }
+    }
+}
+
+

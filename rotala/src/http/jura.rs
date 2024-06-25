@@ -21,6 +21,8 @@ pub struct AppState {
     pub datasets: HashMap<String, Penelope>,
 }
 
+pub type TickResult = (bool, Vec<Fill>, Vec<Order>, Vec<u64>);
+
 impl AppState {
     pub fn create(datasets: &mut HashMap<String, Penelope>) -> Self {
         Self {
@@ -56,7 +58,7 @@ impl AppState {
     pub fn tick(
         &mut self,
         backtest_id: BacktestId,
-    ) -> Option<(bool, Vec<Fill>, Vec<Order>, Vec<u64>)> {
+    ) -> Option<TickResult> {
         if let Some(backtest) = self.backtests.get_mut(&backtest_id) {
             if let Some(dataset) = self.datasets.get(&backtest.dataset_name) {
                 let mut has_next = false;
@@ -514,6 +516,6 @@ mod tests {
         let resp5: TickResponse = test::call_and_read_body_json(&app, req5).await;
 
         assert!(resp5.executed_trades.len() == 1);
-        assert!(resp5.executed_trades.get(0).unwrap().coin == "0")
+        assert!(resp5.executed_trades.first().unwrap().coin == "0")
     }
 }
