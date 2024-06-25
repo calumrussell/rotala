@@ -47,7 +47,10 @@
 //! with optional [BrokerCost].
 
 use std::{
-    collections::HashMap, error::Error, fmt::{Display, Formatter}, ops::Deref
+    collections::HashMap,
+    error::Error,
+    fmt::{Display, Formatter},
+    ops::Deref,
 };
 
 use log::info;
@@ -248,12 +251,7 @@ impl BrokerCost {
 
     //Returns a valid trade given trading costs given a current budget
     //and price of security
-    pub fn trade_impact(
-        &self,
-        gross_budget: &f64,
-        gross_price: &f64,
-        is_buy: bool,
-    ) -> (f64, f64) {
+    pub fn trade_impact(&self, gross_budget: &f64, gross_price: &f64, is_buy: bool) -> (f64, f64) {
         let mut net_budget = *gross_budget;
         let mut net_price = *gross_price;
         match self {
@@ -612,9 +610,7 @@ pub trait BrokerOperations<O: BrokerOrder, Q: BrokerQuote>:
             let positions = self.get_positions();
             let mut sell_orders: Vec<O> = Vec::new();
             for ticker in positions {
-                let position_value = self
-                    .get_position_value(&ticker)
-                    .unwrap_or(0.0);
+                let position_value = self.get_position_value(&ticker).unwrap_or(0.0);
                 //Position won't generate enough cash to fulfill total order
                 //Create orders for selling 100% of position, continue
                 //to next position to see if we can generate enough cash
@@ -742,9 +738,7 @@ pub trait BrokerOperations<O: BrokerOrder, Q: BrokerQuote>:
         };
 
         for symbol in target_weights.keys() {
-            let curr_val = self
-                .get_position_value(symbol)
-                .unwrap_or(0.0);
+            let curr_val = self.get_position_value(symbol).unwrap_or(0.0);
             //Iterating over target_weights so will always find value
             let target_val = total_value * target_weights.get(symbol).unwrap();
             let diff_val = target_val - curr_val;
@@ -888,12 +882,7 @@ impl StrategySnapshot {
         }
     }
 
-    pub fn real(
-        date: DateTime,
-        portfolio_value: f64,
-        net_cash_flow: f64,
-        inflation: f64,
-    ) -> Self {
+    pub fn real(date: DateTime, portfolio_value: f64, net_cash_flow: f64, inflation: f64) -> Self {
         Self {
             date,
             portfolio_value,
@@ -902,5 +891,3 @@ impl StrategySnapshot {
         }
     }
 }
-
-
