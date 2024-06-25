@@ -2,7 +2,34 @@
 
 use crate::types::StrategySnapshot;
 use itertools::Itertools;
-use rotala::clock::Frequency;
+
+///The frequency of a process.
+#[derive(Clone, Debug)]
+pub enum Frequency {
+    Second,
+    Daily,
+    Fixed,
+}
+
+impl From<Frequency> for u8 {
+    fn from(freq: Frequency) -> Self {
+        match freq {
+            Frequency::Second => 0,
+            Frequency::Daily => 1,
+            Frequency::Fixed => 3,
+        }
+    }
+}
+
+impl From<Frequency> for String {
+    fn from(freq: Frequency) -> Self {
+        match freq {
+            Frequency::Second => "SECOND".to_string(),
+            Frequency::Daily => "DAILY".to_string(),
+            Frequency::Fixed => "FIXED".to_string(),
+        }
+    }
+}
 
 /// Output for single backtest run.
 #[derive(Clone, Debug)]
@@ -253,13 +280,9 @@ impl PerformanceCalculator {
 
 #[cfg(test)]
 mod tests {
-    use std::collections::HashMap;
-
-    use rotala::clock::Clock;
-    use rotala::exchange::uist_v1::UistV1;
     use rotala::http::uist::uistv1_client::TestClient;
     use rotala::http::uist::uistv1_client::UistClient;
-    use rotala::input::penelope::PenelopeBuilder;
+    use rotala::input::penelope::Penelope;
 
     use crate::broker::uist::UistBroker;
     use crate::broker::uist::UistBrokerBuilder;
@@ -272,22 +295,19 @@ mod tests {
     use super::PerformanceCalculator;
     use super::PortfolioCalculations;
 
-    async fn setup() -> (UistBroker<TestClient>, Clock) {
-        let mut source_builder = PenelopeBuilder::new();
-        source_builder.add_quote(101.0, 102.0, 100, "ABC");
-        source_builder.add_quote(102.0, 103.0, 101, "ABC");
-        source_builder.add_quote(97.0, 98.0, 102, "ABC");
-        source_builder.add_quote(105.0, 106.0, 103, "ABC");
+    async fn setup() -> UistBroker<TestClient> {
+        let mut source = Penelope::new();
+        source.add_quote(101.0, 102.0, 100, "ABC");
+        source.add_quote(102.0, 103.0, 101, "ABC");
+        source.add_quote(97.0, 98.0, 102, "ABC");
+        source.add_quote(105.0, 106.0, 103, "ABC");
 
-        source_builder.add_quote(501.0, 502.0, 100, "BCD");
-        source_builder.add_quote(503.0, 504.0, 101, "BCD");
-        source_builder.add_quote(498.0, 499.0, 102, "BCD");
-        source_builder.add_quote(495.0, 496.0, 103, "BCD");
+        source.add_quote(501.0, 502.0, 100, "BCD");
+        source.add_quote(503.0, 504.0, 101, "BCD");
+        source.add_quote(498.0, 499.0, 102, "BCD");
+        source.add_quote(495.0, 496.0, 103, "BCD");
 
-        let mut exchange = UistV1::from_penelope_builder(&mut source_builder, "Random", rotala::clock::Frequency::Second);
-        let mut datasets = HashMap::new();
-        datasets.insert("Random".to_string(), exchange);
-        let mut client = TestClient::new(&mut datasets);
+        let mut client = TestClient::single("Random", source);
         let resp = client.init("Random".to_string()).await.unwrap();
 
         let brkr = UistBrokerBuilder::new()
@@ -296,7 +316,7 @@ mod tests {
             .build()
             .await;
 
-        (brkr, clock)
+        brkr
     }
 
     #[test]
@@ -320,7 +340,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_that_portfolio_calculates_performance_accurately() {
-        let (brkr, clock) = setup().await;
+        let brkr = setup().await;
         //We use less than 100% because some bugs become possible when you are allocating the full
         //portfolio which perturb the order of operations leading to different perf outputs.
         let mut target_weights = PortfolioAllocation::new();
@@ -330,7 +350,6 @@ mod tests {
         let mut strat = StaticWeightStrategyBuilder::new()
             .with_brkr(brkr)
             .with_weights(target_weights)
-            .with_clock(clock.clone())
             .default();
 
         strat.init(&100_000.0);

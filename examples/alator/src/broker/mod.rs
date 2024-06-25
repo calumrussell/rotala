@@ -785,3 +785,8 @@ pub trait BrokerOperations<O: BrokerOrder, Q: BrokerQuote>:
 pub trait Update {
     fn check(&mut self) -> impl std::future::Future<Output = ()>;
 }
+
+pub trait Clock {
+    fn now(&mut self) -> i64;
+    fn has_next(&mut self) -> bool;
+}

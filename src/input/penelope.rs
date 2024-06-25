@@ -32,8 +32,8 @@ impl Penelope {
         self.get_quotes(date).unwrap()
     }
 
-    pub fn get_next_date(&self, date: &i64) -> &i64 {
-        self.inner.range(date..).next().unwrap().0
+    pub fn get_next_date(&self, date: &i64) -> Option<&i64> {
+        self.inner.range(date..).map(|v| v.0).next()
     }
 
     pub fn get_first_date(&self) -> &i64 {

@@ -2,28 +2,26 @@ use std::marker::PhantomData;
 
 use log::info;
 
-use crate::broker::{BrokerCashEvent, BrokerOperations, BrokerOrder, BrokerQuote, BrokerStates, CashOperations, Portfolio, SendOrder, Update};
+use crate::broker::{BrokerCashEvent, BrokerOperations, BrokerOrder, BrokerQuote, BrokerStates, CashOperations, Clock, Portfolio, SendOrder, Update};
 use crate::perf::{BacktestOutput, PerformanceCalculator};
 use crate::schedule::{DefaultTradingSchedule, TradingSchedule};
 use crate::strategy::StrategyEvent;
 use crate::types::{CashValue, PortfolioAllocation, StrategySnapshot};
-use rotala::clock::{Clock, Frequency};
 
-pub trait StaticWeightBroker<Q: BrokerQuote, O: BrokerOrder>: CashOperations<Q> + BrokerOperations<O, Q> + Portfolio<Q> + SendOrder<O> + BrokerStates + Update {}
+pub trait StaticWeightBroker<Q: BrokerQuote, O: BrokerOrder>: CashOperations<Q> + BrokerOperations<O, Q> + Portfolio<Q> + SendOrder<O> + BrokerStates + Update + Clock {}
 
 pub struct StaticWeightStrategyBuilder<Q: BrokerQuote, O: BrokerOrder, B: StaticWeightBroker<Q, O>> {
     //If missing either field, we cannot run this strategy
     brkr: Option<B>,
     weights: Option<PortfolioAllocation>,
-    clock: Option<Clock>,
     _quote: PhantomData<Q>,
     _order: PhantomData<O>,
 }
 
 impl<Q: BrokerQuote, O: BrokerOrder, B: StaticWeightBroker<Q, O>> StaticWeightStrategyBuilder<Q, O, B> {
     pub fn default(&mut self) -> StaticWeightStrategy<Q, O, B> {
-        if self.brkr.is_none() || self.weights.is_none() || self.clock.is_none() {
-            panic!("Strategy must have broker, weights, and clock");
+        if self.brkr.is_none() || self.weights.is_none() {
+            panic!("Strategy must have broker and weights");
         }
 
         let brkr = self.brkr.take();
@@ -32,16 +30,10 @@ impl<Q: BrokerQuote, O: BrokerOrder, B: StaticWeightBroker<Q, O>> StaticWeightSt
             brkr: brkr.unwrap(),
             target_weights: weights.unwrap(),
             net_cash_flow: 0.0.into(),
-            clock: self.clock.as_ref().unwrap().clone(),
             history: Vec::new(),
             _quote: PhantomData,
             _order: PhantomData,
         }
-    }
-
-    pub fn with_clock(&mut self, clock: Clock) -> &mut Self {
-        self.clock = Some(clock);
-        self
     }
 
     pub fn with_brkr(&mut self, brkr: B) -> &mut Self {
@@ -58,7 +50,6 @@ impl<Q: BrokerQuote, O: BrokerOrder, B: StaticWeightBroker<Q, O>> StaticWeightSt
         Self {
             brkr: None,
             weights: None,
-            clock: None,
             _quote: PhantomData,
             _order: PhantomData,
         }
@@ -77,7 +68,6 @@ pub struct StaticWeightStrategy<Q: BrokerQuote, O: BrokerOrder, B: StaticWeightB
     brkr: B,
     target_weights: PortfolioAllocation,
     net_cash_flow: CashValue,
-    clock: Clock,
     history: Vec<StrategySnapshot>,
     _quote: PhantomData<Q>,
     _order: PhantomData<O>,
@@ -85,12 +75,12 @@ pub struct StaticWeightStrategy<Q: BrokerQuote, O: BrokerOrder, B: StaticWeightB
 
 impl<Q: BrokerQuote, O: BrokerOrder, B: StaticWeightBroker<Q, O>> StaticWeightStrategy<Q, O, B> {
     pub async fn run(&mut self) {
-        while self.clock.has_next() {
+        while self.brkr.has_next() {
             self.update().await;
         }
     }
 
-    pub fn perf(&self, freq: Frequency) -> BacktestOutput {
+    pub fn perf(&self, freq: crate::perf::Frequency) -> BacktestOutput {
         //Intended to be called at end of simulation
         let hist = self.get_history();
         PerformanceCalculator::calculate(freq, hist)
@@ -99,9 +89,9 @@ impl<Q: BrokerQuote, O: BrokerOrder, B: StaticWeightBroker<Q, O>> StaticWeightSt
     pub fn get_snapshot(&mut self) -> StrategySnapshot {
         // Defaults to zero inflation because most users probably aren't looking
         // for real returns calcs
-        let now = self.clock.now();
+        let now = self.brkr.now();
         StrategySnapshot {
-            date: now,
+            date: now.into(),
             portfolio_value: self.brkr.get_total_value(),
             net_cash_flow: self.net_cash_flow.clone(),
             inflation: 0.0,
@@ -110,7 +100,7 @@ impl<Q: BrokerQuote, O: BrokerOrder, B: StaticWeightBroker<Q, O>> StaticWeightSt
 
     pub fn init(&mut self, initital_cash: &f64) {
         self.deposit_cash(initital_cash);
-        if DefaultTradingSchedule::should_trade(&self.clock.now()) {
+        if DefaultTradingSchedule::should_trade(&self.brkr.now().into()) {
             let orders = self
                 .brkr
                 .diff_brkr_against_target_weights(&self.target_weights);
@@ -122,8 +112,8 @@ impl<Q: BrokerQuote, O: BrokerOrder, B: StaticWeightBroker<Q, O>> StaticWeightSt
 
     pub async fn update(&mut self) {
         self.brkr.check().await;
-        let now = self.clock.now();
-        if DefaultTradingSchedule::should_trade(&now) {
+        let now = self.brkr.now();
+        if DefaultTradingSchedule::should_trade(&now.into()) {
             let orders = self
                 .brkr
                 .diff_brkr_against_target_weights(&self.target_weights);

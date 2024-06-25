@@ -49,15 +49,17 @@ impl AppState {
         }
     }
 
-    pub fn tick(&mut self, backtest_id: BacktestId) -> Option<(Vec<Trade>, Vec<Order>)> {
+    pub fn tick(&mut self, backtest_id: BacktestId) -> Option<(bool, Vec<Trade>, Vec<Order>)> {
         if let Some(backtest) = self.backtests.get_mut(&backtest_id) {
             if let Some(dataset) = self.datasets.get(&backtest.dataset_name) {
                 if let Some(quotes) = dataset.get_quotes(&backtest.date) {
-                    let next_date = dataset.get_next_date(&backtest.date);
-
                     let res = backtest.exchange.tick(quotes);
-                    backtest.date = *next_date;
-                    return Some((res.0, res.1));
+                    let mut has_next = false;
+                    if let Some(next_date) = dataset.get_next_date(&backtest.date) {
+                        has_next = true;
+                        backtest.date = *next_date;
+                    }
+                    return Some((has_next, res.0, res.1));
                 }
             }
         }
@@ -136,8 +138,7 @@ pub mod uistv1_client {
     use anyhow::{Error, Result};
 
     use super::uistv1_server::{
-        DeleteOrderRequest, FetchQuotesResponse, InfoResponse, InitResponse, InsertOrderRequest,
-        TickResponse, UistV1Error,
+        DeleteOrderRequest, FetchQuotesResponse, InfoResponse, InitResponse, InsertOrderRequest, NowResponse, TickResponse, UistV1Error
     };
     use super::AppState;
 
@@ -164,6 +165,7 @@ pub mod uistv1_client {
         ) -> impl Future<Output = Result<FetchQuotesResponse>>;
         fn init(&mut self, dataset_name: String) -> impl Future<Output = Result<InitResponse>>;
         fn info(&mut self, backtest_id: BacktestId) -> impl Future<Output = Result<InfoResponse>>;
+        fn now(&mut self, backtest_id: BacktestId) -> impl Future<Output = Result<NowResponse>>;
     }
 
     pub struct TestClient {
@@ -182,9 +184,9 @@ pub mod uistv1_client {
         fn tick(&mut self, backtest_id: BacktestId) -> impl Future<Output = Result<TickResponse>> {
             if let Some(resp) = self.state.tick(backtest_id) {
                 future::ready(Ok(TickResponse {
-                    inserted_orders: resp.1,
-                    executed_trades: resp.0,
-                    has_next: true,
+                    inserted_orders: resp.2,
+                    executed_trades: resp.1,
+                    has_next: resp.0,
                 }))
             } else {
                 future::ready(Err(Error::new(UistV1Error::UnknownBacktest)))
@@ -234,6 +236,26 @@ pub mod uistv1_client {
                     version: "v1".to_string(),
                     dataset: backtest.dataset_name.clone(),
                 }))
+            } else {
+                future::ready(Err(Error::new(UistV1Error::UnknownBacktest)))
+            }
+        }
+
+        fn now(&mut self, backtest_id: BacktestId) -> impl Future<Output = Result<NowResponse>> {
+            if let Some(backtest) = self.state.backtests.get(&backtest_id) {
+                if let Some(dataset) = self.state.datasets.get(&backtest.dataset_name) {
+                    let now = backtest.date;
+                    let mut has_next = false;
+                    if let Some(_has_next) = dataset.get_next_date(&now) {
+                        has_next = true;
+                    }
+                    future::ready(Ok(NowResponse {
+                        now,
+                        has_next
+                    }))
+                } else {
+                    future::ready(Err(Error::new(UistV1Error::UnknownDataset)))
+                }
             } else {
                 future::ready(Err(Error::new(UistV1Error::UnknownBacktest)))
             }
@@ -318,6 +340,16 @@ pub mod uistv1_client {
                 .json::<InfoResponse>()
                 .await?)
         }
+
+        async fn now(&mut self, backtest_id: BacktestId) -> Result<NowResponse> {
+            Ok(self
+                .client
+                .get(self.path.clone() + format!("/backtest/{backtest_id}/now").as_str())
+                .send()
+                .await?
+                .json::<NowResponse>()
+                .await?)
+        }
     }
 
     impl Client {
@@ -386,9 +418,9 @@ pub mod uistv1_server {
 
         if let Some(result) = uist.tick(backtest_id) {
             Ok(web::Json(TickResponse {
-                inserted_orders: result.1,
-                executed_trades: result.0,
-                has_next: true,
+                inserted_orders: result.2,
+                executed_trades: result.1,
+                has_next: result.0,
             }))
         } else {
             Err(UistV1Error::UnknownBacktest)
@@ -497,6 +529,39 @@ pub mod uistv1_server {
                 version: "v1".to_string(),
                 dataset: resp.dataset_name.clone(),
             }))
+        } else {
+            Err(UistV1Error::UnknownBacktest)
+        }
+    }
+
+    #[derive(Debug, Deserialize, Serialize)]
+    pub struct NowResponse {
+        pub now: i64,
+        pub has_next: bool,
+    }
+
+    #[get("/backtest/{backtest_id}/now")]
+    pub async fn now(
+        app: web::Data<UistState>,
+        path: web::Path<(BacktestId,)>,
+    ) -> Result<web::Json<NowResponse>, UistV1Error> {
+        let uist = app.lock().unwrap();
+        let (backtest_id,) = path.into_inner();
+
+        if let Some(backtest) = uist.backtests.get(&backtest_id) {
+            let now = backtest.date;
+            if let Some(dataset) = uist.datasets.get(&backtest.dataset_name) {
+                let mut has_next = false;
+                if let Some(_has_next) = dataset.get_next_date(&now) {
+                    has_next = true;
+                }
+                return Ok(web::Json(NowResponse {
+                    now,
+                    has_next,
+                }));
+            } else {
+                Err(UistV1Error::UnknownDataset)
+            }
         } else {
             Err(UistV1Error::UnknownBacktest)
         }

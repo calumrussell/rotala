@@ -1,6 +1,8 @@
 //! Schedules for running backtests
 
-use rotala::clock::{DateTime, Weekday};
+use time::Weekday;
+
+use crate::types::DateTime;
 
 /// Returns [bool] when it is time to trade.
 ///
