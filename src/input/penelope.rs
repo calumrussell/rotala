@@ -92,3 +92,9 @@ impl Penelope {
         source
     }
 }
+
+impl Default for Penelope {
+    fn default() -> Self {
+        Self::new()
+    }
+}
