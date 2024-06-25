@@ -151,27 +151,6 @@ impl PartialEq for Order {
     }
 }
 
-#[derive(Debug, Clone, Deserialize, Serialize)]
-pub struct InitMessage {
-    pub start: i64,
-    pub frequency: u8,
-}
-
-#[derive(Debug, Clone, Deserialize, Serialize)]
-pub struct InfoMessage {
-    pub version: String,
-    pub dataset: String,
-}
-
-impl InfoMessage {
-    fn v1(dataset: String) -> InfoMessage {
-        InfoMessage {
-            version: "1.0".to_string(),
-            dataset,
-        }
-    }
-}
-
 #[derive(Clone, Debug)]
 pub struct UistV1 {
     orderbook: OrderBook,
@@ -211,17 +190,18 @@ impl UistV1 {
     }
 
     pub fn tick(&mut self, quotes: &PenelopeQuoteByDate) -> (Vec<Trade>, Vec<Order>) {
-        //To eliminate lookahead bias, we only start executing orders on the next
-        //tick.
+        //To eliminate lookahead bias, we only insert new orders after we have executed any orders
+        //that were on the stack first
+        let executed_trades = self.orderbook.execute_orders(quotes);
+        for executed_trade in &executed_trades {
+            self.trade_log.push(executed_trade.clone());
+        }
+
         self.sort_order_buffer();
         for order in self.order_buffer.iter_mut() {
             self.orderbook.insert_order(order);
         }
 
-        let executed_trades = self.orderbook.execute_orders(quotes);
-        for executed_trade in &executed_trades {
-            self.trade_log.push(executed_trade.clone());
-        }
         let inserted_orders = std::mem::take(&mut self.order_buffer);
         (executed_trades, inserted_orders)
     }
@@ -384,6 +364,7 @@ mod tests {
 
         exchange.insert_order(Order::market_buy("ABC", 100.0));
         exchange.tick(source.get_quotes_unchecked(&100));
+        exchange.tick(source.get_quotes_unchecked(&101));
 
         //TODO: no abstraction!
         assert_eq!(exchange.trade_log.len(), 1);
@@ -399,6 +380,7 @@ mod tests {
         exchange.insert_order(Order::market_buy("ABC", 25.0));
 
         exchange.tick(source.get_quotes_unchecked(&100));
+        exchange.tick(source.get_quotes_unchecked(&101));
         assert_eq!(exchange.trade_log.len(), 4);
     }
 
@@ -412,6 +394,7 @@ mod tests {
         exchange.insert_order(Order::market_buy("ABC", 25.0));
         exchange.insert_order(Order::market_buy("ABC", 25.0));
         exchange.tick(source.get_quotes_unchecked(&101));
+        exchange.tick(source.get_quotes_unchecked(&102));
 
         assert_eq!(exchange.trade_log.len(), 4);
     }
@@ -423,6 +406,7 @@ mod tests {
 
         exchange.insert_order(Order::market_buy("ABC", 100.0));
         exchange.tick(source.get_quotes_unchecked(&100));
+        exchange.tick(source.get_quotes_unchecked(&101));
 
         assert_eq!(exchange.trade_log.len(), 1);
         let trade = exchange.trade_log.remove(0);
@@ -438,6 +422,7 @@ mod tests {
 
         exchange.insert_order(Order::market_sell("ABC", 100.0));
         exchange.tick(source.get_quotes_unchecked(&100));
+        exchange.tick(source.get_quotes_unchecked(&101));
 
         assert_eq!(exchange.trade_log.len(), 1);
         let trade = exchange.trade_log.remove(0);
@@ -479,7 +464,7 @@ mod tests {
         //Orderbook should have one order and trade log has no executed trades
         assert_eq!(exchange.trade_log.len(), 0);
 
-        exchange.tick(source.get_quotes_unchecked(&101));
+        exchange.tick(source.get_quotes_unchecked(&102));
         //Order should execute now
         assert_eq!(exchange.trade_log.len(), 1);
     }

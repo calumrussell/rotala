@@ -1,6 +1,9 @@
 use std::collections::HashMap;
 
-use crate::{exchange::jura_v1::{Fill, JuraV1, Order, OrderId}, input::penelope::{Penelope, PenelopeQuoteByDate}};
+use crate::{
+    exchange::jura_v1::{Fill, JuraV1, Order, OrderId},
+    input::penelope::{Penelope, PenelopeQuoteByDate},
+};
 
 type BacktestId = u64;
 
@@ -96,7 +99,12 @@ impl AppState {
         None
     }
 
-    pub fn delete_order(&mut self, asset: u64, order_id: OrderId, backtest_id: BacktestId) -> Option<()> {
+    pub fn delete_order(
+        &mut self,
+        asset: u64,
+        order_id: OrderId,
+        backtest_id: BacktestId,
+    ) -> Option<()> {
         if let Some(backtest) = self.backtests.get_mut(&backtest_id) {
             backtest.exchange.delete_order(asset, order_id);
             return Some(());
@@ -133,9 +141,13 @@ pub mod jurav1_client {
 
     use anyhow::Result;
 
-    use super::{jurav1_server::{
-        DeleteOrderRequest, FetchQuotesResponse, InfoResponse, InitResponse, InsertOrderRequest, TickResponse
-    }, BacktestId};
+    use super::{
+        jurav1_server::{
+            DeleteOrderRequest, FetchQuotesResponse, InfoResponse, InitResponse,
+            InsertOrderRequest, TickResponse,
+        },
+        BacktestId,
+    };
 
     use crate::exchange::jura_v1::{Order, OrderId};
 
@@ -167,7 +179,8 @@ pub mod jurav1_client {
 
     impl JuraClient for Client {
         async fn tick(&mut self, backtest_id: BacktestId) -> Result<TickResponse> {
-            Ok(self.client
+            Ok(self
+                .client
                 .get(self.path.clone() + format!("/backtest/{backtest_id}/tick").as_str())
                 .send()
                 .await?
@@ -182,7 +195,8 @@ pub mod jurav1_client {
             backtest_id: BacktestId,
         ) -> Result<()> {
             let req = DeleteOrderRequest { asset, order_id };
-            Ok(self.client
+            Ok(self
+                .client
                 .post(self.path.clone() + format!("/backtest/{backtest_id}/delete_order").as_str())
                 .json(&req)
                 .send()
@@ -193,7 +207,8 @@ pub mod jurav1_client {
 
         async fn insert_order(&mut self, order: Order, backtest_id: BacktestId) -> Result<()> {
             let req = InsertOrderRequest { order };
-            Ok(self.client
+            Ok(self
+                .client
                 .post(self.path.clone() + format!("/backtest/{backtest_id}/insert_order").as_str())
                 .json(&req)
                 .send()
@@ -203,7 +218,8 @@ pub mod jurav1_client {
         }
 
         async fn fetch_quotes(&mut self, backtest_id: BacktestId) -> Result<FetchQuotesResponse> {
-            Ok(self.client
+            Ok(self
+                .client
                 .get(self.path.clone() + format!("/backtest/{backtest_id}/fetch_quotes").as_str())
                 .send()
                 .await?
@@ -212,7 +228,8 @@ pub mod jurav1_client {
         }
 
         async fn init(&mut self, dataset_name: String) -> Result<InitResponse> {
-            Ok(self.client
+            Ok(self
+                .client
                 .get(self.path.clone() + format!("/init/{dataset_name}").as_str())
                 .send()
                 .await?
@@ -221,7 +238,8 @@ pub mod jurav1_client {
         }
 
         async fn info(&mut self, backtest_id: BacktestId) -> Result<InfoResponse> {
-            Ok(self.client
+            Ok(self
+                .client
                 .get(self.path.clone() + format!("/backtest/{backtest_id}/info").as_str())
                 .send()
                 .await?
@@ -244,8 +262,8 @@ pub mod jurav1_server {
     use serde::{Deserialize, Serialize};
     use std::sync::Mutex;
 
-    use crate::input::penelope::PenelopeQuoteByDate;
     use crate::exchange::jura_v1::{Fill, Order, OrderId};
+    use crate::input::penelope::PenelopeQuoteByDate;
     use actix_web::{
         error, get, post,
         web::{self, Path},
@@ -257,7 +275,6 @@ pub mod jurav1_server {
 
     type BacktestId = u64;
     pub type JuraState = Mutex<AppState>;
-
 
     #[derive(Debug, Display, Error)]
     pub enum JuraV1Error {
@@ -315,7 +332,8 @@ pub mod jurav1_server {
         let mut jura = app.lock().unwrap();
         let (backtest_id,) = path.into_inner();
 
-        if let Some(()) = jura.delete_order(delete_order.asset, delete_order.order_id, backtest_id) {
+        if let Some(()) = jura.delete_order(delete_order.asset, delete_order.order_id, backtest_id)
+        {
             Ok(web::Json(()))
         } else {
             Err(JuraV1Error::UnknownBacktest)
@@ -356,7 +374,9 @@ pub mod jurav1_server {
         let (backtest_id,) = path.into_inner();
 
         if let Some(quotes) = jura.fetch_quotes(backtest_id) {
-            Ok(web::Json(FetchQuotesResponse { quotes: quotes.clone() }))
+            Ok(web::Json(FetchQuotesResponse {
+                quotes: quotes.clone(),
+            }))
         } else {
             Err(JuraV1Error::UnknownBacktest)
         }
@@ -411,16 +431,16 @@ pub mod jurav1_server {
 mod tests {
     use actix_web::{test, web, App};
 
+    use super::jurav1_server::*;
+    use super::AppState;
     use crate::exchange::jura_v1::Order;
     use crate::input::penelope::Penelope;
-    use super::AppState;
-    use super::jurav1_server::*;
 
     use std::sync::Mutex;
 
     #[actix_web::test]
     async fn test_single_trade_loop() {
-        let jura = Penelope::random(100);
+        let jura = Penelope::random(100, vec!["0"]);
         let dataset_name = "fake";
         let state = AppState::single(dataset_name, jura);
 
@@ -458,7 +478,7 @@ mod tests {
 
         let req3 = test::TestRequest::post()
             .set_json(InsertOrderRequest {
-                order: Order::market_buy(0, "100.0", "97.00"),
+                order: Order::market_buy(0, "100.0", "90.00"),
             })
             .uri(format!("/backtest/{backtest_id}/insert_order").as_str())
             .to_request();
@@ -467,9 +487,14 @@ mod tests {
         let req4 = test::TestRequest::get()
             .uri(format!("/backtest/{backtest_id}/tick").as_str())
             .to_request();
-        let resp4: TickResponse = test::call_and_read_body_json(&app, req4).await;
+        let _resp4: TickResponse = test::call_and_read_body_json(&app, req4).await;
 
-        assert!(resp4.executed_trades.len() == 1);
-        assert!(resp4.executed_trades.get(0).unwrap().coin == "0")
+        let req5 = test::TestRequest::get()
+            .uri(format!("/backtest/{backtest_id}/tick").as_str())
+            .to_request();
+        let resp5: TickResponse = test::call_and_read_body_json(&app, req5).await;
+
+        assert!(resp5.executed_trades.len() == 1);
+        assert!(resp5.executed_trades.get(0).unwrap().coin == "0")
     }
 }

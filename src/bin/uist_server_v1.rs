@@ -2,9 +2,13 @@ use std::env;
 use std::sync::Mutex;
 
 use actix_web::{web, App, HttpServer};
-use rotala::{http::uist::{uistv1_server::{
-    delete_order, fetch_quotes, info, init, insert_order, tick,
-}, AppState}, input::penelope::Penelope};
+use rotala::{
+    http::uist::{
+        uistv1_server::{delete_order, fetch_quotes, info, init, insert_order, tick},
+        AppState,
+    },
+    input::penelope::Penelope,
+};
 
 #[actix_web::main]
 async fn main() -> std::io::Result<()> {
@@ -13,7 +17,7 @@ async fn main() -> std::io::Result<()> {
     let address: String = args[1].clone();
     let port: u16 = args[2].parse().unwrap();
 
-    let source = Penelope::random(3000);
+    let source = Penelope::random(3000, vec!["ABC", "BCD"]);
     let app_state = AppState::single("RANDOM", source);
 
     let uist_state = web::Data::new(Mutex::new(app_state));

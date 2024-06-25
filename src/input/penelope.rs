@@ -73,27 +73,22 @@ impl Penelope {
         }
     }
 
-    pub fn random(length: i64) -> Penelope {
+    pub fn random(length: i64, symbols: Vec<&str>) -> Penelope {
         let price_dist = Uniform::new(90.0, 100.0);
         let mut rng = thread_rng();
 
         let mut source = Penelope::new();
 
         for date in 100..length + 100 {
-            source.add_quote(
-                price_dist.sample(&mut rng),
-                price_dist.sample(&mut rng),
-                date,
-                "ABC",
-            );
-            source.add_quote(
-                price_dist.sample(&mut rng),
-                price_dist.sample(&mut rng),
-                date,
-                "BCD",
-            );
+            for symbol in &symbols {
+                source.add_quote(
+                    price_dist.sample(&mut rng),
+                    price_dist.sample(&mut rng),
+                    date,
+                    *symbol,
+                );
+            }
         }
-
         source
     }
 }
