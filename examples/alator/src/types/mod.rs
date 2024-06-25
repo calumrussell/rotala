@@ -1,9 +1,9 @@
 //! Defines types that are used by multiple components.
 
 use itertools::Itertools;
-use time::{format_description, Date, Month, OffsetDateTime, Weekday};
 use std::ops::Deref;
 use std::{collections::HashMap, ops::Add};
+use time::{format_description, Date, Month, OffsetDateTime, Weekday};
 
 #[derive(Clone, Debug, PartialEq, PartialOrd)]
 pub struct CashValue(f64);

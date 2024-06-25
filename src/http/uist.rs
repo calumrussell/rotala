@@ -8,6 +8,7 @@ type BacktestId = u64;
 pub struct BacktestState {
     pub id: BacktestId,
     pub date: i64,
+    pub pos: usize,
     pub exchange: UistV1,
     pub dataset_name: String,
 }
@@ -31,7 +32,8 @@ impl AppState {
         let exchange = UistV1::new();
         let backtest = BacktestState {
             id: 0,
-            date: *data.get_first_date(),
+            date: *data.get_date(0).unwrap(),
+            pos: 0,
             exchange,
             dataset_name: name.into(),
         };
@@ -52,15 +54,25 @@ impl AppState {
     pub fn tick(&mut self, backtest_id: BacktestId) -> Option<(bool, Vec<Trade>, Vec<Order>)> {
         if let Some(backtest) = self.backtests.get_mut(&backtest_id) {
             if let Some(dataset) = self.datasets.get(&backtest.dataset_name) {
+
+                let mut has_next = false;
+                let mut executed_trades = Vec::new();
+                let mut inserted_orders = Vec::new();
+
                 if let Some(quotes) = dataset.get_quotes(&backtest.date) {
-                    let res = backtest.exchange.tick(quotes);
-                    let mut has_next = false;
-                    if let Some(next_date) = dataset.get_next_date(&backtest.date) {
-                        has_next = true;
-                        backtest.date = *next_date;
-                    }
-                    return Some((has_next, res.0, res.1));
+                    let mut res = backtest.exchange.tick(quotes);
+                    executed_trades.append(&mut res.0);
+                    inserted_orders.append(&mut res.1);
                 }
+
+                let new_pos = backtest.pos + 1;
+                if dataset.has_next(new_pos){
+                    has_next = true;
+                    backtest.date = *dataset.get_date(new_pos).unwrap();
+                    backtest.pos = new_pos
+                }
+
+                return Some((has_next, executed_trades, inserted_orders));
             }
         }
         None
@@ -81,7 +93,8 @@ impl AppState {
             let exchange = UistV1::new();
             let backtest = BacktestState {
                 id: new_id,
-                date: *dataset.get_first_date(),
+                date: *dataset.get_date(0).unwrap(),
+                pos: 0,
                 exchange,
                 dataset_name,
             };
@@ -116,7 +129,8 @@ impl AppState {
 
             let backtest = BacktestState {
                 id: new_id,
-                date: *dataset.get_first_date(),
+                date: *dataset.get_date(0).unwrap(),
+                pos: 0,
                 exchange,
                 dataset_name: dataset_name.into(),
             };
@@ -242,11 +256,12 @@ pub mod uistv1_client {
         }
 
         fn now(&mut self, backtest_id: BacktestId) -> impl Future<Output = Result<NowResponse>> {
-            if let Some(backtest) = self.state.backtests.get(&backtest_id) {
+            if let Some(backtest) = self.state.backtests.get(&backtest_id){
                 if let Some(dataset) = self.state.datasets.get(&backtest.dataset_name) {
+
                     let now = backtest.date;
                     let mut has_next = false;
-                    if let Some(_has_next) = dataset.get_next_date(&now) {
+                    if dataset.has_next(backtest.pos) {
                         has_next = true;
                     }
                     future::ready(Ok(NowResponse {
@@ -552,7 +567,7 @@ pub mod uistv1_server {
             let now = backtest.date;
             if let Some(dataset) = uist.datasets.get(&backtest.dataset_name) {
                 let mut has_next = false;
-                if let Some(_has_next) = dataset.get_next_date(&now) {
+                if dataset.has_next(backtest.pos) {
                     has_next = true;
                 }
                 return Ok(web::Json(NowResponse {

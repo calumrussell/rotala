@@ -2,15 +2,28 @@ use std::marker::PhantomData;
 
 use log::info;
 
-use crate::broker::{BrokerCashEvent, BrokerOperations, BrokerOrder, BrokerQuote, BrokerStates, CashOperations, Clock, Portfolio, SendOrder, Update};
+use crate::broker::{
+    BrokerCashEvent, BrokerOperations, BrokerOrder, BrokerQuote, BrokerStates, CashOperations,
+    Clock, Portfolio, SendOrder, Update,
+};
 use crate::perf::{BacktestOutput, PerformanceCalculator};
 use crate::schedule::{DefaultTradingSchedule, TradingSchedule};
 use crate::strategy::StrategyEvent;
 use crate::types::{CashValue, PortfolioAllocation, StrategySnapshot};
 
-pub trait StaticWeightBroker<Q: BrokerQuote, O: BrokerOrder>: CashOperations<Q> + BrokerOperations<O, Q> + Portfolio<Q> + SendOrder<O> + BrokerStates + Update + Clock {}
+pub trait StaticWeightBroker<Q: BrokerQuote, O: BrokerOrder>:
+    CashOperations<Q>
+    + BrokerOperations<O, Q>
+    + Portfolio<Q>
+    + SendOrder<O>
+    + BrokerStates
+    + Update
+    + Clock
+{
+}
 
-pub struct StaticWeightStrategyBuilder<Q: BrokerQuote, O: BrokerOrder, B: StaticWeightBroker<Q, O>> {
+pub struct StaticWeightStrategyBuilder<Q: BrokerQuote, O: BrokerOrder, B: StaticWeightBroker<Q, O>>
+{
     //If missing either field, we cannot run this strategy
     brkr: Option<B>,
     weights: Option<PortfolioAllocation>,
@@ -18,7 +31,9 @@ pub struct StaticWeightStrategyBuilder<Q: BrokerQuote, O: BrokerOrder, B: Static
     _order: PhantomData<O>,
 }
 
-impl<Q: BrokerQuote, O: BrokerOrder, B: StaticWeightBroker<Q, O>> StaticWeightStrategyBuilder<Q, O, B> {
+impl<Q: BrokerQuote, O: BrokerOrder, B: StaticWeightBroker<Q, O>>
+    StaticWeightStrategyBuilder<Q, O, B>
+{
     pub fn default(&mut self) -> StaticWeightStrategy<Q, O, B> {
         if self.brkr.is_none() || self.weights.is_none() {
             panic!("Strategy must have broker and weights");
@@ -56,7 +71,9 @@ impl<Q: BrokerQuote, O: BrokerOrder, B: StaticWeightBroker<Q, O>> StaticWeightSt
     }
 }
 
-impl<Q: BrokerQuote, O: BrokerOrder, B: StaticWeightBroker<Q, O>> Default for StaticWeightStrategyBuilder<Q, O, B> {
+impl<Q: BrokerQuote, O: BrokerOrder, B: StaticWeightBroker<Q, O>> Default
+    for StaticWeightStrategyBuilder<Q, O, B>
+{
     fn default() -> Self {
         Self::new()
     }
@@ -126,10 +143,10 @@ impl<Q: BrokerQuote, O: BrokerOrder, B: StaticWeightBroker<Q, O>> StaticWeightSt
     }
 
     fn deposit_cash(&mut self, cash: &f64) -> StrategyEvent {
-            info!("STRATEGY: Depositing {:?} into strategy", cash);
-            self.brkr.deposit_cash(cash);
-            self.net_cash_flow = CashValue::from(cash + *self.net_cash_flow);
-            StrategyEvent::DepositSuccess(CashValue::from(*cash))
+        info!("STRATEGY: Depositing {:?} into strategy", cash);
+        self.brkr.deposit_cash(cash);
+        self.net_cash_flow = CashValue::from(cash + *self.net_cash_flow);
+        StrategyEvent::DepositSuccess(CashValue::from(*cash))
     }
 
     pub fn withdraw_cash(&mut self, cash: &f64) -> StrategyEvent {

@@ -52,7 +52,9 @@ use std::{
 };
 
 use log::info;
-use rotala::exchange::uist_v1::{Order as UistOrder, OrderType as UistOrderType, UistQuote, Trade as UistTrade};
+use rotala::exchange::uist_v1::{
+    Order as UistOrder, OrderType as UistOrderType, Trade as UistTrade, UistQuote,
+};
 
 use crate::types::{
     CashValue, PortfolioAllocation, PortfolioHoldings, PortfolioQty, PortfolioValues, Price,

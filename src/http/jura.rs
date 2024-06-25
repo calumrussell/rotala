@@ -10,6 +10,7 @@ type BacktestId = u64;
 pub struct BacktestState {
     pub id: BacktestId,
     pub date: i64,
+    pub pos: usize,
     pub exchange: JuraV1,
     pub dataset_name: String,
 }
@@ -33,7 +34,8 @@ impl AppState {
         let exchange = JuraV1::new();
         let backtest = BacktestState {
             id: 0,
-            date: *data.get_first_date(),
+            date: *data.get_date(0).unwrap(),
+            pos: 0,
             exchange,
             dataset_name: name.into(),
         };
@@ -54,15 +56,25 @@ impl AppState {
     pub fn tick(&mut self, backtest_id: BacktestId) -> Option<(bool, Vec<Fill>, Vec<Order>, Vec<u64>)> {
         if let Some(backtest) = self.backtests.get_mut(&backtest_id) {
             if let Some(dataset) = self.datasets.get(&backtest.dataset_name) {
+                let mut has_next = false;
+                let mut fills = Vec::new();
+                let mut orders = Vec::new();
+                let mut order_ids = Vec::new();
+
                 if let Some(quotes) = dataset.get_quotes(&backtest.date) {
-                    let res = backtest.exchange.tick(quotes);
-                    let mut has_next = false;
-                    if let Some(next_date) = dataset.get_next_date(&backtest.date) {
-                        has_next = true;
-                        backtest.date = *next_date;
-                    }
-                    return Some((has_next, res.0, res.1, res.2));
+                    let mut res = backtest.exchange.tick(quotes);
+                    fills.append(&mut res.0);
+                    orders.append(&mut res.1);
+                    order_ids.append(&mut res.2);
                 }
+
+                let new_pos = backtest.pos + 1;
+                if dataset.has_next(new_pos){
+                    has_next = true;
+                    backtest.date = *dataset.get_date(new_pos).unwrap();
+                }
+
+                return Some((has_next, fills, orders, order_ids))
             }
         }
         None
@@ -83,7 +95,8 @@ impl AppState {
             let exchange = JuraV1::new();
             let backtest = BacktestState {
                 id: new_id,
-                date: *dataset.get_first_date(),
+                date: *dataset.get_date(0).unwrap(),
+                pos: 0,
                 exchange,
                 dataset_name,
             };
@@ -123,7 +136,8 @@ impl AppState {
 
             let backtest = BacktestState {
                 id: new_id,
-                date: *dataset.get_first_date(),
+                date: *dataset.get_date(0).unwrap(),
+                pos: 0,
                 exchange,
                 dataset_name: dataset_name.into(),
             };

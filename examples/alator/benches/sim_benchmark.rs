@@ -50,7 +50,8 @@ async fn full_backtest_random_data() {
     let simbrkr = UistBrokerBuilder::new()
         .with_client(client, resp.backtest_id)
         .with_trade_costs(vec![BrokerCost::Flat(1.0.into())])
-        .build().await;
+        .build()
+        .await;
 
     let mut strat = StaticWeightStrategyBuilder::new()
         .with_brkr(simbrkr)
@@ -73,13 +74,20 @@ async fn trade_execution_logic() {
     source_builder.add_quote(104.00, 105.00, 103, "ABC");
     source_builder.add_quote(12.00, 13.00, 103, "BCD");
 
-    let uist = UistV1::from_penelope_builder(&mut source_builder, "FAKE", rotala::clock::Frequency::Second);
+    let uist = UistV1::from_penelope_builder(
+        &mut source_builder,
+        "FAKE",
+        rotala::clock::Frequency::Second,
+    );
     let mut datasets = HashMap::new();
     datasets.insert("Random".to_string(), uist);
     let mut client = TestClient::new(&mut datasets);
     let resp = client.init("Random".to_string()).await.unwrap();
 
-    let mut brkr = UistBrokerBuilder::new().with_client(client, resp.backtest_id).build().await;
+    let mut brkr = UistBrokerBuilder::new()
+        .with_client(client, resp.backtest_id)
+        .build()
+        .await;
 
     brkr.deposit_cash(&100_000.0);
     brkr.send_order(rotala::exchange::uist_v1::Order::market_buy("ABC", 100.0));
