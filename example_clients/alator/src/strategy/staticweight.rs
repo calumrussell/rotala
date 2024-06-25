@@ -4,7 +4,8 @@ use std::marker::PhantomData;
 use log::info;
 
 use crate::broker::{
-    BrokerCashEvent, BrokerOperations, BrokerOrder, BrokerQuote, BrokerStates, CashOperations, Clock, Portfolio, SendOrder, StrategySnapshot, Update
+    BrokerCashEvent, BrokerOperations, BrokerOrder, BrokerQuote, BrokerStates, CashOperations,
+    Clock, Portfolio, SendOrder, StrategySnapshot, Update,
 };
 use crate::perf::{BacktestOutput, PerformanceCalculator};
 use crate::schedule::{DefaultTradingSchedule, TradingSchedule};

@@ -1,7 +1,7 @@
-use std::collections::HashMap;
 use alator::broker::uist::UistBrokerBuilder;
 use alator::broker::{BrokerCost, CashOperations, SendOrder, Update};
 use criterion::{criterion_group, criterion_main, Criterion};
+use std::collections::HashMap;
 
 use alator::strategy::staticweight::StaticWeightStrategyBuilder;
 use rotala::http::uist::uistv1_client::{TestClient, UistClient};

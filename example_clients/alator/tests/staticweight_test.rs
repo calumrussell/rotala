@@ -3,7 +3,7 @@ use std::collections::HashMap;
 use alator::broker::uist::UistBrokerBuilder;
 use alator::broker::BrokerCost;
 
-use alator::strategy::staticweight::{StaticWeightStrategyBuilder, PortfolioAllocation};
+use alator::strategy::staticweight::{PortfolioAllocation, StaticWeightStrategyBuilder};
 use rotala::http::uist::uistv1_client::{TestClient, UistClient};
 use rotala::input::penelope::Penelope;
 

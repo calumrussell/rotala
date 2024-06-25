@@ -55,10 +55,7 @@ impl AppState {
         }
     }
 
-    pub fn tick(
-        &mut self,
-        backtest_id: BacktestId,
-    ) -> Option<TickResult> {
+    pub fn tick(&mut self, backtest_id: BacktestId) -> Option<TickResult> {
         if let Some(backtest) = self.backtests.get_mut(&backtest_id) {
             if let Some(dataset) = self.datasets.get(&backtest.dataset_name) {
                 let mut has_next = false;

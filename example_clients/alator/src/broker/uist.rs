@@ -15,7 +15,8 @@ use rotala::http::uist::uistv1_client::{BacktestId, UistClient};
 use crate::{broker::BrokerOrder, strategy::staticweight::StaticWeightBroker};
 
 use super::{
-    BrokerCost, BrokerEvent, BrokerOperations, BrokerState, BrokerStates, CashOperations, Clock, DateTime, Portfolio, PortfolioHoldings, Quote, SendOrder, Update
+    BrokerCost, BrokerEvent, BrokerOperations, BrokerState, BrokerStates, CashOperations, Clock,
+    DateTime, Portfolio, PortfolioHoldings, Quote, SendOrder, Update,
 };
 
 type UistBrokerEvent = BrokerEvent<Order>;
@@ -141,9 +142,7 @@ impl<C: UistClient> SendOrder<Order> for UistBroker<C> {
                     OrderType::MarketSell | OrderType::LimitSell | OrderType::StopSell => quote.bid,
                 };
 
-                if let Err(_err) =
-                    self.client_has_sufficient_cash::<OrderType>(&order, &price)
-                {
+                if let Err(_err) = self.client_has_sufficient_cash::<OrderType>(&order, &price) {
                     info!(
                         "BROKER: Unable to send {:?} order for {:?} shares of {:?} to exchange",
                         order.get_order_type(),
@@ -192,11 +191,9 @@ impl<C: UistClient> SendOrder<Order> for UistBroker<C> {
                 let symbol = order.get_symbol().to_string();
                 if let Some(position) = self.pending_orders.get(order.get_symbol()) {
                     let existing = *position + order_effect;
-                    self.pending_orders
-                        .insert(symbol, existing);
+                    self.pending_orders.insert(symbol, existing);
                 } else {
-                    self.pending_orders
-                        .insert(symbol, order_effect);
+                    self.pending_orders.insert(symbol, order_effect);
                 }
                 info!(
                     "BROKER: Successfully sent {:?} order for {:?} shares of {:?} to exchange",
@@ -262,8 +259,7 @@ impl<C: UistClient> Update for UistBroker<C> {
                     if updated_pending == 0.0 {
                         self.pending_orders.remove(&trade.symbol);
                     } else {
-                        self.pending_orders
-                            .insert(trade.symbol, updated_pending);
+                        self.pending_orders.insert(trade.symbol, updated_pending);
                     }
 
                     self.last_seen_trade += 1;
@@ -542,9 +538,7 @@ mod tests {
         let cash = brkr.get_cash_balance();
         assert!(cash < 100_000.0);
 
-        let qty = brkr
-            .get_position_qty("ABC")
-            .unwrap_or(0.0);
+        let qty = brkr.get_position_qty("ABC").unwrap_or(0.0);
         assert_eq!(qty, 495.00);
     }
 
@@ -673,9 +667,7 @@ mod tests {
 
         //Missing live quote for BCD
         brkr.check().await;
-        let value = brkr
-            .get_position_value("BCD")
-            .unwrap_or(f64::from(0.0));
+        let value = brkr.get_position_value("BCD").unwrap_or(f64::from(0.0));
         println!("{:?}", value);
         //We test against the bid price, which gives us the value exclusive of the price paid at ask
         assert!(value == 10.0 * 100.0);
@@ -683,9 +675,7 @@ mod tests {
         //BCD has quote again
         brkr.check().await;
 
-        let value1 = brkr
-            .get_position_value("BCD")
-            .unwrap_or(f64::from(0.0));
+        let value1 = brkr.get_position_value("BCD").unwrap_or(f64::from(0.0));
         println!("{:?}", value1);
         assert!(value1 == 12.0 * 100.0);
     }
@@ -782,9 +772,7 @@ mod tests {
         let res = brkr.send_order(Order::market_buy("ABC", 50.0));
         assert!(matches!(res, UistBrokerEvent::OrderSentToExchange(..)));
         assert_eq!(
-            *brkr
-                .get_holdings_with_pending()
-                .get("ABC").unwrap_or(&0.0),
+            *brkr.get_holdings_with_pending().get("ABC").unwrap_or(&0.0),
             50.0
         );
         brkr.check().await;
@@ -794,10 +782,7 @@ mod tests {
         let res = brkr.send_order(Order::market_sell("ABC", 10.0));
         assert!(matches!(res, UistBrokerEvent::OrderSentToExchange(..)));
         assert_eq!(
-            *brkr
-                .get_holdings_with_pending()
-                .get("ABC")
-                .unwrap_or(&0.0),
+            *brkr.get_holdings_with_pending().get("ABC").unwrap_or(&0.0),
             40.0
         );
         brkr.check().await;
@@ -807,10 +792,7 @@ mod tests {
         let res = brkr.send_order(Order::market_buy("ABC", 50.0));
         assert!(matches!(res, UistBrokerEvent::OrderSentToExchange(..)));
         assert_eq!(
-            *brkr
-                .get_holdings_with_pending()
-                .get("ABC")
-                .unwrap_or(&0.0),
+            *brkr.get_holdings_with_pending().get("ABC").unwrap_or(&0.0),
             90.0
         );
         brkr.check().await;
