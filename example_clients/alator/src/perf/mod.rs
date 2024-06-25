@@ -312,13 +312,11 @@ mod tests {
         let mut client = TestClient::single("Random", source);
         let resp = client.init("Random".to_string()).await.unwrap();
 
-        let brkr = UistBrokerBuilder::new()
+        UistBrokerBuilder::new()
             .with_client(client, resp.backtest_id)
             .with_trade_costs(vec![BrokerCost::PctOfValue(0.01)])
             .build()
-            .await;
-
-        brkr
+            .await
     }
 
     #[test]
@@ -382,52 +380,52 @@ mod tests {
 
         let snap0 = StrategySnapshot {
             date: 100.into(),
-            portfolio_value: 100.0.into(),
-            net_cash_flow: 0.0.into(),
+            portfolio_value: 100.0,
+            net_cash_flow: 0.0,
             inflation: 0.0,
         };
         let snap1 = StrategySnapshot {
             date: 101.into(),
-            portfolio_value: 121.0.into(),
-            net_cash_flow: 10.0.into(),
+            portfolio_value: 121.0,
+            net_cash_flow: 10.0,
             inflation: 0.0,
         };
         let snap2 = StrategySnapshot {
             date: 102.into(),
-            portfolio_value: 126.9.into(),
-            net_cash_flow: 30.0.into(),
+            portfolio_value: 126.9,
+            net_cash_flow: 30.0,
             inflation: 0.0,
         };
         let snap3 = StrategySnapshot {
             date: 103.into(),
-            portfolio_value: 150.59.into(),
-            net_cash_flow: 40.0.into(),
+            portfolio_value: 150.59,
+            net_cash_flow: 40.0,
             inflation: 0.0,
         };
         let with_cash_flows = vec![snap0, snap1, snap2, snap3];
 
         let snap3 = StrategySnapshot {
             date: 100.into(),
-            portfolio_value: 100.0.into(),
-            net_cash_flow: 0.0.into(),
+            portfolio_value: 100.0,
+            net_cash_flow: 0.0,
             inflation: 0.0,
         };
         let snap4 = StrategySnapshot {
             date: 101.into(),
-            portfolio_value: 110.0.into(),
-            net_cash_flow: 0.0.into(),
+            portfolio_value: 110.0,
+            net_cash_flow: 0.0,
             inflation: 0.0,
         };
         let snap5 = StrategySnapshot {
             date: 102.into(),
-            portfolio_value: 99.0.into(),
-            net_cash_flow: 0.0.into(),
+            portfolio_value: 99.0,
+            net_cash_flow: 0.0,
             inflation: 0.0,
         };
         let snap6 = StrategySnapshot {
             date: 103.into(),
-            portfolio_value: 108.9.into(),
-            net_cash_flow: 0.0.into(),
+            portfolio_value: 108.9,
+            net_cash_flow: 0.0,
             inflation: 0.0,
         };
         let without_cash_flows = vec![snap3, snap4, snap5, snap6];
@@ -447,20 +445,20 @@ mod tests {
     fn test_that_perf_completes_with_zeros() {
         let snap1 = StrategySnapshot {
             date: 100.into(),
-            portfolio_value: 0.0.into(),
-            net_cash_flow: 0.0.into(),
+            portfolio_value: 0.0,
+            net_cash_flow: 0.0,
             inflation: 0.0,
         };
         let snap2 = StrategySnapshot {
             date: 101.into(),
-            portfolio_value: 0.0.into(),
-            net_cash_flow: 0.0.into(),
+            portfolio_value: 0.0,
+            net_cash_flow: 0.0,
             inflation: 0.0,
         };
         let snap3 = StrategySnapshot {
             date: 102.into(),
-            portfolio_value: 0.0.into(),
-            net_cash_flow: 0.0.into(),
+            portfolio_value: 0.0,
+            net_cash_flow: 0.0,
             inflation: 0.0,
         };
 
@@ -476,20 +474,20 @@ mod tests {
     fn test_that_perf_orders_best_and_worst() {
         let snap1 = StrategySnapshot {
             date: 100.into(),
-            portfolio_value: 110.0.into(),
-            net_cash_flow: 0.0.into(),
+            portfolio_value: 110.0,
+            net_cash_flow: 0.0,
             inflation: 0.0,
         };
         let snap2 = StrategySnapshot {
             date: 101.into(),
-            portfolio_value: 90.0.into(),
-            net_cash_flow: 0.0.into(),
+            portfolio_value: 90.0,
+            net_cash_flow: 0.0,
             inflation: 0.0,
         };
         let snap3 = StrategySnapshot {
             date: 102.into(),
-            portfolio_value: 110.0.into(),
-            net_cash_flow: 0.0.into(),
+            portfolio_value: 110.0,
+            net_cash_flow: 0.0,
             inflation: 0.0,
         };
 

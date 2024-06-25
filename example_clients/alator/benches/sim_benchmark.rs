@@ -21,7 +21,7 @@ async fn full_backtest_random_data() {
 
     let simbrkr = UistBrokerBuilder::new()
         .with_client(client, resp.backtest_id)
-        .with_trade_costs(vec![BrokerCost::Flat(1.0.into())])
+        .with_trade_costs(vec![BrokerCost::Flat(1.0)])
         .build()
         .await;
 

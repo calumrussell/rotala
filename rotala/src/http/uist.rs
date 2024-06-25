@@ -643,6 +643,6 @@ mod tests {
         let resp5: TickResponse = test::call_and_read_body_json(&app, req5).await;
 
         assert!(resp5.executed_trades.len() == 1);
-        assert!(resp5.executed_trades.get(0).unwrap().symbol == "ABC")
+        assert!(resp5.executed_trades.first().unwrap().symbol == "ABC")
     }
 }

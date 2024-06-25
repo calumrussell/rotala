@@ -803,6 +803,6 @@ mod tests {
         let res = exchange.tick(source.get_quotes_unchecked(&100));
 
         assert_eq!(res.1.len(), 3);
-        assert_eq!(res.1.get(0).unwrap().is_buy, false)
+        assert!(!(res.1.first().unwrap().is_buy));
     }
 }
