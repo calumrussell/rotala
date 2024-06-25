@@ -38,7 +38,7 @@ impl Penelope {
     }
 
     pub fn has_next(&self, pos: usize) -> bool {
-        self.dates.len()  > pos
+        self.dates.len() > pos
     }
 
     pub fn new() -> Self {

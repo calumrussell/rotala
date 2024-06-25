@@ -54,7 +54,6 @@ impl AppState {
     pub fn tick(&mut self, backtest_id: BacktestId) -> Option<(bool, Vec<Trade>, Vec<Order>)> {
         if let Some(backtest) = self.backtests.get_mut(&backtest_id) {
             if let Some(dataset) = self.datasets.get(&backtest.dataset_name) {
-
                 let mut has_next = false;
                 let mut executed_trades = Vec::new();
                 let mut inserted_orders = Vec::new();
@@ -66,12 +65,11 @@ impl AppState {
                 }
 
                 let new_pos = backtest.pos + 1;
-                if dataset.has_next(new_pos){
+                if dataset.has_next(new_pos) {
                     has_next = true;
                     backtest.date = *dataset.get_date(new_pos).unwrap();
-                    backtest.pos = new_pos
                 }
-
+                backtest.pos = new_pos;
                 return Some((has_next, executed_trades, inserted_orders));
             }
         }
@@ -152,7 +150,8 @@ pub mod uistv1_client {
     use anyhow::{Error, Result};
 
     use super::uistv1_server::{
-        DeleteOrderRequest, FetchQuotesResponse, InfoResponse, InitResponse, InsertOrderRequest, NowResponse, TickResponse, UistV1Error
+        DeleteOrderRequest, FetchQuotesResponse, InfoResponse, InitResponse, InsertOrderRequest,
+        NowResponse, TickResponse, UistV1Error,
     };
     use super::AppState;
 
@@ -256,18 +255,14 @@ pub mod uistv1_client {
         }
 
         fn now(&mut self, backtest_id: BacktestId) -> impl Future<Output = Result<NowResponse>> {
-            if let Some(backtest) = self.state.backtests.get(&backtest_id){
+            if let Some(backtest) = self.state.backtests.get(&backtest_id) {
                 if let Some(dataset) = self.state.datasets.get(&backtest.dataset_name) {
-
                     let now = backtest.date;
                     let mut has_next = false;
                     if dataset.has_next(backtest.pos) {
                         has_next = true;
                     }
-                    future::ready(Ok(NowResponse {
-                        now,
-                        has_next
-                    }))
+                    future::ready(Ok(NowResponse { now, has_next }))
                 } else {
                     future::ready(Err(Error::new(UistV1Error::UnknownDataset)))
                 }
@@ -570,10 +565,7 @@ pub mod uistv1_server {
                 if dataset.has_next(backtest.pos) {
                     has_next = true;
                 }
-                return Ok(web::Json(NowResponse {
-                    now,
-                    has_next,
-                }));
+                return Ok(web::Json(NowResponse { now, has_next }));
             } else {
                 Err(UistV1Error::UnknownDataset)
             }

@@ -8,6 +8,7 @@ use rotala::input::penelope::Penelope;
 
 #[tokio::test]
 async fn staticweight_integration_test() {
+    println!("{:?}", "Test");
     env_logger::init();
     let initial_cash: CashValue = 100_000.0.into();
     let length_in_days: i64 = 1000;

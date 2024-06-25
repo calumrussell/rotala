@@ -53,7 +53,10 @@ impl AppState {
         }
     }
 
-    pub fn tick(&mut self, backtest_id: BacktestId) -> Option<(bool, Vec<Fill>, Vec<Order>, Vec<u64>)> {
+    pub fn tick(
+        &mut self,
+        backtest_id: BacktestId,
+    ) -> Option<(bool, Vec<Fill>, Vec<Order>, Vec<u64>)> {
         if let Some(backtest) = self.backtests.get_mut(&backtest_id) {
             if let Some(dataset) = self.datasets.get(&backtest.dataset_name) {
                 let mut has_next = false;
@@ -69,12 +72,12 @@ impl AppState {
                 }
 
                 let new_pos = backtest.pos + 1;
-                if dataset.has_next(new_pos){
+                if dataset.has_next(new_pos) {
                     has_next = true;
                     backtest.date = *dataset.get_date(new_pos).unwrap();
                 }
 
-                return Some((has_next, fills, orders, order_ids))
+                return Some((has_next, fills, orders, order_ids));
             }
         }
         None
