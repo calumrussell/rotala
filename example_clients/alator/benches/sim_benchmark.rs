@@ -1,21 +1,20 @@
-
+use std::collections::HashMap;
 use alator::broker::uist::UistBrokerBuilder;
 use alator::broker::{BrokerCost, CashOperations, SendOrder, Update};
 use criterion::{criterion_group, criterion_main, Criterion};
 
 use alator::strategy::staticweight::StaticWeightStrategyBuilder;
-use alator::types::{CashValue, PortfolioAllocation};
 use rotala::http::uist::uistv1_client::{TestClient, UistClient};
 use rotala::input::penelope::Penelope;
 
 async fn full_backtest_random_data() {
     let source = Penelope::random(100, vec!["ABC", "BCD"]);
 
-    let initial_cash: CashValue = 100_000.0.into();
+    let initial_cash = 100_000.0;
 
-    let mut weights: PortfolioAllocation = PortfolioAllocation::new();
-    weights.insert("ABC", 0.5);
-    weights.insert("BCD", 0.5);
+    let mut weights = HashMap::new();
+    weights.insert("ABC".to_string(), 0.5);
+    weights.insert("BCD".to_string(), 0.5);
 
     let mut client = TestClient::single("Random", source);
     let resp = client.init("Random".to_string()).await.unwrap();

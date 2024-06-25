@@ -2,7 +2,7 @@
 
 use time::Weekday;
 
-use crate::types::DateTime;
+use crate::broker::DateTime;
 
 /// Returns [bool] when it is time to trade.
 ///

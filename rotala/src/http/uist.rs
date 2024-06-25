@@ -565,7 +565,7 @@ pub mod uistv1_server {
                 if dataset.has_next(backtest.pos) {
                     has_next = true;
                 }
-                return Ok(web::Json(NowResponse { now, has_next }));
+                Ok(web::Json(NowResponse { now, has_next }))
             } else {
                 Err(UistV1Error::UnknownDataset)
             }
