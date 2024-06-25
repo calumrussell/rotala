@@ -1,4 +1,4 @@
-use std::collections::{BTreeMap, HashMap};
+use std::collections::HashMap;
 
 use rand::thread_rng;
 use rand_distr::{Distribution, Uniform};
@@ -20,7 +20,8 @@ pub type PenelopeQuoteByDate = HashMap<String, PenelopeQuote>;
 // to that used by Penelope: `PenelopeQuote`.
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct Penelope {
-    inner: BTreeMap<i64, PenelopeQuoteByDate>,
+    dates: Vec<i64>,
+    inner: HashMap<i64, PenelopeQuoteByDate>,
 }
 
 impl Penelope {
@@ -32,17 +33,18 @@ impl Penelope {
         self.get_quotes(date).unwrap()
     }
 
-    pub fn get_next_date(&self, date: &i64) -> Option<&i64> {
-        self.inner.range(date..).map(|v| v.0).next()
+    pub fn get_date(&self, pos: usize) -> Option<&i64> {
+        self.dates.get(pos)
     }
 
-    pub fn get_first_date(&self) -> &i64 {
-        self.inner.range(..).next().unwrap().0
+    pub fn has_next(&self, pos: usize) -> bool {
+        self.dates.len()  > pos
     }
 
     pub fn new() -> Self {
         Self {
-            inner: BTreeMap::new(),
+            dates: Vec::new(),
+            inner: HashMap::new(),
         }
     }
 
@@ -57,6 +59,7 @@ impl Penelope {
     }
 
     pub fn add_quote(&mut self, bid: f64, ask: f64, date: i64, symbol: impl Into<String> + Clone) {
+        //Inserts should be in sorted order
         let quote = PenelopeQuote {
             bid,
             ask,
@@ -70,6 +73,7 @@ impl Penelope {
             let mut date_row = HashMap::new();
             date_row.insert(quote.symbol.clone(), quote);
             self.inner.insert(date, date_row);
+            self.dates.push(date);
         }
     }
 

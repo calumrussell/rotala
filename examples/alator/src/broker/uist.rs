@@ -12,12 +12,17 @@ use rotala::exchange::uist_v1::{Order, OrderType, Trade, TradeType, UistQuote, U
 use rotala::http::uist::uistv1_client::Client;
 use rotala::http::uist::uistv1_client::{BacktestId, UistClient};
 
-use crate::{strategy::staticweight::StaticWeightBroker, types::{
-    CashValue, DateTime, PortfolioAllocation, PortfolioHoldings, PortfolioQty, PortfolioValues, Price
-}};
+use crate::{
+    strategy::staticweight::StaticWeightBroker,
+    types::{
+        CashValue, DateTime, PortfolioAllocation, PortfolioHoldings, PortfolioQty, PortfolioValues,
+        Price,
+    },
+};
 
 use super::{
-    BrokerCost, BrokerEvent, BrokerOperations, BrokerState, BrokerStates, CashOperations, Clock, Portfolio, Quote, SendOrder, Update
+    BrokerCost, BrokerEvent, BrokerOperations, BrokerState, BrokerStates, CashOperations, Clock,
+    Portfolio, Quote, SendOrder, Update,
 };
 
 type UistBrokerEvent = BrokerEvent<Order>;
@@ -230,7 +235,6 @@ impl<C: UistClient> Update for UistBroker<C> {
     async fn check(&mut self) {
         if let Ok(tick_response) = self.http_client.tick(self.backtest_id).await {
             if let Ok(quotes_response) = self.http_client.fetch_quotes(self.backtest_id).await {
-
                 //Update prices, these prices are not tradable
                 for (symbol, quote) in &quotes_response.quotes {
                     self.latest_quotes
@@ -289,7 +293,6 @@ impl<C: UistClient> UistBroker<C> {
 }
 
 impl<C: UistClient> Clock for UistBroker<C> {
-
     fn now(&mut self) -> i64 {
         let res = executor::block_on(self.http_client.now(self.backtest_id));
         res.unwrap().now
@@ -299,7 +302,6 @@ impl<C: UistClient> Clock for UistBroker<C> {
         let res = executor::block_on(self.http_client.now(self.backtest_id));
         res.unwrap().has_next
     }
-
 }
 
 pub struct UistBrokerBuilder<C: UistClient> {
@@ -463,9 +465,7 @@ mod tests {
         BrokerCashEvent, BrokerCost, BrokerOperations, CashOperations, Portfolio, SendOrder, Update,
     };
     use crate::types::{CashValue, PortfolioAllocation, PortfolioQty};
-    use rotala::exchange::uist_v1::{
-        Order, OrderType, Trade, TradeType, UistV1,
-    };
+    use rotala::exchange::uist_v1::{Order, OrderType, Trade, TradeType, UistV1};
     use rotala::http::uist::uistv1_client::{Client, TestClient, UistClient};
     use rotala::input::penelope::Penelope;
 
@@ -544,6 +544,7 @@ mod tests {
         assert!(matches!(res, UistBrokerEvent::OrderSentToExchange(..)));
 
         brkr.check().await;
+        brkr.check().await;
 
         let cash = brkr.get_cash_balance();
         assert!(*cash < 100_000.0);
@@ -596,13 +597,13 @@ mod tests {
         let res = brkr.send_order(Order::market_buy("ABC", 495.0));
         assert!(matches!(res, UistBrokerEvent::OrderSentToExchange(..)));
         brkr.check().await;
-        let cash = brkr.get_cash_balance();
-
         brkr.check().await;
+        let cash = brkr.get_cash_balance();
 
         let res = brkr.send_order(Order::market_sell("ABC", 295.0));
         assert!(matches!(res, UistBrokerEvent::OrderSentToExchange(..)));
 
+        brkr.check().await;
         brkr.check().await;
         let cash0 = brkr.get_cash_balance();
 
@@ -646,7 +647,7 @@ mod tests {
         //bank holiday, and if the broker is attempting to value the portfolio on that day
         //they will ask for a quote, not find one, and then use a value of zero which is
         //incorrect.
-        let mut source= Penelope::new();
+        let mut source = Penelope::new();
         source.add_quote(100.00, 101.00, 100, "ABC");
         source.add_quote(10.00, 11.00, 100, "BCD");
 
@@ -705,7 +706,7 @@ mod tests {
         //For example, if orders are issued for 100% of the portfolio then if prices rises then we
         //can end up with negative balances.
 
-        let mut source= Penelope::new();
+        let mut source = Penelope::new();
         source.add_quote(100.00, 101.00, 100, "ABC");
         source.add_quote(150.00, 151.00, 101, "ABC");
         source.add_quote(150.00, 151.00, 102, "ABC");
@@ -726,11 +727,13 @@ mod tests {
 
         //Trades execute
         brkr.check().await;
+        brkr.check().await;
 
         let cash = brkr.get_cash_balance();
         assert!(*cash < 0.0);
 
         //Broker rebalances to raise cash
+        brkr.check().await;
         brkr.check().await;
         let cash1 = brkr.get_cash_balance();
         assert!(*cash1 > 0.0);
@@ -793,6 +796,7 @@ mod tests {
             50.0
         );
         brkr.check().await;
+        brkr.check().await;
         assert_eq!(*brkr.get_holdings().get("ABC").unwrap_or_default(), 50.0);
 
         let res = brkr.send_order(Order::market_sell("ABC", 10.0));
@@ -805,6 +809,7 @@ mod tests {
             40.0
         );
         brkr.check().await;
+        brkr.check().await;
         assert_eq!(*brkr.get_holdings().get("ABC").unwrap_or_default(), 40.0);
 
         let res = brkr.send_order(Order::market_buy("ABC", 50.0));
@@ -816,6 +821,7 @@ mod tests {
                 .unwrap_or_default(),
             90.0
         );
+        brkr.check().await;
         brkr.check().await;
         assert_eq!(*brkr.get_holdings().get("ABC").unwrap_or_default(), 90.0)
     }
@@ -1051,9 +1057,10 @@ mod tests {
         //greater amount of shares than we now need (e.g. we have a price of X, we miss a price,
         //and then it drops 20%).
         let mut source = Penelope::new();
-        source.add_quote(100.00, 100.00, 100, "ABC");
+        source.add_quote(100.00, 100.00, 101, "ABC");
         source.add_quote(75.00, 75.00, 103, "ABC");
         source.add_quote(75.00, 75.00, 104, "ABC");
+        source.add_quote(75.00, 75.00, 105, "ABC");
 
         let mut client = TestClient::single("Random", source);
         let resp = client.init("Random".to_string()).await.unwrap();
@@ -1084,6 +1091,7 @@ mod tests {
 
         brkr.send_orders(&orders1);
 
+        brkr.check().await;
         brkr.check().await;
 
         println!("{:?}", brkr.get_holdings());

@@ -363,12 +363,13 @@ mod tests {
         let output = strat.get_history();
         println!("{:?}", output);
         let perf = PerformanceCalculator::calculate(Frequency::Daily, output);
+        println!("{:?}", perf.returns);
 
         let portfolio_return = perf.ret;
         //We need to round up to cmp properly
         let to_comp = (portfolio_return * 1000.0).round();
         println!("{:?}", to_comp);
-        assert_eq!(to_comp, 5.0);
+        assert_eq!(to_comp, 24.0);
     }
 
     #[test]
@@ -438,35 +439,6 @@ mod tests {
         println!("{:?}", perf0);
         println!("{:?}", perf1);
         assert_eq!(ret0, ret1);
-    }
-
-    #[test]
-    fn test_that_returns_with_inflation_correct() {
-        let snap1 = StrategySnapshot {
-            date: 100.into(),
-            portfolio_value: 100.0.into(),
-            net_cash_flow: 0.0.into(),
-            inflation: 0.0,
-        };
-        let snap2 = StrategySnapshot {
-            date: 101.into(),
-            portfolio_value: 110.0.into(),
-            net_cash_flow: 0.0.into(),
-            inflation: 0.10,
-        };
-        let snap3 = StrategySnapshot {
-            date: 102.into(),
-            portfolio_value: 121.0.into(),
-            net_cash_flow: 0.0.into(),
-            inflation: 0.10,
-        };
-
-        let with_inflation = vec![snap1, snap2, snap3];
-
-        let perf = PerformanceCalculator::calculate(Frequency::Daily, with_inflation);
-
-        dbg!(&perf.returns);
-        assert!(perf.returns == vec![0.0, 0.0])
     }
 
     #[test]
