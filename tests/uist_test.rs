@@ -1,8 +1,11 @@
-use rotala::{exchange::uist_v1::{Order, UistV1}, input::penelope::Penelope};
+use rotala::{
+    exchange::uist_v1::{Order, UistV1},
+    input::penelope::Penelope,
+};
 
 #[test]
 fn test_that_uist_works() {
-    let source = Penelope::random(1000);
+    let source = Penelope::random(1000, vec!["ABC", "BCD"]);
     let mut exchange = UistV1::new();
 
     let order = Order::market_buy("ABC", 100.0);
