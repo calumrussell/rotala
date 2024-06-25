@@ -31,7 +31,7 @@ impl AppState {
         let exchange = UistV1::new();
         let backtest = BacktestState {
             id: 0,
-            date: data.get_first_date().clone(),
+            date: *data.get_first_date(),
             exchange,
             dataset_name: name.into(),
         };
@@ -55,8 +55,8 @@ impl AppState {
                 if let Some(quotes) = dataset.get_quotes(&backtest.date) {
                     let next_date = dataset.get_next_date(&backtest.date);
 
-                    let res = backtest.exchange.tick(&quotes);
-                    backtest.date = next_date.clone();
+                    let res = backtest.exchange.tick(quotes);
+                    backtest.date = *next_date;
                     return Some((res.0, res.1));
                 }
             }
@@ -79,9 +79,9 @@ impl AppState {
             let exchange = UistV1::new();
             let backtest = BacktestState {
                 id: new_id,
-                date: dataset.get_first_date().clone(),
+                date: *dataset.get_first_date(),
                 exchange,
-                dataset_name: dataset_name.into(),
+                dataset_name,
             };
             self.backtests.insert(new_id, backtest);
             return Some(new_id);
@@ -114,7 +114,7 @@ impl AppState {
 
             let backtest = BacktestState {
                 id: new_id,
-                date: dataset.get_first_date().clone(),
+                date: *dataset.get_first_date(),
                 exchange,
                 dataset_name: dataset_name.into(),
             };
@@ -173,21 +173,21 @@ pub mod uistv1_client {
     impl UistClient for TestClient {
         fn init(&mut self, dataset_name: String) -> impl Future<Output = Result<InitResponse>> {
             if let Some(id) = self.state.init(dataset_name) {
-                return future::ready(Ok(InitResponse { backtest_id: id }));
+                future::ready(Ok(InitResponse { backtest_id: id }))
             } else {
-                return future::ready(Err(Error::new(UistV1Error::UnknownDataset)));
+                future::ready(Err(Error::new(UistV1Error::UnknownDataset)))
             }
         }
 
         fn tick(&mut self, backtest_id: BacktestId) -> impl Future<Output = Result<TickResponse>> {
             if let Some(resp) = self.state.tick(backtest_id) {
-                return future::ready(Ok(TickResponse {
+                future::ready(Ok(TickResponse {
                     inserted_orders: resp.1,
                     executed_trades: resp.0,
                     has_next: true,
-                }));
+                }))
             } else {
-                return future::ready(Err(Error::new(UistV1Error::UnknownBacktest)));
+                future::ready(Err(Error::new(UistV1Error::UnknownBacktest)))
             }
         }
 
@@ -197,9 +197,9 @@ pub mod uistv1_client {
             backtest_id: BacktestId,
         ) -> impl Future<Output = Result<()>> {
             if let Some(()) = self.state.insert_order(order, backtest_id) {
-                return future::ready(Ok(()));
+                future::ready(Ok(()))
             } else {
-                return future::ready(Err(Error::new(UistV1Error::UnknownBacktest)));
+                future::ready(Err(Error::new(UistV1Error::UnknownBacktest)))
             }
         }
 
@@ -209,9 +209,9 @@ pub mod uistv1_client {
             backtest_id: BacktestId,
         ) -> impl Future<Output = Result<()>> {
             if let Some(()) = self.state.delete_order(order_id, backtest_id) {
-                return future::ready(Ok(()));
+                future::ready(Ok(()))
             } else {
-                return future::ready(Err(Error::new(UistV1Error::UnknownBacktest)));
+                future::ready(Err(Error::new(UistV1Error::UnknownBacktest)))
             }
         }
 
@@ -220,22 +220,22 @@ pub mod uistv1_client {
             backtest_id: BacktestId,
         ) -> impl Future<Output = Result<FetchQuotesResponse>> {
             if let Some(quotes) = self.state.fetch_quotes(backtest_id) {
-                return future::ready(Ok(FetchQuotesResponse {
+                future::ready(Ok(FetchQuotesResponse {
                     quotes: quotes.to_owned(),
-                }));
+                }))
             } else {
-                return future::ready(Err(Error::new(UistV1Error::UnknownBacktest)));
+                future::ready(Err(Error::new(UistV1Error::UnknownBacktest)))
             }
         }
 
         fn info(&mut self, backtest_id: BacktestId) -> impl Future<Output = Result<InfoResponse>> {
             if let Some(backtest) = self.state.backtests.get(&backtest_id) {
-                return future::ready(Ok(InfoResponse {
+                future::ready(Ok(InfoResponse {
                     version: "v1".to_string(),
                     dataset: backtest.dataset_name.clone(),
-                }));
+                }))
             } else {
-                return future::ready(Err(Error::new(UistV1Error::UnknownBacktest)));
+                future::ready(Err(Error::new(UistV1Error::UnknownBacktest)))
             }
         }
     }

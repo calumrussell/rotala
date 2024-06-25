@@ -33,7 +33,7 @@ impl AppState {
         let exchange = JuraV1::new();
         let backtest = BacktestState {
             id: 0,
-            date: data.get_first_date().clone(),
+            date: *data.get_first_date(),
             exchange,
             dataset_name: name.into(),
         };
@@ -57,8 +57,8 @@ impl AppState {
                 if let Some(quotes) = dataset.get_quotes(&backtest.date) {
                     let next_date = dataset.get_next_date(&backtest.date);
 
-                    let res = backtest.exchange.tick(&quotes);
-                    backtest.date = next_date.clone();
+                    let res = backtest.exchange.tick(quotes);
+                    backtest.date = *next_date;
                     return Some((res.0, res.1, res.2));
                 }
             }
@@ -81,9 +81,9 @@ impl AppState {
             let exchange = JuraV1::new();
             let backtest = BacktestState {
                 id: new_id,
-                date: dataset.get_first_date().clone(),
+                date: *dataset.get_first_date(),
                 exchange,
-                dataset_name: dataset_name.into(),
+                dataset_name,
             };
             self.backtests.insert(new_id, backtest);
             return Some(new_id);
@@ -121,7 +121,7 @@ impl AppState {
 
             let backtest = BacktestState {
                 id: new_id,
-                date: dataset.get_first_date().clone(),
+                date: *dataset.get_first_date(),
                 exchange,
                 dataset_name: dataset_name.into(),
             };

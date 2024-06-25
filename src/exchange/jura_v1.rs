@@ -358,6 +358,12 @@ impl JuraV1 {
     }
 }
 
+impl Default for JuraV1 {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 /// OrderBook is an implementation of the Hyperliquid API running against a local server. This allows
 /// testing of strategies using the same API/order types/etc.
 ///

@@ -207,6 +207,12 @@ impl UistV1 {
     }
 }
 
+impl Default for UistV1 {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 #[derive(Clone, Debug)]
 struct OrderBook {
     inner: VecDeque<Order>,
