@@ -4,7 +4,7 @@ use rand::thread_rng;
 use rand_distr::{Distribution, Uniform};
 use serde::{Deserialize, Serialize};
 
-use crate::source::get_binance_1m_klines;
+use crate::source::binance::get_binance_1m_klines;
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct PenelopeQuote {
