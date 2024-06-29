@@ -7,3 +7,4 @@
 //! Sources should be called through inputs so that clients do not have to marshall data into internal
 //! types.
 pub mod penelope;
+pub mod athena;
