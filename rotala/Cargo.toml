@@ -35,6 +35,10 @@ path = "./src/bin/uist_server_v1.rs"
 name = "jura_server_v1"
 path = "./src/bin/jura_server_v1.rs"
 
+[[bin]]
+name = "hyperliquid_test"
+path = "src/bin/hyperliquid_test.rs"
+
 [lib]
 bench = false
 
