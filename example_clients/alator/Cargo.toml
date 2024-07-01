@@ -9,7 +9,7 @@ repository = "https://github.com/calumrussell/alator"
 readme = "README.md"
 
 [dependencies]
-itertools = "0.12.0"
+itertools = "0.13.0"
 time = { version = "0.3.17", features = ["macros", "parsing"] }
 rand = "0.8.4"
 rand_distr = "0.4.1"
