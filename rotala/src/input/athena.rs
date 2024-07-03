@@ -169,8 +169,8 @@ impl Athena {
                     size: random_size,
                 };
 
-                source.add_price_level(date, *symbol, bid_level, Side::Bid);
-                source.add_price_level(date, *symbol, ask_level, Side::Ask);
+                source.add_price_level(date, symbol, bid_level, Side::Bid);
+                source.add_price_level(date, symbol, ask_level, Side::Ask);
             }
         }
         source

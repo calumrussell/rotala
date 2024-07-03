@@ -1,6 +1,5 @@
 use std::collections::VecDeque;
 
-use anyhow::Result;
 use serde::{Deserialize, Serialize};
 
 use crate::input::athena::Depth;
@@ -59,7 +58,6 @@ pub struct Trade {
 
 pub struct OrderBook {
     inner: VecDeque<Order>,
-    last_inserted: u64,
 }
 
 impl Default for OrderBook {
@@ -72,7 +70,6 @@ impl OrderBook {
     pub fn new() -> Self {
         Self {
             inner: std::collections::VecDeque::new(),
-            last_inserted: 0,
         }
     }
 
