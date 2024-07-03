@@ -1,6 +1,7 @@
 #![allow(dead_code)]
 
-use std::{borrow::Borrow, collections::HashMap};
+use std::borrow::Borrow;
+use std::collections::HashMap;
 
 use rand::thread_rng;
 use rand_distr::{Distribution, Uniform};
@@ -76,30 +77,36 @@ impl Athena {
         self.dates.len() > pos
     }
 
-    pub fn get_best_bid(
-        &self,
-        date: impl Borrow<i64>,
-        symbol: impl Into<String>,
-    ) -> Option<&Level> {
+    pub fn get_best_bid(&self, date: impl Borrow<i64>, symbol: &str) -> Option<&Level> {
         if let Some(date_levels) = self.inner.get(date.borrow()) {
-            if let Some(depth) = date_levels.get(&symbol.into()) {
+            if let Some(depth) = date_levels.get(symbol) {
                 return depth.bids.last();
             }
         }
         None
     }
 
-    pub fn get_best_ask(
-        &self,
-        date: impl Borrow<i64>,
-        symbol: impl Into<String>,
-    ) -> Option<&Level> {
+    pub fn get_best_ask(&self, date: impl Borrow<i64>, symbol: &str) -> Option<&Level> {
         if let Some(date_levels) = self.inner.get(date.borrow()) {
-            if let Some(depth) = date_levels.get(&symbol.into()) {
+            if let Some(depth) = date_levels.get(symbol) {
                 return depth.asks.first();
             }
         }
         None
+    }
+
+    pub fn get_bbo(&self, date: impl Borrow<i64>, symbol: &str) -> Option<BBO> {
+        let best_bid = self.get_best_bid(date.borrow(), symbol)?;
+        let best_ask = self.get_best_ask(date.borrow(), symbol)?;
+
+        Some(BBO {
+            bid: best_bid.price,
+            bid_volume: best_bid.size,
+            ask: best_ask.price,
+            ask_volume: best_ask.size,
+            symbol: symbol.to_string(),
+            date: *date.borrow(),
+        })
     }
 
     pub fn add_price_level(
