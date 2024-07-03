@@ -1,3 +1,5 @@
+#![allow(dead_code)]
+
 use std::{borrow::Borrow, collections::HashMap};
 
 use serde::{Deserialize, Serialize};
