@@ -2,6 +2,8 @@
 
 use std::{borrow::Borrow, collections::HashMap};
 
+use rand::thread_rng;
+use rand_distr::{Distribution, Uniform};
 use serde::{Deserialize, Serialize};
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
@@ -131,6 +133,35 @@ impl Athena {
 
             date_levels.insert(symbol_string, depth);
         }
+    }
+
+    pub fn random(length: i64, symbols: Vec<&str>) -> Self {
+        let price_dist = Uniform::new(90.0, 100.0);
+        let size_dist = Uniform::new(100.0, 1000.0);
+        let mut rng = thread_rng();
+
+        let mut source = Self::new();
+
+        for date in 100..length + 100 {
+            let random_price = price_dist.sample(&mut rng);
+            let random_size = size_dist.sample(&mut rng);
+
+            for symbol in &symbols {
+                let bid_level = Level {
+                    price: random_price * 1.01,
+                    size: random_size,
+                };
+
+                let ask_level = Level {
+                    price: random_price * 0.99,
+                    size: random_size,
+                };
+
+                source.add_price_level(date, *symbol, bid_level, Side::Bid);
+                source.add_price_level(date, *symbol, ask_level, Side::Ask);
+            }
+        }
+        source
     }
 
     pub fn new() -> Self {
