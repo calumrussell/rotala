@@ -48,12 +48,30 @@ pub struct BBO {
     pub date: i64,
 }
 
+pub type DateQuotes = HashMap<String, Depth>;
+
 pub struct Athena {
     dates: Vec<i64>,
-    inner: HashMap<i64, HashMap<String, Depth>>,
+    inner: HashMap<i64, DateQuotes>,
 }
 
 impl Athena {
+    fn get_quotes(&self, date: &i64) -> Option<&DateQuotes> {
+        self.inner.get(date)
+    }
+
+    fn get_quotes_unchecked(&self, date: &i64) -> &DateQuotes {
+        self.get_quotes(date).unwrap()
+    }
+
+    pub fn get_date(&self, pos: usize) -> Option<&i64> {
+        self.dates.get(pos)
+    }
+
+    pub fn has_next(&self, pos: usize) -> bool {
+        self.dates.len() > pos
+    }
+
     pub fn get_best_bid(
         &self,
         date: impl Borrow<i64>,
