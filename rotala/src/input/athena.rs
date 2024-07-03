@@ -24,6 +24,7 @@ pub struct Depth {
     pub bids: Vec<Level>,
     pub asks: Vec<Level>,
     pub date: i64,
+    pub symbol: String,
 }
 
 impl Depth {
@@ -40,6 +41,28 @@ impl Depth {
                     .sort_by(|x, y| x.price.partial_cmp(&y.price).unwrap());
             }
         }
+    }
+
+    pub fn get_best_bid(&self) -> Option<&Level> {
+        self.bids.last()
+    }
+
+    pub fn get_best_ask(&self) -> Option<&Level> {
+        self.asks.first()
+    }
+
+    pub fn get_bbo(&self) -> Option<BBO> {
+        let best_bid = self.get_best_bid()?;
+        let best_ask = self.get_best_ask()?;
+
+        Some(BBO {
+            bid: best_bid.price,
+            bid_volume: best_bid.size,
+            ask: best_ask.price,
+            ask_volume: best_ask.size,
+            symbol: self.symbol.clone(),
+            date: self.date,
+        })
     }
 }
 
@@ -78,44 +101,24 @@ impl Athena {
     }
 
     pub fn get_best_bid(&self, date: impl Borrow<i64>, symbol: &str) -> Option<&Level> {
-        if let Some(date_levels) = self.inner.get(date.borrow()) {
-            if let Some(depth) = date_levels.get(symbol) {
-                return depth.bids.last();
-            }
-        }
-        None
+        let date_levels = self.inner.get(date.borrow())?;
+        let depth = date_levels.get(symbol)?;
+        depth.get_best_bid()
     }
 
     pub fn get_best_ask(&self, date: impl Borrow<i64>, symbol: &str) -> Option<&Level> {
-        if let Some(date_levels) = self.inner.get(date.borrow()) {
-            if let Some(depth) = date_levels.get(symbol) {
-                return depth.asks.first();
-            }
-        }
-        None
+        let date_levels = self.inner.get(date.borrow())?;
+        let depth = date_levels.get(symbol)?;
+        depth.get_best_ask()
     }
 
     pub fn get_bbo(&self, date: impl Borrow<i64>, symbol: &str) -> Option<BBO> {
-        let best_bid = self.get_best_bid(date.borrow(), symbol)?;
-        let best_ask = self.get_best_ask(date.borrow(), symbol)?;
-
-        Some(BBO {
-            bid: best_bid.price,
-            bid_volume: best_bid.size,
-            ask: best_ask.price,
-            ask_volume: best_ask.size,
-            symbol: symbol.to_string(),
-            date: *date.borrow(),
-        })
+        let date_levels = self.inner.get(date.borrow())?;
+        let depth = date_levels.get(symbol)?;
+        depth.get_bbo()
     }
 
-    pub fn add_price_level(
-        &mut self,
-        date: i64,
-        symbol: impl Into<String>,
-        level: Level,
-        side: Side,
-    ) {
+    pub fn add_price_level(&mut self, date: i64, symbol: &str, level: Level, side: Side) {
         self.inner.entry(date).or_default();
 
         let symbol_string = symbol.into();
@@ -129,11 +132,13 @@ impl Athena {
                 Side::Bid => Depth {
                     bids: vec![level],
                     asks: vec![],
+                    symbol: symbol.to_string(),
                     date,
                 },
                 Side::Ask => Depth {
                     bids: vec![],
                     asks: vec![level],
+                    symbol: symbol.to_string(),
                     date,
                 },
             };
