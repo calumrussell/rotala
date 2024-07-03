@@ -1,5 +1,5 @@
-use std::{collections::HashMap, fs::read_to_string};
 use std::path::Path;
+use std::{collections::HashMap, fs::read_to_string};
 
 use serde::{Deserialize, Serialize};
 use serde_json::from_str;
@@ -46,4 +46,3 @@ pub fn get_hyperliquid_l2(path: &Path) -> HashMap<u64, L2Book> {
     }
     result
 }
-
