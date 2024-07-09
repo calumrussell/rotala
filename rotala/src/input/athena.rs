@@ -64,6 +64,15 @@ impl Depth {
             date: self.date,
         })
     }
+
+    pub fn new(date: i64, symbol: impl Into<String>) -> Self {
+        Self {
+            bids: vec![],
+            asks: vec![],
+            date,
+            symbol: symbol.into(),
+        }
+    }
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
