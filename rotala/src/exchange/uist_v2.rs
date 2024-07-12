@@ -104,6 +104,10 @@ pub struct Trade {
 }
 
 // FillTracker is stored over the life of an execution cycle.
+// New data structure is created so that we do not have to modify the underlying quotes that are
+// passed to the execute_orders function. Orderbook is intended to be relatively pure and so needs
+// to hold the minimum amount of data itself. Modifying underlying quotes would mean copies, which
+// would get expensive.
 struct FillTracker {
     inner: HashMap<String, HashMap<String, f64>>,
 }
