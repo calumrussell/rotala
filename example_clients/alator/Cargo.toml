@@ -9,11 +9,11 @@ repository = "https://github.com/calumrussell/alator"
 readme = "README.md"
 
 [dependencies]
-itertools = "0.12.0"
+itertools = "0.13.0"
 time = { version = "0.3.17", features = ["macros", "parsing"] }
 rand = "0.8.4"
 rand_distr = "0.4.1"
-log = "0.4.17" 
+log = "0.4.17"
 env_logger = "0.11.0"
 pyo3 = { version = "0.22.1", optional = true }
 async-trait = "0.1.73"
@@ -22,10 +22,10 @@ futures = "0.3.28"
 rotala = { path = "../../rotala/" }
 
 [dev-dependencies]
-reqwest = { version = "0.11.11", features=["blocking"] }
+reqwest = { version = "0.12.5", features = ["blocking"] }
 zip = "0.6.2"
 csv = "1.1.6"
-criterion = { version="0.5.1", features= ["async_tokio"] }
+criterion = { version = "0.5.1", features = ["async_tokio"] }
 
 [lib]
 bench = false
