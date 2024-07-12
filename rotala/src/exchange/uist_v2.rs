@@ -41,41 +41,50 @@ pub struct Order {
     pub symbol: String,
     pub qty: f64,
     pub price: Option<f64>,
+    pub recieved: i64,
 }
 
 impl Order {
-    fn market(order_type: OrderType, symbol: impl Into<String>, shares: f64) -> Self {
+    fn market(order_type: OrderType, symbol: impl Into<String>, shares: f64, now: i64) -> Self {
         Self {
             order_type,
             symbol: symbol.into(),
             qty: shares,
             price: None,
+            recieved: now,
         }
     }
 
-    fn delayed(order_type: OrderType, symbol: impl Into<String>, shares: f64, price: f64) -> Self {
+    fn delayed(
+        order_type: OrderType,
+        symbol: impl Into<String>,
+        shares: f64,
+        price: f64,
+        now: i64,
+    ) -> Self {
         Self {
             order_type,
             symbol: symbol.into(),
             qty: shares,
             price: Some(price),
+            recieved: now,
         }
     }
 
-    pub fn market_buy(symbol: impl Into<String>, shares: f64) -> Self {
-        Order::market(OrderType::MarketBuy, symbol, shares)
+    pub fn market_buy(symbol: impl Into<String>, shares: f64, now: i64) -> Self {
+        Order::market(OrderType::MarketBuy, symbol, shares, now)
     }
 
-    pub fn market_sell(symbol: impl Into<String>, shares: f64) -> Self {
-        Order::market(OrderType::MarketSell, symbol, shares)
+    pub fn market_sell(symbol: impl Into<String>, shares: f64, now: i64) -> Self {
+        Order::market(OrderType::MarketSell, symbol, shares, now)
     }
 
-    pub fn limit_buy(symbol: impl Into<String>, shares: f64, price: f64) -> Self {
-        Order::delayed(OrderType::LimitBuy, symbol, shares, price)
+    pub fn limit_buy(symbol: impl Into<String>, shares: f64, price: f64, now: i64) -> Self {
+        Order::delayed(OrderType::LimitBuy, symbol, shares, price, now)
     }
 
-    pub fn limit_sell(symbol: impl Into<String>, shares: f64, price: f64) -> Self {
-        Order::delayed(OrderType::LimitSell, symbol, shares, price)
+    pub fn limit_sell(symbol: impl Into<String>, shares: f64, price: f64, now: i64) -> Self {
+        Order::delayed(OrderType::LimitSell, symbol, shares, price, now)
     }
 }
 
@@ -133,8 +142,23 @@ impl FillTracker {
     }
 }
 
+pub enum LatencyModel {
+    None,
+    FixedPeriod(i64),
+}
+
+impl LatencyModel {
+    fn cmp_order(&self, now: i64, order: &Order) -> bool {
+        match self {
+            Self::None => true,
+            Self::FixedPeriod(period) => order.recieved + period < now,
+        }
+    }
+}
+
 pub struct OrderBook {
     inner: VecDeque<Order>,
+    latency: LatencyModel,
 }
 
 impl Default for OrderBook {
@@ -147,6 +171,14 @@ impl OrderBook {
     pub fn new() -> Self {
         Self {
             inner: std::collections::VecDeque::new(),
+            latency: LatencyModel::None,
+        }
+    }
+
+    pub fn with_latency(latency: i64) -> Self {
+        Self {
+            inner: std::collections::VecDeque::new(),
+            latency: LatencyModel::FixedPeriod(latency),
         }
     }
 
@@ -228,21 +260,11 @@ impl OrderBook {
         trades
     }
 
-    fn trade_loop(depth: &Depth, order: &Order, filled: &mut FillTracker) -> Option<Vec<Trade>> {
-        let res = match order.order_type {
-            OrderType::MarketBuy => Self::fill_order(depth, order, true, f64::MAX, filled),
-            OrderType::MarketSell => Self::fill_order(depth, order, false, f64::MIN, filled),
-            OrderType::LimitBuy => {
-                Self::fill_order(depth, order, true, order.price.unwrap(), filled)
-            }
-            OrderType::LimitSell => {
-                Self::fill_order(depth, order, false, order.price.unwrap(), filled)
-            }
-        };
-        Some(res)
-    }
-
-    pub fn execute_orders(&mut self, quotes: crate::input::athena::DateQuotes) -> Vec<Trade> {
+    pub fn execute_orders(
+        &mut self,
+        quotes: &crate::input::athena::DateQuotes,
+        now: i64,
+    ) -> Vec<Trade> {
         //Tracks liquidity that has been used at each level
         let mut filled: FillTracker = FillTracker::new();
 
@@ -254,10 +276,26 @@ impl OrderBook {
         for order in self.inner.iter() {
             let security_id = &order.symbol;
 
+            if !self.latency.cmp_order(now, order) {
+                continue;
+            }
+
             if let Some(depth) = quotes.get(security_id) {
-                if let Some(mut trade) = Self::trade_loop(depth, order, &mut filled) {
-                    trade_results.append(&mut trade);
-                }
+                let mut trades = match order.order_type {
+                    OrderType::MarketBuy => {
+                        Self::fill_order(depth, order, true, f64::MAX, &mut filled)
+                    }
+                    OrderType::MarketSell => {
+                        Self::fill_order(depth, order, false, f64::MIN, &mut filled)
+                    }
+                    OrderType::LimitBuy => {
+                        Self::fill_order(depth, order, true, order.price.unwrap(), &mut filled)
+                    }
+                    OrderType::LimitSell => {
+                        Self::fill_order(depth, order, false, order.price.unwrap(), &mut filled)
+                    }
+                };
+                trade_results.append(&mut trades)
             }
         }
         trade_results
@@ -293,10 +331,10 @@ mod tests {
         quotes.insert("ABC".to_string(), depth);
 
         let mut orderbook = OrderBook::new();
-        let order = Order::market_buy("ABC", 100.0);
+        let order = Order::market_buy("ABC", 100.0, 100);
         orderbook.insert_order(order);
 
-        let res = orderbook.execute_orders(quotes);
+        let res = orderbook.execute_orders(&quotes, 100);
         assert!(res.len() == 1);
         let trade = res.first().unwrap();
         assert!(trade.quantity == 100.00);
@@ -323,10 +361,10 @@ mod tests {
         quotes.insert("ABC".to_string(), depth);
 
         let mut orderbook = OrderBook::new();
-        let order = Order::market_sell("ABC", 100.0);
+        let order = Order::market_sell("ABC", 100.0, 100);
         orderbook.insert_order(order);
 
-        let res = orderbook.execute_orders(quotes);
+        let res = orderbook.execute_orders(&quotes, 100);
         assert!(res.len() == 1);
         let trade = res.first().unwrap();
         assert!(trade.quantity == 100.00);
@@ -353,10 +391,10 @@ mod tests {
         quotes.insert("ABC".to_string(), depth);
 
         let mut orderbook = OrderBook::new();
-        let order = Order::market_buy("ABC", 50.0);
+        let order = Order::market_buy("ABC", 50.0, 100);
         orderbook.insert_order(order);
 
-        let res = orderbook.execute_orders(quotes);
+        let res = orderbook.execute_orders(&quotes, 100);
         assert!(res.len() == 1);
         let trade = res.first().unwrap();
         assert!(trade.quantity == 50.00);
@@ -389,10 +427,10 @@ mod tests {
         quotes.insert("ABC".to_string(), depth);
 
         let mut orderbook = OrderBook::new();
-        let order = Order::market_buy("ABC", 100.0);
+        let order = Order::market_buy("ABC", 100.0, 100);
         orderbook.insert_order(order);
 
-        let res = orderbook.execute_orders(quotes);
+        let res = orderbook.execute_orders(&quotes, 100);
         assert!(res.len() == 2);
         let first_trade = res.first().unwrap();
         let second_trade = res.get(1).unwrap();
@@ -435,10 +473,10 @@ mod tests {
         quotes.insert("ABC".to_string(), depth);
 
         let mut orderbook = OrderBook::new();
-        let order = Order::limit_buy("ABC", 120.0, 103.00);
+        let order = Order::limit_buy("ABC", 120.0, 103.00, 100);
         orderbook.insert_order(order);
 
-        let res = orderbook.execute_orders(quotes);
+        let res = orderbook.execute_orders(&quotes, 100);
         println!("{:?}", res);
         assert!(res.len() == 2);
         let first_trade = res.first().unwrap();
@@ -482,10 +520,10 @@ mod tests {
         quotes.insert("ABC".to_string(), depth);
 
         let mut orderbook = OrderBook::new();
-        let order = Order::limit_sell("ABC", 120.0, 99.00);
+        let order = Order::limit_sell("ABC", 120.0, 99.00, 100);
         orderbook.insert_order(order);
 
-        let res = orderbook.execute_orders(quotes);
+        let res = orderbook.execute_orders(&quotes, 100);
         println!("{:?}", res);
         assert!(res.len() == 2);
         let first_trade = res.first().unwrap();
@@ -517,13 +555,54 @@ mod tests {
         quotes.insert("ABC".to_string(), depth);
 
         let mut orderbook = OrderBook::new();
-        let first_order = Order::limit_buy("ABC", 20.0, 103.00);
+        let first_order = Order::limit_buy("ABC", 20.0, 103.00, 100);
         orderbook.insert_order(first_order);
-        let second_order = Order::limit_buy("ABC", 20.0, 103.00);
+        let second_order = Order::limit_buy("ABC", 20.0, 103.00, 100);
         orderbook.insert_order(second_order);
 
-        let res = orderbook.execute_orders(quotes);
+        let res = orderbook.execute_orders(&quotes, 100);
         println!("{:?}", res);
         assert!(res.len() == 1);
+    }
+
+    #[test]
+    fn test_that_latency_model_filters_orders() {
+        let bid_level = Level {
+            price: 98.0,
+            size: 20.0,
+        };
+
+        let ask_level = Level {
+            price: 102.0,
+            size: 20.0,
+        };
+
+        let mut depth = Depth::new(100, "ABC");
+        depth.add_level(bid_level.clone(), crate::input::athena::Side::Bid);
+        depth.add_level(ask_level.clone(), crate::input::athena::Side::Ask);
+
+        let mut depth_101 = Depth::new(101, "ABC");
+        depth_101.add_level(bid_level.clone(), crate::input::athena::Side::Bid);
+        depth_101.add_level(ask_level.clone(), crate::input::athena::Side::Ask);
+
+        let mut depth_102 = Depth::new(102, "ABC");
+        depth_102.add_level(bid_level, crate::input::athena::Side::Bid);
+        depth_102.add_level(ask_level, crate::input::athena::Side::Ask);
+
+        let mut quotes: DateQuotes = HashMap::new();
+        quotes.insert("ABC".to_string(), depth);
+        quotes.insert("ABC".to_string(), depth_101);
+        quotes.insert("ABC".to_string(), depth_102);
+
+        let mut orderbook = OrderBook::with_latency(1);
+        let order = Order::limit_buy("ABC", 20.0, 103.00, 100);
+        orderbook.insert_order(order);
+
+        let trades_100 = orderbook.execute_orders(&quotes, 100);
+        let trades_101 = orderbook.execute_orders(&quotes, 101);
+        let trades_102 = orderbook.execute_orders(&quotes, 102);
+        assert!(trades_100.is_empty());
+        assert!(trades_101.is_empty());
+        assert!(trades_102.len() == 1);
     }
 }
