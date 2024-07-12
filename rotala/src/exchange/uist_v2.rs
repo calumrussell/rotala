@@ -1,8 +1,8 @@
-use std::collections::VecDeque;
+use std::collections::{HashMap, VecDeque};
 
 use serde::{Deserialize, Serialize};
 
-use crate::input::athena::Depth;
+use crate::input::athena::{Depth, Level};
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct Quote {
@@ -94,6 +94,45 @@ pub struct Trade {
     pub typ: TradeType,
 }
 
+// FillTracker is stored over the life of an execution cycle.
+struct FillTracker {
+    inner: HashMap<String, HashMap<String, f64>>,
+}
+
+impl FillTracker {
+    fn get_fill(&self, symbol: &str, level: &Level) -> f64 {
+        //Can default to zero instead of None
+        if let Some(fills) = self.inner.get(symbol) {
+            let level_string = level.price.to_string();
+            if let Some(val) = fills.get(&level_string) {
+                return *val;
+            }
+        }
+        0.0
+    }
+
+    fn insert_fill(&mut self, symbol: &str, level: &Level, filled: f64) {
+        if !self.inner.contains_key(symbol) {
+            self.inner
+                .insert(symbol.to_string().clone(), HashMap::new());
+        }
+
+        let fills = self.inner.get_mut(symbol).unwrap();
+        let level_string = level.price.to_string();
+
+        fills
+            .entry(level_string)
+            .and_modify(|count| *count += filled)
+            .or_insert(filled);
+    }
+
+    pub fn new() -> Self {
+        Self {
+            inner: HashMap::new(),
+        }
+    }
+}
+
 pub struct OrderBook {
     inner: VecDeque<Order>,
 }
@@ -119,7 +158,13 @@ impl OrderBook {
         self.inner.is_empty()
     }
 
-    fn fill_order(depth: &Depth, order: &Order, is_buy: bool, price_check: f64) -> Vec<Trade> {
+    fn fill_order(
+        depth: &Depth,
+        order: &Order,
+        is_buy: bool,
+        price_check: f64,
+        filled: &mut FillTracker,
+    ) -> Vec<Trade> {
         let mut to_fill = order.qty;
         let mut trades = Vec::new();
 
@@ -129,11 +174,13 @@ impl OrderBook {
                     break;
                 }
 
-                let qty = if ask.size >= to_fill {
-                    to_fill
-                } else {
-                    ask.size
-                };
+                let filled_size = filled.get_fill(&order.symbol, ask);
+                let size = ask.size - filled_size;
+                if size == 0.0 {
+                    break;
+                }
+
+                let qty = if size >= to_fill { to_fill } else { size };
                 to_fill -= qty;
                 let trade = Trade {
                     symbol: order.symbol.clone(),
@@ -143,6 +190,8 @@ impl OrderBook {
                     typ: TradeType::Buy,
                 };
                 trades.push(trade);
+                filled.insert_fill(&order.symbol, ask, qty);
+
                 if to_fill == 0.0 {
                     break;
                 }
@@ -153,11 +202,13 @@ impl OrderBook {
                     break;
                 }
 
-                let qty = if bid.size >= to_fill {
-                    to_fill
-                } else {
-                    bid.size
-                };
+                let filled_size = filled.get_fill(&order.symbol, bid);
+                let size = bid.size - filled_size;
+                if size == 0.0 {
+                    break;
+                }
+
+                let qty = if size >= to_fill { to_fill } else { size };
                 to_fill -= qty;
                 let trade = Trade {
                     symbol: order.symbol.clone(),
@@ -167,6 +218,8 @@ impl OrderBook {
                     typ: TradeType::Sell,
                 };
                 trades.push(trade);
+                filled.insert_fill(&order.symbol, bid, qty);
+
                 if to_fill == 0.0 {
                     break;
                 }
@@ -175,17 +228,24 @@ impl OrderBook {
         trades
     }
 
-    fn trade_loop(depth: &Depth, order: &Order) -> Option<Vec<Trade>> {
+    fn trade_loop(depth: &Depth, order: &Order, filled: &mut FillTracker) -> Option<Vec<Trade>> {
         let res = match order.order_type {
-            OrderType::MarketBuy => Self::fill_order(depth, order, true, f64::MAX),
-            OrderType::MarketSell => Self::fill_order(depth, order, false, f64::MIN),
-            OrderType::LimitBuy => Self::fill_order(depth, order, true, order.price.unwrap()),
-            OrderType::LimitSell => Self::fill_order(depth, order, false, order.price.unwrap()),
+            OrderType::MarketBuy => Self::fill_order(depth, order, true, f64::MAX, filled),
+            OrderType::MarketSell => Self::fill_order(depth, order, false, f64::MIN, filled),
+            OrderType::LimitBuy => {
+                Self::fill_order(depth, order, true, order.price.unwrap(), filled)
+            }
+            OrderType::LimitSell => {
+                Self::fill_order(depth, order, false, order.price.unwrap(), filled)
+            }
         };
         Some(res)
     }
 
     pub fn execute_orders(&mut self, quotes: crate::input::athena::DateQuotes) -> Vec<Trade> {
+        //Tracks liquidity that has been used at each level
+        let mut filled: FillTracker = FillTracker::new();
+
         let mut trade_results = Vec::new();
         if self.is_empty() {
             return trade_results;
@@ -195,7 +255,7 @@ impl OrderBook {
             let security_id = &order.symbol;
 
             if let Some(depth) = quotes.get(security_id) {
-                if let Some(mut trade) = Self::trade_loop(depth, order) {
+                if let Some(mut trade) = Self::trade_loop(depth, order, &mut filled) {
                     trade_results.append(&mut trade);
                 }
             }
@@ -435,5 +495,35 @@ mod tests {
         println!("{:?}", second_trade);
         assert!(first_trade.quantity == 80.0);
         assert!(second_trade.quantity == 20.0);
+    }
+
+    #[test]
+    fn test_that_repeated_orders_do_not_use_same_liquidty() {
+        let bid_level = Level {
+            price: 98.0,
+            size: 20.0,
+        };
+
+        let ask_level = Level {
+            price: 102.0,
+            size: 20.0,
+        };
+
+        let mut depth = Depth::new(100, "ABC");
+        depth.add_level(bid_level, crate::input::athena::Side::Bid);
+        depth.add_level(ask_level, crate::input::athena::Side::Ask);
+
+        let mut quotes: DateQuotes = HashMap::new();
+        quotes.insert("ABC".to_string(), depth);
+
+        let mut orderbook = OrderBook::new();
+        let first_order = Order::limit_buy("ABC", 20.0, 103.00);
+        orderbook.insert_order(first_order);
+        let second_order = Order::limit_buy("ABC", 20.0, 103.00);
+        orderbook.insert_order(second_order);
+
+        let res = orderbook.execute_orders(quotes);
+        println!("{:?}", res);
+        assert!(res.len() == 1);
     }
 }
