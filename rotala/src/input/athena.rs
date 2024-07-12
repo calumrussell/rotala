@@ -33,7 +33,7 @@ impl Depth {
             Side::Bid => {
                 self.bids.push(level);
                 self.bids
-                    .sort_by(|x, y| x.price.partial_cmp(&y.price).unwrap());
+                    .sort_by(|x, y| x.price.partial_cmp(&y.price).unwrap().reverse());
             }
             Side::Ask => {
                 self.asks.push(level);
@@ -44,7 +44,7 @@ impl Depth {
     }
 
     pub fn get_best_bid(&self) -> Option<&Level> {
-        self.bids.last()
+        self.bids.first()
     }
 
     pub fn get_best_ask(&self) -> Option<&Level> {
@@ -207,24 +207,31 @@ mod tests {
     fn test_that_insertions_are_sorted() {
         let mut athena = Athena::new();
 
-        let level = Level {
+        let bid0 = Level {
             price: 100.0,
             size: 100.0,
         };
 
-        let level1 = Level {
+        let bid1 = Level {
             price: 101.0,
             size: 100.0,
         };
 
-        let level2 = Level {
+        let ask0 = Level {
             price: 102.0,
             size: 100.0,
         };
 
-        athena.add_price_level(100, "ABC", level2, Side::Ask);
-        athena.add_price_level(100, "ABC", level1, Side::Bid);
-        athena.add_price_level(100, "ABC", level, Side::Bid);
+        let ask1 = Level {
+            price: 103.0,
+            size: 100.0,
+        };
+
+        athena.add_price_level(100, "ABC", bid0, Side::Bid);
+        athena.add_price_level(100, "ABC", ask0, Side::Ask);
+
+        athena.add_price_level(100, "ABC", bid1, Side::Bid);
+        athena.add_price_level(100, "ABC", ask1, Side::Ask);
 
         assert_eq!(athena.get_best_bid(100, "ABC").unwrap().price, 101.0);
         assert_eq!(athena.get_best_ask(100, "ABC").unwrap().price, 102.0);

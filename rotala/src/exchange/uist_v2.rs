@@ -31,6 +31,8 @@ impl From<crate::input::athena::BBO> for Quote {
 pub enum OrderType {
     MarketSell,
     MarketBuy,
+    LimitBuy,
+    LimitSell,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
@@ -51,12 +53,29 @@ impl Order {
         }
     }
 
+    fn delayed(order_type: OrderType, symbol: impl Into<String>, shares: f64, price: f64) -> Self {
+        Self {
+            order_type,
+            symbol: symbol.into(),
+            qty: shares,
+            price: Some(price),
+        }
+    }
+
     pub fn market_buy(symbol: impl Into<String>, shares: f64) -> Self {
         Order::market(OrderType::MarketBuy, symbol, shares)
     }
 
     pub fn market_sell(symbol: impl Into<String>, shares: f64) -> Self {
         Order::market(OrderType::MarketSell, symbol, shares)
+    }
+
+    pub fn limit_buy(symbol: impl Into<String>, shares: f64, price: f64) -> Self {
+        Order::delayed(OrderType::LimitBuy, symbol, shares, price)
+    }
+
+    pub fn limit_sell(symbol: impl Into<String>, shares: f64, price: f64) -> Self {
+        Order::delayed(OrderType::LimitSell, symbol, shares, price)
     }
 }
 
@@ -100,12 +119,16 @@ impl OrderBook {
         self.inner.is_empty()
     }
 
-    fn fill_order(depth: &Depth, order: &Order, is_buy: bool) -> Vec<Trade> {
+    fn fill_order(depth: &Depth, order: &Order, is_buy: bool, price_check: f64) -> Vec<Trade> {
         let mut to_fill = order.qty;
         let mut trades = Vec::new();
 
         if is_buy {
             for ask in &depth.asks {
+                if ask.price > price_check {
+                    break;
+                }
+
                 let qty = if ask.size >= to_fill {
                     to_fill
                 } else {
@@ -124,14 +147,40 @@ impl OrderBook {
                     break;
                 }
             }
+        } else {
+            for bid in &depth.bids {
+                if price_check > bid.price {
+                    break;
+                }
+
+                let qty = if bid.size >= to_fill {
+                    to_fill
+                } else {
+                    bid.size
+                };
+                to_fill -= qty;
+                let trade = Trade {
+                    symbol: order.symbol.clone(),
+                    value: bid.price * order.qty,
+                    quantity: qty,
+                    date: depth.date,
+                    typ: TradeType::Sell,
+                };
+                trades.push(trade);
+                if to_fill == 0.0 {
+                    break;
+                }
+            }
         }
         trades
     }
 
     fn trade_loop(depth: &Depth, order: &Order) -> Option<Vec<Trade>> {
         let res = match order.order_type {
-            OrderType::MarketBuy => Self::fill_order(depth, order, true),
-            OrderType::MarketSell => Self::fill_order(depth, order, false),
+            OrderType::MarketBuy => Self::fill_order(depth, order, true, f64::MAX),
+            OrderType::MarketSell => Self::fill_order(depth, order, false, f64::MIN),
+            OrderType::LimitBuy => Self::fill_order(depth, order, true, order.price.unwrap()),
+            OrderType::LimitSell => Self::fill_order(depth, order, false, order.price.unwrap()),
         };
         Some(res)
     }
@@ -165,7 +214,7 @@ mod tests {
     };
 
     #[test]
-    fn test_that_order_will_lift_all_volume_when_order_is_equal_to_depth_size() {
+    fn test_that_buy_order_will_lift_all_volume_when_order_is_equal_to_depth_size() {
         let bid_level = Level {
             price: 100.0,
             size: 100.0,
@@ -192,6 +241,36 @@ mod tests {
         let trade = res.first().unwrap();
         assert!(trade.quantity == 100.00);
         assert!(trade.value / trade.quantity == 102.00);
+    }
+
+    #[test]
+    fn test_that_sell_order_will_lift_all_volume_when_order_is_equal_to_depth_size() {
+        let bid_level = Level {
+            price: 100.0,
+            size: 100.0,
+        };
+
+        let ask_level = Level {
+            price: 102.0,
+            size: 100.0,
+        };
+
+        let mut depth = Depth::new(100, "ABC");
+        depth.add_level(bid_level, crate::input::athena::Side::Bid);
+        depth.add_level(ask_level, crate::input::athena::Side::Ask);
+
+        let mut quotes: DateQuotes = HashMap::new();
+        quotes.insert("ABC".to_string(), depth);
+
+        let mut orderbook = OrderBook::new();
+        let order = Order::market_sell("ABC", 100.0);
+        orderbook.insert_order(order);
+
+        let res = orderbook.execute_orders(quotes);
+        assert!(res.len() == 1);
+        let trade = res.first().unwrap();
+        assert!(trade.quantity == 100.00);
+        assert!(trade.value / trade.quantity == 100.00);
     }
 
     #[test]
@@ -237,7 +316,7 @@ mod tests {
         };
 
         let ask_level_1 = Level {
-            price: 102.0,
+            price: 103.0,
             size: 20.0,
         };
 
@@ -254,6 +333,100 @@ mod tests {
         orderbook.insert_order(order);
 
         let res = orderbook.execute_orders(quotes);
+        assert!(res.len() == 2);
+        let first_trade = res.first().unwrap();
+        let second_trade = res.get(1).unwrap();
+
+        println!("{:?}", first_trade);
+        println!("{:?}", second_trade);
+        assert!(first_trade.quantity == 80.0);
+        assert!(second_trade.quantity == 20.0);
+    }
+
+    #[test]
+    fn test_that_limit_buy_order_lifts_all_volume_when_price_is_good() {
+        let bid_level = Level {
+            price: 100.0,
+            size: 100.0,
+        };
+
+        let ask_level = Level {
+            price: 102.0,
+            size: 80.0,
+        };
+
+        let ask_level_1 = Level {
+            price: 103.0,
+            size: 20.0,
+        };
+
+        let ask_level_2 = Level {
+            price: 104.0,
+            size: 20.0,
+        };
+
+        let mut depth = Depth::new(100, "ABC");
+        depth.add_level(bid_level, crate::input::athena::Side::Bid);
+        depth.add_level(ask_level, crate::input::athena::Side::Ask);
+        depth.add_level(ask_level_1, crate::input::athena::Side::Ask);
+        depth.add_level(ask_level_2, crate::input::athena::Side::Ask);
+
+        let mut quotes: DateQuotes = HashMap::new();
+        quotes.insert("ABC".to_string(), depth);
+
+        let mut orderbook = OrderBook::new();
+        let order = Order::limit_buy("ABC", 120.0, 103.00);
+        orderbook.insert_order(order);
+
+        let res = orderbook.execute_orders(quotes);
+        println!("{:?}", res);
+        assert!(res.len() == 2);
+        let first_trade = res.first().unwrap();
+        let second_trade = res.get(1).unwrap();
+
+        println!("{:?}", first_trade);
+        println!("{:?}", second_trade);
+        assert!(first_trade.quantity == 80.0);
+        assert!(second_trade.quantity == 20.0);
+    }
+
+    #[test]
+    fn test_that_limit_sell_order_lifts_all_volume_when_price_is_good() {
+        let bid_level_0 = Level {
+            price: 98.0,
+            size: 20.0,
+        };
+
+        let bid_level_1 = Level {
+            price: 99.0,
+            size: 20.0,
+        };
+
+        let bid_level_2 = Level {
+            price: 100.0,
+            size: 80.0,
+        };
+
+        let ask_level = Level {
+            price: 102.0,
+            size: 80.0,
+        };
+
+        let mut depth = Depth::new(100, "ABC");
+        depth.add_level(bid_level_0, crate::input::athena::Side::Bid);
+        depth.add_level(bid_level_1, crate::input::athena::Side::Bid);
+        depth.add_level(bid_level_2, crate::input::athena::Side::Bid);
+        depth.add_level(ask_level, crate::input::athena::Side::Ask);
+
+        let mut quotes: DateQuotes = HashMap::new();
+        quotes.insert("ABC".to_string(), depth);
+
+        let mut orderbook = OrderBook::new();
+        let order = Order::limit_sell("ABC", 120.0, 99.00);
+        orderbook.insert_order(order);
+
+        let res = orderbook.execute_orders(quotes);
+        println!("{:?}", res);
         assert!(res.len() == 2);
         let first_trade = res.first().unwrap();
         let second_trade = res.get(1).unwrap();
