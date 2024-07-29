@@ -1,7 +1,7 @@
 #![allow(dead_code)]
 
-use std::{borrow::Borrow, collections::HashSet};
 use std::collections::HashMap;
+use std::{borrow::Borrow, collections::HashSet};
 
 use rand::thread_rng;
 use rand_distr::{Distribution, Uniform};
@@ -162,7 +162,6 @@ impl Athena {
             self.dates.push(date);
             self.dates_seen.insert(date);
         }
-
     }
 
     pub fn random(length: i64, symbols: Vec<&str>) -> Self {

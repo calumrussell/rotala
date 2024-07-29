@@ -387,8 +387,8 @@ mod server {
     use actix_web::{get, post, web};
 
     use super::{
-        BacktestId, FetchQuotesResponse, InfoResponse, InitResponse,
-        InsertOrderRequest, NowResponse, TickResponse, UistState, UistV2Error,
+        BacktestId, FetchQuotesResponse, InfoResponse, InitResponse, InsertOrderRequest,
+        NowResponse, TickResponse, UistState, UistV2Error,
     };
 
     #[get("/backtest/{backtest_id}/tick")]
@@ -529,7 +529,7 @@ mod tests {
                 .service(fetch_quotes)
                 .service(tick)
                 .service(insert_order)
-                .service(now)
+                .service(now),
         )
         .await;
 

@@ -122,9 +122,7 @@ impl UistV2 {
 
     fn sort_order_buffer(&mut self) {
         self.order_buffer.sort_by(|a, _b| match a.order_type {
-            OrderType::LimitSell | OrderType::MarketSell => {
-                std::cmp::Ordering::Less
-            }
+            OrderType::LimitSell | OrderType::MarketSell => std::cmp::Ordering::Less,
             _ => std::cmp::Ordering::Greater,
         })
     }

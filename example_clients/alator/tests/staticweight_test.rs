@@ -4,7 +4,7 @@ use alator::broker::uist::UistBrokerBuilder;
 use alator::broker::BrokerCost;
 
 use alator::strategy::staticweight::{PortfolioAllocation, StaticWeightStrategyBuilder};
-use rotala::http::uist_v1::{TestClient, Client};
+use rotala::http::uist_v1::{Client, TestClient};
 use rotala::input::penelope::Penelope;
 
 #[tokio::test]

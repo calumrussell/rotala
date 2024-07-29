@@ -9,7 +9,7 @@ use std::{
 
 use log::info;
 use rotala::exchange::uist_v1::{Order, OrderType, Trade, TradeType, UistQuote, UistV1};
-use rotala::http::uist_v1::{ Client, BacktestId};
+use rotala::http::uist_v1::{BacktestId, Client};
 
 use crate::{broker::BrokerOrder, strategy::staticweight::StaticWeightBroker};
 
