@@ -158,7 +158,6 @@ impl Default for UistV2 {
     fn default() -> Self {
         Self::new()
     }
-
 }
 
 // FillTracker is stored over the life of an execution cycle.
