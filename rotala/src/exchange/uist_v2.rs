@@ -154,6 +154,13 @@ impl UistV2 {
     }
 }
 
+impl Default for UistV2 {
+    fn default() -> Self {
+        Self::new()
+    }
+
+}
+
 // FillTracker is stored over the life of an execution cycle.
 // New data structure is created so that we do not have to modify the underlying quotes that are
 // passed to the execute_orders function. Orderbook is intended to be relatively pure and so needs
