@@ -42,13 +42,13 @@ impl From<Side> for String {
 /// functions that report on the client's overall position won't be implemented at this stage.
 /// * closed_pnl, unimplemented because the exchange does not keep track of client pnl
 /// * dir, unimplemented as this appears to track the overall position in a coin, will always
-/// be set to false
+///   be set to false
 /// * crossed, this is unclear and may relate to margin or the execution of previous trades, this
-/// will always be set to false
+///   will always be set to false
 /// * hash, will always be an empty string, as HL is on-chain a transaction hash is produced but
-/// won't be in a test env, always set to false
+///   won't be in a test env, always set to false
 /// * start_position, unimplemented as this relates to overall position which is untracked, will
-/// always be set to false
+///   always be set to false
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct Fill {
     pub closed_pnl: String,
