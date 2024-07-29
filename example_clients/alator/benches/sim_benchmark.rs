@@ -4,7 +4,7 @@ use criterion::{criterion_group, criterion_main, Criterion};
 use std::collections::HashMap;
 
 use alator::strategy::staticweight::StaticWeightStrategyBuilder;
-use rotala::http::uist::uistv1_client::{TestClient, UistClient};
+use rotala::http::uist_v1::{TestClient, Client};
 use rotala::input::penelope::Penelope;
 
 async fn full_backtest_random_data() {

@@ -8,7 +8,7 @@ use serde::{Deserialize, Serialize};
 use crate::exchange::uist_v1::{Order, OrderId, Trade, UistV1};
 use crate::input::penelope::{Penelope, PenelopeQuoteByDate};
 
-type BacktestId = u64;
+pub type BacktestId = u64;
 
 pub struct BacktestState {
     pub id: BacktestId,
@@ -425,7 +425,7 @@ impl HttpClient {
 
 type UistState = Mutex<AppState>;
 
-mod server {
+pub mod server {
     use actix_web::{get, post, web};
 
     use super::{

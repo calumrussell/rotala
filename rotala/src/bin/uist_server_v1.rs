@@ -3,8 +3,8 @@ use std::sync::Mutex;
 
 use actix_web::{web, App, HttpServer};
 use rotala::{
-    http::uist::{
-        uistv1_server::{delete_order, fetch_quotes, info, init, insert_order, tick},
+    http::uist_v1::{
+        server::{delete_order, fetch_quotes, info, init, insert_order, tick},
         AppState,
     },
     input::penelope::Penelope,

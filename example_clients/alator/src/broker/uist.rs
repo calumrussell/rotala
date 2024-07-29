@@ -9,8 +9,7 @@ use std::{
 
 use log::info;
 use rotala::exchange::uist_v1::{Order, OrderType, Trade, TradeType, UistQuote, UistV1};
-use rotala::http::uist::uistv1_client::Client;
-use rotala::http::uist::uistv1_client::{BacktestId, UistClient};
+use rotala::http::uist_v1::{ Client, BacktestId};
 
 use crate::{broker::BrokerOrder, strategy::staticweight::StaticWeightBroker};
 
@@ -23,7 +22,7 @@ type UistBrokerEvent = BrokerEvent<Order>;
 
 /// Implementation of broker that uses the [Uist](rotala::exchange::uist::UistV1) exchange.
 #[derive(Debug)]
-pub struct UistBroker<C: UistClient> {
+pub struct UistBroker<C: Client> {
     cash: f64,
     holdings: PortfolioHoldings,
     //Kept distinct from holdings because some perf calculations may need to distinguish between
@@ -39,9 +38,9 @@ pub struct UistBroker<C: UistClient> {
     backtest_id: BacktestId,
 }
 
-impl<C: UistClient> StaticWeightBroker<UistQuote, Order> for UistBroker<C> {}
+impl<C: Client> StaticWeightBroker<UistQuote, Order> for UistBroker<C> {}
 
-impl<C: UistClient> Quote<UistQuote> for UistBroker<C> {
+impl<C: Client> Quote<UistQuote> for UistBroker<C> {
     fn get_quote(&self, symbol: &str) -> Option<UistQuote> {
         self.latest_quotes.get(symbol).cloned()
     }
@@ -59,7 +58,7 @@ impl<C: UistClient> Quote<UistQuote> for UistBroker<C> {
     }
 }
 
-impl<C: UistClient> Portfolio<UistQuote> for UistBroker<C> {
+impl<C: Client> Portfolio<UistQuote> for UistBroker<C> {
     fn get_trade_costs(&self) -> Vec<BrokerCost> {
         self.trade_costs.clone()
     }
@@ -100,7 +99,7 @@ impl<C: UistClient> Portfolio<UistQuote> for UistBroker<C> {
     }
 }
 
-impl<C: UistClient> BrokerStates for UistBroker<C> {
+impl<C: Client> BrokerStates for UistBroker<C> {
     fn get_broker_state(&self) -> BrokerState {
         self.broker_state.clone()
     }
@@ -110,11 +109,11 @@ impl<C: UistClient> BrokerStates for UistBroker<C> {
     }
 }
 
-impl<C: UistClient> CashOperations<UistQuote> for UistBroker<C> {}
+impl<C: Client> CashOperations<UistQuote> for UistBroker<C> {}
 
-impl<C: UistClient> BrokerOperations<Order, UistQuote> for UistBroker<C> {}
+impl<C: Client> BrokerOperations<Order, UistQuote> for UistBroker<C> {}
 
-impl<C: UistClient> SendOrder<Order> for UistBroker<C> {
+impl<C: Client> SendOrder<Order> for UistBroker<C> {
     fn send_order(&mut self, order: Order) -> UistBrokerEvent {
         //This is an estimate of the cost based on the current price, can still end with negative
         //balance when we reconcile with actuals, may also reject valid orders at the margin
@@ -216,7 +215,7 @@ impl<C: UistClient> SendOrder<Order> for UistBroker<C> {
     }
 }
 
-impl<C: UistClient> Update for UistBroker<C> {
+impl<C: Client> Update for UistBroker<C> {
     /// Called on every tick of clock to ensure that state is synchronized with other components.
     ///
     /// * Calls `check` on exchange
@@ -272,7 +271,7 @@ impl<C: UistClient> Update for UistBroker<C> {
     }
 }
 
-impl<C: UistClient> UistBroker<C> {
+impl<C: Client> UistBroker<C> {
     pub fn cost_basis(&self, symbol: &str) -> Option<f64> {
         self.log.cost_basis(symbol)
     }
@@ -282,7 +281,7 @@ impl<C: UistClient> UistBroker<C> {
     }
 }
 
-impl<C: UistClient> Clock for UistBroker<C> {
+impl<C: Client> Clock for UistBroker<C> {
     fn now(&mut self) -> i64 {
         let res = executor::block_on(self.http_client.now(self.backtest_id));
         res.unwrap().now
@@ -294,13 +293,13 @@ impl<C: UistClient> Clock for UistBroker<C> {
     }
 }
 
-pub struct UistBrokerBuilder<C: UistClient> {
+pub struct UistBrokerBuilder<C: Client> {
     trade_costs: Vec<BrokerCost>,
     client: Option<C>,
     backtest_id: Option<BacktestId>,
 }
 
-impl<C: UistClient> UistBrokerBuilder<C> {
+impl<C: Client> UistBrokerBuilder<C> {
     pub async fn build(&mut self) -> UistBroker<C> {
         if self.client.is_none() {
             panic!("Cannot build broker without client");
@@ -356,7 +355,7 @@ impl<C: UistClient> UistBrokerBuilder<C> {
     }
 }
 
-impl<C: UistClient> Default for UistBrokerBuilder<C> {
+impl<C: Client> Default for UistBrokerBuilder<C> {
     fn default() -> Self {
         Self::new()
     }
@@ -455,7 +454,7 @@ mod tests {
         BrokerCashEvent, BrokerCost, BrokerOperations, CashOperations, Portfolio, SendOrder, Update,
     };
     use rotala::exchange::uist_v1::{Order, OrderType, Trade, TradeType, UistV1};
-    use rotala::http::uist::uistv1_client::{Client, TestClient, UistClient};
+    use rotala::http::uist_v1::{Client, TestClient};
     use rotala::input::penelope::Penelope;
 
     use super::{UistBroker, UistBrokerBuilder, UistBrokerEvent, UistBrokerLog};
