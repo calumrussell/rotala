@@ -103,7 +103,7 @@ pub struct Trade {
     pub typ: TradeType,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Debug)]
 pub struct UistV2 {
     orderbook: OrderBook,
     trade_log: Vec<Trade>,
@@ -146,8 +146,9 @@ impl UistV2 {
         }
 
         self.sort_order_buffer();
-        for order in self.order_buffer.iter_mut() {
-            self.orderbook.insert_order(order);
+        //TODO: remove this overhead, shouldn't need a clone here
+        for order in self.order_buffer.iter() {
+            self.orderbook.insert_order(order.clone());
         }
 
         let inserted_orders = std::mem::take(&mut self.order_buffer);
@@ -198,6 +199,7 @@ impl FillTracker {
     }
 }
 
+#[derive(Debug)]
 pub enum LatencyModel {
     None,
     FixedPeriod(i64),
@@ -212,6 +214,7 @@ impl LatencyModel {
     }
 }
 
+#[derive(Debug)]
 pub struct OrderBook {
     inner: VecDeque<Order>,
     latency: LatencyModel,

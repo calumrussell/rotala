@@ -93,7 +93,7 @@ pub struct Athena {
 }
 
 impl Athena {
-    fn get_quotes(&self, date: &i64) -> Option<&DateQuotes> {
+    pub fn get_quotes(&self, date: &i64) -> Option<&DateQuotes> {
         self.inner.get(date)
     }
 
