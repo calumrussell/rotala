@@ -1,7 +1,7 @@
 #![allow(dead_code)]
 
-use std::borrow::Borrow;
 use std::collections::HashMap;
+use std::{borrow::Borrow, collections::HashSet};
 
 use rand::thread_rng;
 use rand_distr::{Distribution, Uniform};
@@ -89,11 +89,14 @@ pub type DateQuotes = HashMap<String, Depth>;
 
 pub struct Athena {
     dates: Vec<i64>,
+    //TODO: this is not great, added because the dates weren't being added at all, not sure if this
+    //is really ideal path
+    dates_seen: HashSet<i64>,
     inner: HashMap<i64, DateQuotes>,
 }
 
 impl Athena {
-    fn get_quotes(&self, date: &i64) -> Option<&DateQuotes> {
+    pub fn get_quotes(&self, date: &i64) -> Option<&DateQuotes> {
         self.inner.get(date)
     }
 
@@ -154,6 +157,11 @@ impl Athena {
 
             date_levels.insert(symbol_string, depth);
         }
+
+        if !self.dates_seen.contains(&date) {
+            self.dates.push(date);
+            self.dates_seen.insert(date);
+        }
     }
 
     pub fn random(length: i64, symbols: Vec<&str>) -> Self {
@@ -189,6 +197,7 @@ impl Athena {
         Self {
             dates: Vec::new(),
             inner: HashMap::new(),
+            dates_seen: HashSet::new(),
         }
     }
 }

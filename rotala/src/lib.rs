@@ -14,21 +14,21 @@
 //!
 //! A single exchange implementation is composed of:
 //! - An input, [Penelope](crate::input::penelope::Penelope) is an example. The input produces
-//! quotes and will define the format of quotes that exchanges wishing to use the source must use.
+//!   quotes and will define the format of quotes that exchanges wishing to use the source must use.
 //! - An orderbook implementation, [Diana](crate::orderbook::diana::Diana) is an example. The
-//! orderbook contains the core execution logic and defines the format of orders and trades. This
-//! is distinct from an exchange as the an orderbook could be LOB, could use candles, etc. And this
-//! varies in a distinct way from the interface presented to clients.
+//!   orderbook contains the core execution logic and defines the format of orders and trades. This
+//!   is distinct from an exchange as the an orderbook could be LOB, could use candles, etc. And this
+//!   varies in a distinct way from the interface presented to clients.
 //! - An exchange implementation, [Uist](crate::exchange::uist::UistV1) is an example. In terms of
-//! code, this ends up being a fairly thin wrapper depending more on the kind of clients than
-//! the actual execution logic used by the orderbook. To explain more from above, the
-//! exchange is the external interface that provides a set of possible operations to users and does
-//! not concern itself too closely with how things are implemented (but it does have to bind to s
-//! single orderbook implementation). Uist, for example, has a lot of additional methods concerning
-//! orchestration and how clients can match state with exchange.
+//!   code, this ends up being a fairly thin wrapper depending more on the kind of clients than
+//!   the actual execution logic used by the orderbook. To explain more from above, the
+//!   exchange is the external interface that provides a set of possible operations to users and does
+//!   not concern itself too closely with how things are implemented (but it does have to bind to s
+//!   single orderbook implementation). Uist, for example, has a lot of additional methods concerning
+//!   orchestration and how clients can match state with exchange.
 //! - The server implementation of the exchange returning JSON responses over the exchange impl.
 //! - The client implementation of the exchange which provides a Rust API for the server, as much
-//! for documenting how clients can call the server.
+//!   for documenting how clients can call the server.
 //!
 //! In addition to all this, we have data sources which call some external source and are bound into
 //! the exchange: for example, the Uist exchange can be created using a Binance input.

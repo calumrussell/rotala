@@ -3,7 +3,7 @@ use std::sync::Mutex;
 
 use actix_web::{web, App, HttpServer};
 use rotala::{
-    http::jura::{
+    http::jura_v1::{
         jurav1_server::{delete_order, fetch_quotes, info, init, insert_order, tick},
         AppState,
     },

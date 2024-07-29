@@ -1,11 +1,11 @@
 use std::io::Result;
 
 use rotala::exchange::uist_v1::Order;
-use rotala::http::uist::uistv1_client::{Client, UistClient};
+use rotala::http::uist_v1::{Client, HttpClient};
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    let mut client = Client::new("http://127.0.0.1:8080".to_string());
+    let mut client = HttpClient::new("http://127.0.0.1:8080".to_string());
     let resp = client.init("RANDOM".to_string()).await.unwrap();
     let backtest_id = resp.backtest_id;
 
