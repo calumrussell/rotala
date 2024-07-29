@@ -2,7 +2,7 @@ use std::collections::{HashMap, VecDeque};
 
 use serde::{Deserialize, Serialize};
 
-use crate::input::athena::{Depth, Level};
+use crate::input::athena::{DateQuotes, Depth, Level};
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct Quote {
@@ -101,6 +101,58 @@ pub struct Trade {
     pub quantity: f64,
     pub date: i64,
     pub typ: TradeType,
+}
+
+#[derive(Clone, Debug)]
+pub struct UistV2 {
+    orderbook: OrderBook,
+    trade_log: Vec<Trade>,
+    //This is cleared on every tick
+    order_buffer: Vec<Order>,
+}
+
+impl UistV2 {
+    pub fn new() -> Self {
+        Self {
+            orderbook: OrderBook::default(),
+            trade_log: Vec::new(),
+            order_buffer: Vec::new(),
+        }
+    }
+
+    fn sort_order_buffer(&mut self) {
+        self.order_buffer.sort_by(|a, _b| match a.order_type {
+            OrderType::LimitSell | OrderType::MarketSell => {
+                std::cmp::Ordering::Less
+            }
+            _ => std::cmp::Ordering::Greater,
+        })
+    }
+
+    pub fn insert_order(&mut self, order: Order) {
+        // Orders are only inserted into the book when tick is called, this is to ensure proper
+        // ordering of trades
+        // This impacts order_id where an order X can come in before order X+1 but the latter can
+        // have an order_id that is less than the former.
+        self.order_buffer.push(order);
+    }
+
+    pub fn tick(&mut self, quotes: &DateQuotes, now: i64) -> (Vec<Trade>, Vec<Order>) {
+        //To eliminate lookahead bias, we only insert new orders after we have executed any orders
+        //that were on the stack first
+        let executed_trades = self.orderbook.execute_orders(quotes, now);
+        for executed_trade in &executed_trades {
+            self.trade_log.push(executed_trade.clone());
+        }
+
+        self.sort_order_buffer();
+        for order in self.order_buffer.iter_mut() {
+            self.orderbook.insert_order(order);
+        }
+
+        let inserted_orders = std::mem::take(&mut self.order_buffer);
+        (executed_trades, inserted_orders)
+    }
 }
 
 // FillTracker is stored over the life of an execution cycle.
