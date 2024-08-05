@@ -23,7 +23,7 @@ rotala = { path = "../../rotala/" }
 
 [dev-dependencies]
 reqwest = { version = "0.12.5", features = ["blocking"] }
-zip = "0.6.2"
+zip = "2.1.6"
 csv = "1.1.6"
 criterion = { version = "0.5.1", features = ["async_tokio"] }
 
