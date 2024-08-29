@@ -134,15 +134,13 @@ impl Athena {
     }
 
     pub fn add_depth(&mut self, depth: Depth) {
-        let date = depth.date.clone();
+        let date = depth.date;
         let symbol = depth.symbol.clone();
 
         self.inner.entry(date).or_default();
 
-        let symbol_string = symbol.into();
-
         let date_levels = self.inner.get_mut(&date).unwrap();
-        date_levels.insert(symbol_string, depth);
+        date_levels.insert(symbol, depth);
 
         if !self.dates_seen.contains(&date) {
             self.dates.push(date);
