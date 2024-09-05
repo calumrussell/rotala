@@ -383,7 +383,7 @@ impl HttpClient {
 
 type UistState = Mutex<AppState>;
 
-mod server {
+pub mod server {
     use actix_web::{get, post, web};
 
     use super::{

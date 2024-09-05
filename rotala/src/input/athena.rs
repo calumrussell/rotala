@@ -1,11 +1,14 @@
 #![allow(dead_code)]
 
 use std::collections::HashMap;
+use std::path::Path;
 use std::{borrow::Borrow, collections::HashSet};
 
 use rand::thread_rng;
 use rand_distr::{Distribution, Uniform};
 use serde::{Deserialize, Serialize};
+
+use crate::source::hyperliquid::get_hyperliquid_l2;
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub enum Side {
@@ -130,6 +133,21 @@ impl Athena {
         depth.get_bbo()
     }
 
+    pub fn add_depth(&mut self, depth: Depth) {
+        let date = depth.date;
+        let symbol = depth.symbol.clone();
+
+        self.inner.entry(date).or_default();
+
+        let date_levels = self.inner.get_mut(&date).unwrap();
+        date_levels.insert(symbol, depth);
+
+        if !self.dates_seen.contains(&date) {
+            self.dates.push(date);
+            self.dates_seen.insert(date);
+        }
+    }
+
     pub fn add_price_level(&mut self, date: i64, symbol: &str, level: Level, side: Side) {
         self.inner.entry(date).or_default();
 
@@ -191,6 +209,17 @@ impl Athena {
             }
         }
         source
+    }
+
+    pub fn from_file(path: &Path) -> Self {
+        let hl_source = get_hyperliquid_l2(path);
+
+        let mut athena = Self::new();
+        for (_key, value) in hl_source {
+            let into_depth: Depth = value.into();
+            athena.add_depth(into_depth);
+        }
+        athena
     }
 
     pub fn new() -> Self {
