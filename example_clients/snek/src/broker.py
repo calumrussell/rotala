@@ -1,7 +1,7 @@
 from enum import Enum
 import json
 
-from src.http import HttpClient, TestHttpClient
+from src.http import HttpClient
 
 
 class BrokerBuilder:
@@ -13,7 +13,7 @@ class BrokerBuilder:
     def init_cash(self, value: int):
         self.initial_cash = value
 
-    def init_http(self, http: HttpClient | TestHttpClient):
+    def init_http(self, http: HttpClient):
         self.http = http
 
     def init_dataset_name(self, name: str):
@@ -115,7 +115,7 @@ class Broker:
         # Initializes backtest_id, can ignore result
         self.http.init(self.dataset_name)
         quotes_resp = self.http.fetch_quotes()
-        self.latest_quotes = quotes_resp.quotes
+        self.latest_quotes = quotes_resp["quotes"]
 
     def _update_holdings(self, position: str, chg: float):
         if position not in self.holdings:
@@ -160,13 +160,15 @@ class Broker:
                 self.http.insert_order(order)
 
         tick_response = self.http.tick()
-        for trade_json in tick_response.executed_trades:
+        for trade_json in tick_response["executed_trades"]:
             trade = Trade.from_json(trade_json)
             self._process_trade(trade)
             self.trade_log.append(trade)
 
-        for order in tick_repsonse.inserted_orders:
+        for order in tick_response["inserted_orders"]:
             self.order_log.append(order)
 
-        if not tick_response.has_next:
+        if not tick_response["has_next"]:
             self.finished = True
+        else:
+            self.latest_quotes = self.http.fetch_quotes()
