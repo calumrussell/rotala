@@ -6,33 +6,51 @@ from functools import wraps
 class HttpClient:
     def __init__(self, base_url):
         self.base_url = base_url
+        self.backtest_id = None
         return
 
-    def tick(self, backtest_id):
-        r = requests.get(f"{self.base_url}/backtest/{backtest_id}/tick")
+    def init(self, dataset_name):
+        r = requests.get(f"{self.base_url}/init/{dataset_name}")
+        json_response = r.json()
+        self.backtest_id = int(json_response["backtest_id"])
+        return json_response
+
+    def tick(self):
+        if self.backtest_id is None:
+            raise ValueError("Called before init")
+
+        r = requests.get(f"{self.base_url}/backtest/{self.backtest_id}/tick")
         return r.json()
 
-    def insert_order(self, order, backtest_id):
+    def insert_order(self, order):
+        if self.backtest_id is None:
+            raise ValueError("Called before init")
+
         r = requests.post(
-            f"{self.base_url}/backtest/{backtest_id}/insert_order",
+            f"{self.base_url}/backtest/{self.backtest_id}/insert_order",
             data={"order": order},
         )
         return r.json()
 
-    def fetch_quotes(self, backtest_id):
-        r = requests.get(f"{self.base_url}/backtest/{backtest_id}/fetch_quotes")
+    def fetch_quotes(self):
+        if self.backtest_id is None:
+            raise ValueError("Called before init")
+
+        r = requests.get(f"{self.base_url}/backtest/{self.backtest_id}/fetch_quotes")
         return r.json()
 
-    def init(self, dataset_name):
-        r = requests.get(f"{self.base_url}/init/{dataset_name}")
-        return r.json()
+    def info(self):
+        if self.backtest_id is None:
+            raise ValueError("Called before init")
 
-    def info(self, backtest_id):
-        r = requests.get(f"{self.base_url}/backtest/{backtest_id}/info")
+        r = requests.get(f"{self.base_url}/backtest/{self.backtest_id}/info")
         return r.json()
 
     def now(self, backtest_id):
-        r = requests.get(f"{self.base_url}/backtest/{backtest_id}/now")
+        if self.backtest_id is None:
+            raise ValueError("Called before init")
+
+        r = requests.get(f"{self.base_url}/backtest/{self.backtest_id}/now")
         return r.json()
 
 
@@ -46,10 +64,15 @@ def json_response(inner_func):
 
 class TestHttpClient:
     def __init__(self):
-        pass
+        self.backtest_id = None
 
     @json_response
-    def tick(self, backtest_id):
+    def init(self, dataset_name):
+        self.backtest_id = 0
+        return {"backtest_id": 0}
+
+    @json_response
+    def tick(self):
         return {
             "has_next": False,
             "executed_trades": [],
@@ -57,26 +80,22 @@ class TestHttpClient:
         }
 
     @json_response
-    def insert_order(self, order, backtest_id):
+    def insert_order(self, order):
         return {}
 
     @json_response
-    def fetch_quotes(self, backtest_id):
+    def fetch_quotes(self):
         return {
             "quotes": [],
         }
 
     @json_response
-    def init(self, dataset_name):
-        return {"backtest_id": 0}
-
-    @json_response
-    def info(self, backtest_id):
+    def info(self):
         return {
             "version": "",
             "dataset": "",
         }
 
     @json_response
-    def now(self, backtest_id):
+    def now(self):
         return {"now": 0, "has_next": True}
