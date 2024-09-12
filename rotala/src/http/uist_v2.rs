@@ -6,7 +6,7 @@ use anyhow::{Error, Result};
 use serde::{Deserialize, Serialize};
 
 use crate::exchange::uist_v2::{Order, Trade, UistV2};
-use crate::input::athena::{Athena, DateQuotes};
+use crate::input::athena::{Athena, DateBBO};
 
 type BacktestId = u64;
 
@@ -81,10 +81,10 @@ impl AppState {
         None
     }
 
-    pub fn fetch_quotes(&self, backtest_id: BacktestId) -> Option<&DateQuotes> {
+    pub fn fetch_quotes(&self, backtest_id: BacktestId) -> Option<DateBBO> {
         if let Some(backtest) = self.backtests.get(&backtest_id) {
             if let Some(dataset) = self.datasets.get(&backtest.dataset_name) {
-                return dataset.get_quotes(&backtest.date);
+                return dataset.get_bbo(backtest.date);
             }
         }
         None
@@ -153,7 +153,7 @@ pub struct InsertOrderRequest {
 
 #[derive(Debug, Deserialize, Serialize)]
 pub struct FetchQuotesResponse {
-    pub quotes: DateQuotes,
+    pub quotes: DateBBO,
 }
 
 #[derive(Debug, Deserialize, Serialize)]
