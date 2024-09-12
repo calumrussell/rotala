@@ -41,7 +41,7 @@ class OrderType(Enum):
 
 class Order:
     def __init__(
-        self, order_type: OrderType, symbol: str, qty: int, price: float | None
+        self, order_type: OrderType, symbol: str, qty: float, price: float | None
     ):
         if order_type == OrderType.MarketSell or order_type == OrderType.MarketBuy:
             if price is not None:
@@ -148,6 +148,9 @@ class Broker:
     def get_quotes(self):
         return self.latest_quotes
 
+    def get_position(self, symbol):
+        return self.holdings[symbol]
+
     def tick(self):
         if self.finished:
             print("Sim finished, cannot tick again so exiting.")
@@ -171,4 +174,4 @@ class Broker:
         if not tick_response["has_next"]:
             self.finished = True
         else:
-            self.latest_quotes = self.http.fetch_quotes()
+            self.latest_quotes = self.http.fetch_quotes()["quotes"]
