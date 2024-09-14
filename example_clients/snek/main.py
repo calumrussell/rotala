@@ -19,21 +19,20 @@ if __name__ == "__main__":
 
     while should_continue:
         quotes = brkr.latest_quotes
-        print(quotes)
         for quote in quotes:
             symbol_quote = quotes[quote]
-            if symbol_quote["symbol"] == "ABC":
+            if symbol_quote["symbol"] == "SOL":
                 if len(last_five) < 5:
-                    last_five.append(quote)
+                    last_five.append(symbol_quote)
                 else:
                     avg = calc_avg(last_five)
-                    curr = quote["ask"]
-                    if curr * 0.95 < avg and brkr.get_position("ABC") == 0:
-                        order = Order(OrderType.MarketBuy, "ABC", 1.0, None)
+                    curr = symbol_quote["ask"]
+                    if curr * 0.95 < avg and brkr.get_position("SOL") == 0:
+                        order = Order(OrderType.MarketBuy, "SOL", 1.0, None)
                         brkr.insert_order(order)
-                    elif avg > curr and brkr.get_position("ABC") > 0:
+                    elif avg > curr and brkr.get_position("SOL") > 0:
                         order = Order(
-                            OrderType.MarketSell, "ABC", brkr.get_position("ABC"), None
+                            OrderType.MarketSell, "SOL", brkr.get_position("ABC"), None
                         )
                         brkr.insert_order(order)
         brkr.tick()
