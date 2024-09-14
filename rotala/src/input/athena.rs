@@ -90,6 +90,8 @@ pub struct BBO {
 
 pub type DateQuotes = HashMap<String, Depth>;
 
+pub type DateBBO = HashMap<String, BBO>;
+
 pub struct Athena {
     dates: Vec<i64>,
     //TODO: this is not great, added because the dates weren't being added at all, not sure if this
@@ -127,10 +129,13 @@ impl Athena {
         depth.get_best_ask()
     }
 
-    pub fn get_bbo(&self, date: impl Borrow<i64>, symbol: &str) -> Option<BBO> {
+    pub fn get_bbo(&self, date: impl Borrow<i64>) -> Option<DateBBO> {
+        let mut res = HashMap::new();
         let date_levels = self.inner.get(date.borrow())?;
-        let depth = date_levels.get(symbol)?;
-        depth.get_bbo()
+        for (symbol, depth) in date_levels {
+            res.insert(symbol.clone(), depth.get_bbo()?);
+        }
+        Some(res)
     }
 
     pub fn add_depth(&mut self, depth: Depth) {
