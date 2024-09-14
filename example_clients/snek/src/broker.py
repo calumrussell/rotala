@@ -59,7 +59,10 @@ class Order:
         self.price = price
 
     def serialize(self):
-        return json.dumps(self)
+        if self.price:
+            return f"{{\"order_type\": \"{self.order_type.name}\", \"symbol\": \"{self.symbol}\", \"qty\": {self.qty}, \"price\": {self.price}, \"recieved\": 0}}"
+        else:
+            return f"{{\"order_type\": \"{self.order_type.name}\", \"symbol\": \"{self.symbol}\", \"qty\": {self.qty}, \"price\": null, \"recieved\": 0}}"
 
     @staticmethod
     def from_json(json_str):
@@ -89,6 +92,16 @@ class Trade:
         self.typ = typ
 
     @staticmethod
+    def from_dict(trade_dict: dict):
+        return Trade(
+            trade_dict["symbol"],
+            trade_dict["value"],
+            trade_dict["quantity"],
+            trade_dict["date"],
+            trade_dict["typ"],
+        )
+
+    @staticmethod
     def from_json(json_str: str):
         to_dict = json.loads(json_str)
         return Trade(
@@ -111,6 +124,7 @@ class Broker:
         self.finished = False
         self.trade_log = []
         self.order_log = []
+        self.portfolio_values = []
 
         # Initializes backtest_id, can ignore result
         self.http.init(self.dataset_name)
@@ -148,12 +162,25 @@ class Broker:
     def get_quotes(self):
         return self.latest_quotes
 
-    def get_position(self, symbol):
-        return self.holdings[symbol]
+    def get_position(self, symbol) -> float:
+        return self.holdings.get(symbol, 0)
+
+    def get_current_value(self) -> float:
+        value = self.cash
+        # This will fail if there is a missing quote for the date
+        # Fix is to cache values in self.latest_quotes
+        for symbol in self.holdings:
+            quote = self.latest_quotes[symbol]
+            if quote:
+                qty = self.holdings[symbol]
+                symbol_bid = quote["bid"]
+                value+= qty*symbol_bid
+        return value
 
     def tick(self):
         if self.finished:
             print("Sim finished, cannot tick again so exiting.")
+            print(self.portfolio_values)
             exit(0)
 
         while len(self.pending_orders) > 0:
@@ -164,7 +191,7 @@ class Broker:
 
         tick_response = self.http.tick()
         for trade_json in tick_response["executed_trades"]:
-            trade = Trade.from_json(trade_json)
+            trade = Trade.from_dict(trade_json)
             self._process_trade(trade)
             self.trade_log.append(trade)
 
@@ -175,3 +202,5 @@ class Broker:
             self.finished = True
         else:
             self.latest_quotes = self.http.fetch_quotes()["quotes"]
+
+        self.portfolio_values.append(self.get_current_value())
