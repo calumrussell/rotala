@@ -40,7 +40,7 @@ if __name__ == "__main__":
 
     (start_year, start_month) = parse_date(args.start)
     for year in range(int(start_year), max_year + 1):
-        iter_start = start_month if year == start_year else 1
+        iter_start = int(start_month) if int(year) == int(start_year) else 1
         for month in range(iter_start, 13):
             for day in days:
                 try:
