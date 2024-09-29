@@ -41,7 +41,13 @@ if __name__ == "__main__":
     (start_year, start_month) = parse_date(args.start)
     for year in range(int(start_year), max_year + 1):
         iter_start = int(start_month) if int(year) == int(start_year) else 1
+
         for month in range(iter_start, 13):
+            chunks = []
+            file_path = f"{args.outdir}/{args.coin}/{month}"
+            if os.path.exists(file_path):
+                continue
+
             for day in days:
                 try:
                     then = datetime.datetime(year, month, day)
@@ -51,15 +57,15 @@ if __name__ == "__main__":
 
                 if then > now:
                     print("Reached the present")
+                    print(file_path)
+                    with open(f"{file_path}", "w") as f:
+                        for chunk in chunks:
+                            f.write(chunk)
                     exit(1)
 
                 for hour in hours:
                     date_string = str(year) + zero_padding(month) + zero_padding(day)
                     key = path_builder(date_string, hour, args.coin)
-
-                    file_path = f"{args.outdir}/{args.coin}/{date_string}_{hour}"
-                    if os.path.exists(file_path):
-                        continue
 
                     try:
                         response = client.get_object(
@@ -72,7 +78,11 @@ if __name__ == "__main__":
                         continue
 
                     uncompressed = lz4framed.decompress(contents)
-                    print(f"Wrote - {key}")
-                    with open(f"{args.outdir}/{args.coin}/{date_string}_{hour}", "w") as f:
-                        f.write(uncompressed.decode("utf-8"))
+                    print(f"Took - {key}")
+                    chunks.append(uncompressed.decode("utf-8"))
+
+            print(file_path)
+            with open(f"{file_path}", "w") as f:
+                for chunk in chunks:
+                    f.write(chunk)
 
