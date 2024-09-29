@@ -73,15 +73,24 @@ impl From<L2Book> for Depth {
 
 pub fn get_hyperliquid_l2(path: &Path) -> HashMap<u64, L2Book> {
     let mut result = HashMap::new();
-    if let Ok(file_contents) = read_to_string(path) {
-        for line in file_contents.split('\n') {
-            if line.is_empty() {
-                continue;
-            }
 
-            let val: L2Book = from_str(line).unwrap();
-            let time = val.raw.data.time;
-            result.insert(time, val);
+    if let Ok(dir_contents) = path.read_dir() {
+        for coin in dir_contents.flatten() {
+            if let Ok(coin_dir_contents) = coin.path().read_dir() {
+                for period in coin_dir_contents.flatten() {
+                    if let Ok(file_contents) = read_to_string(period.path()) {
+                        for line in file_contents.split('\n') {
+                            if line.is_empty() {
+                                continue;
+                            }
+
+                            let val: L2Book = from_str(line).unwrap();
+                            let time = val.raw.data.time;
+                            result.insert(time, val);
+                        }
+                    }
+                }
+            }
         }
     }
     result
