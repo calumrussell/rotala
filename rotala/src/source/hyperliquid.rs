@@ -78,7 +78,6 @@ pub fn get_hyperliquid_l2(path: &Path) -> HashMap<u64, L2Book> {
         for coin in dir_contents.flatten() {
             if let Ok(coin_dir_contents) = coin.path().read_dir() {
                 for period in coin_dir_contents.flatten() {
-
                     if let Ok(file_contents) = read_to_string(period.path()) {
                         for line in file_contents.split('\n') {
                             if line.is_empty() {
