@@ -12,7 +12,7 @@ if __name__ == "__main__":
     builder = BrokerBuilder()
     builder.init_dataset_name("Test")
     builder.init_cash(10000)
-    builder.init_http(HttpClient("http://127.0.0.1:8080"))
+    builder.init_http(HttpClient("http://127.0.0.1:3000"))
     brkr = builder.build()
 
     should_continue = True
