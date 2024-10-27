@@ -1,11 +1,11 @@
 use std::collections::HashMap;
 
-use alator::broker::uist::UistBrokerBuilder;
-use alator::broker::BrokerCost;
+use rotala_client::broker::uist::UistBrokerBuilder;
+use rotala_client::broker::BrokerCost;
 
-use alator::strategy::staticweight::{PortfolioAllocation, StaticWeightStrategyBuilder};
-use rotala::http::uist_v1::{Client, TestClient};
 use rotala::input::penelope::Penelope;
+use rotala_client::strategy::staticweight::{PortfolioAllocation, StaticWeightStrategyBuilder};
+use rotala_http::http::uist_v1::{Client, TestClient};
 
 #[tokio::test]
 async fn staticweight_integration_test() {
@@ -36,5 +36,5 @@ async fn staticweight_integration_test() {
     strat.init(&initial_cash);
     strat.run().await;
 
-    let _perf = strat.perf(alator::perf::Frequency::Daily);
+    let _perf = strat.perf(rotala_client::perf::Frequency::Daily);
 }

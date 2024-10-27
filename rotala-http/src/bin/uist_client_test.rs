@@ -1,7 +1,7 @@
 use std::io::Result;
 
 use rotala::exchange::uist_v1::Order;
-use rotala::http::uist_v1::{Client, HttpClient};
+use rotala_http::http::uist_v1::{Client, HttpClient};
 
 #[tokio::main]
 async fn main() -> Result<()> {

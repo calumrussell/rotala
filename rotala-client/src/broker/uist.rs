@@ -9,7 +9,7 @@ use std::{
 
 use log::info;
 use rotala::exchange::uist_v1::{Order, OrderType, Trade, TradeType, UistQuote, UistV1};
-use rotala::http::uist_v1::{BacktestId, Client};
+use rotala_http::http::uist_v1::{BacktestId, Client};
 
 use crate::{broker::BrokerOrder, strategy::staticweight::StaticWeightBroker};
 
@@ -454,8 +454,8 @@ mod tests {
         BrokerCashEvent, BrokerCost, BrokerOperations, CashOperations, Portfolio, SendOrder, Update,
     };
     use rotala::exchange::uist_v1::{Order, OrderType, Trade, TradeType, UistV1};
-    use rotala::http::uist_v1::{Client, TestClient};
     use rotala::input::penelope::Penelope;
+    use rotala_http::http::uist_v1::{Client, TestClient};
 
     use super::{UistBroker, UistBrokerBuilder, UistBrokerEvent, UistBrokerLog};
 

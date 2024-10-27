@@ -1,5 +1,5 @@
 [package]
-name = "alator"
+name = "rotala-client"
 version = "0.4.1"
 authors = ["Calum Russell <calum.mj.russell@gmail.com>"]
 edition = "2021"
@@ -19,7 +19,8 @@ pyo3 = { version = "0.22.1", optional = true }
 async-trait = "0.1.73"
 tokio = { version = "1.32.0", features = ["full"] }
 futures = "0.3.28"
-rotala = { path = "../../rotala/" }
+rotala = { path = "../rotala/" }
+rotala-http = { path = "../rotala-http/" }
 
 [dev-dependencies]
 reqwest = { version = "0.12.5", features = ["blocking"] }

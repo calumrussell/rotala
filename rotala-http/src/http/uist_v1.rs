@@ -5,8 +5,8 @@ use std::sync::Mutex;
 use anyhow::{Error, Result};
 use serde::{Deserialize, Serialize};
 
-use crate::exchange::uist_v1::{Order, OrderId, Trade, UistV1};
-use crate::input::penelope::{Penelope, PenelopeQuoteByDate};
+use rotala::exchange::uist_v1::{Order, OrderId, Trade, UistV1};
+use rotala::input::penelope::{Penelope, PenelopeQuoteByDate};
 
 pub type BacktestId = u64;
 
@@ -562,8 +562,8 @@ pub mod server {
 mod tests {
     use actix_web::{test, web, App};
 
-    use crate::exchange::uist_v1::Order;
-    use crate::input::penelope::Penelope;
+    use rotala::exchange::uist_v1::Order;
+    use rotala::input::penelope::Penelope;
 
     use super::server::*;
     use super::{AppState, FetchQuotesResponse, InitResponse, InsertOrderRequest, TickResponse};

@@ -283,8 +283,8 @@ impl PerformanceCalculator {
 mod tests {
     use std::collections::HashMap;
 
-    use rotala::http::uist_v1::{Client, TestClient};
     use rotala::input::penelope::Penelope;
+    use rotala_http::http::uist_v1::{Client, TestClient};
 
     use crate::broker::uist::UistBroker;
     use crate::broker::uist::UistBrokerBuilder;

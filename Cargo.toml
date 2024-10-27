@@ -1,7 +1,4 @@
 [workspace]
 
 resolver = "2"
-members = [
-    "rotala",
-    "example_clients/alator"
-]
+members = ["rotala", "rotala-client", "rotala-http"]

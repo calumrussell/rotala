@@ -1,5 +1,5 @@
 [package]
-name = "rotala"
+name = "rotala-http"
 version = "0.4.1"
 edition = "2021"
 authors = ["Calum Russell <calum.mj.russell@gmail.com>"]
@@ -23,13 +23,19 @@ env_logger = "0.11.0"
 tokio = { version = "1.35.1", features = ["full"] }
 derive_more = { version = "1.0.0", features = ["full"] }
 anyhow = "1.0.86"
+rotala = { path = "../rotala/" }
 
 [dev-dependencies]
 criterion = { version = "0.5.1", features = ["async_tokio"] }
 
-[lib]
-bench = false
+[[bin]]
+name = "uist_server_v1"
+path = "./src/bin/uist_server_v1.rs"
 
-[[bench]]
-name = "sim_orderbook"
-harness = false
+[[bin]]
+name = "uist_server_v2"
+path = "./src/bin/uist_server_v2.rs"
+
+[[bin]]
+name = "jura_server_v1"
+path = "./src/bin/jura_server_v1.rs"
