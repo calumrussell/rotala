@@ -1,8 +1,8 @@
 use std::collections::HashMap;
-use std::future::{self, Future};
+use std::future::Future;
 use std::sync::Mutex;
 
-use anyhow::{Error, Result};
+use anyhow::Result;
 use serde::{Deserialize, Serialize};
 
 use rotala::exchange::uist_v2::{Order, Trade, UistV2};
@@ -213,93 +213,6 @@ pub trait Client {
     fn init(&mut self, dataset_name: String) -> impl Future<Output = Result<InitResponse>>;
     fn info(&mut self, backtest_id: BacktestId) -> impl Future<Output = Result<InfoResponse>>;
     fn now(&mut self, backtest_id: BacktestId) -> impl Future<Output = Result<NowResponse>>;
-}
-
-pub struct TestClient {
-    state: AppState,
-}
-
-impl Client for TestClient {
-    fn init(&mut self, dataset_name: String) -> impl Future<Output = Result<InitResponse>> {
-        if let Some(id) = self.state.init(dataset_name) {
-            future::ready(Ok(InitResponse { backtest_id: id }))
-        } else {
-            future::ready(Err(Error::new(UistV2Error::UnknownDataset)))
-        }
-    }
-
-    fn tick(&mut self, backtest_id: BacktestId) -> impl Future<Output = Result<TickResponse>> {
-        if let Some(resp) = self.state.tick(backtest_id) {
-            future::ready(Ok(TickResponse {
-                inserted_orders: resp.2,
-                executed_trades: resp.1,
-                has_next: resp.0,
-            }))
-        } else {
-            future::ready(Err(Error::new(UistV2Error::UnknownBacktest)))
-        }
-    }
-
-    fn insert_order(
-        &mut self,
-        order: Order,
-        backtest_id: BacktestId,
-    ) -> impl Future<Output = Result<()>> {
-        if let Some(()) = self.state.insert_order(order, backtest_id) {
-            future::ready(Ok(()))
-        } else {
-            future::ready(Err(Error::new(UistV2Error::UnknownBacktest)))
-        }
-    }
-
-    fn fetch_quotes(
-        &mut self,
-        backtest_id: BacktestId,
-    ) -> impl Future<Output = Result<FetchQuotesResponse>> {
-        if let Some(quotes) = self.state.fetch_quotes(backtest_id) {
-            future::ready(Ok(FetchQuotesResponse {
-                quotes: quotes.to_owned(),
-            }))
-        } else {
-            future::ready(Err(Error::new(UistV2Error::UnknownBacktest)))
-        }
-    }
-
-    fn info(&mut self, backtest_id: BacktestId) -> impl Future<Output = Result<InfoResponse>> {
-        if let Some(backtest) = self.state.backtests.get(&backtest_id) {
-            future::ready(Ok(InfoResponse {
-                version: "v1".to_string(),
-                dataset: backtest.dataset_name.clone(),
-            }))
-        } else {
-            future::ready(Err(Error::new(UistV2Error::UnknownBacktest)))
-        }
-    }
-
-    fn now(&mut self, backtest_id: BacktestId) -> impl Future<Output = Result<NowResponse>> {
-        if let Some(backtest) = self.state.backtests.get(&backtest_id) {
-            if let Some(dataset) = self.state.datasets.get(&backtest.dataset_name) {
-                let now = backtest.date;
-                let mut has_next = false;
-                if dataset.has_next(backtest.pos) {
-                    has_next = true;
-                }
-                future::ready(Ok(NowResponse { now, has_next }))
-            } else {
-                future::ready(Err(Error::new(UistV2Error::UnknownDataset)))
-            }
-        } else {
-            future::ready(Err(Error::new(UistV2Error::UnknownBacktest)))
-        }
-    }
-}
-
-impl TestClient {
-    pub fn single(name: &str, data: Athena) -> Self {
-        Self {
-            state: AppState::single(name, data),
-        }
-    }
 }
 
 type UistState = Mutex<AppState>;

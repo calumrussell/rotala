@@ -453,13 +453,14 @@ mod tests {
     use crate::broker::{
         BrokerCashEvent, BrokerCost, BrokerOperations, CashOperations, Portfolio, SendOrder, Update,
     };
+    use crate::client::uist_v1::LocalClient;
     use rotala::exchange::uist_v1::{Order, OrderType, Trade, TradeType, UistV1};
     use rotala::input::penelope::Penelope;
-    use rotala_http::http::uist_v1::{Client, TestClient};
+    use rotala_http::http::uist_v1::Client;
 
     use super::{UistBroker, UistBrokerBuilder, UistBrokerEvent, UistBrokerLog};
 
-    async fn setup() -> UistBroker<TestClient> {
+    async fn setup() -> UistBroker<LocalClient> {
         let mut source = Penelope::new();
 
         source.add_quote(100.00, 101.00, 100, "ABC");
@@ -474,7 +475,7 @@ mod tests {
         source.add_quote(95.00, 96.00, 103, "ABC");
         source.add_quote(10.00, 11.00, 103, "BCD");
 
-        let mut client = TestClient::single("Random", source);
+        let mut client = LocalClient::single("Random", source);
         let resp = client.init("Random".to_string()).await.unwrap();
 
         UistBrokerBuilder::new()
@@ -646,7 +647,7 @@ mod tests {
         source.add_quote(104.00, 105.00, 103, "ABC");
         source.add_quote(12.00, 13.00, 103, "BCD");
 
-        let mut client = TestClient::single("Random", source);
+        let mut client = LocalClient::single("Random", source);
         let resp = client.init("Random".to_string()).await.unwrap();
 
         let mut brkr = UistBrokerBuilder::new()
@@ -691,7 +692,7 @@ mod tests {
         source.add_quote(150.00, 151.00, 101, "ABC");
         source.add_quote(150.00, 151.00, 102, "ABC");
 
-        let mut client = TestClient::single("Random", source);
+        let mut client = LocalClient::single("Random", source);
         let resp = client.init("Random".to_string()).await.unwrap();
 
         let mut brkr = UistBrokerBuilder::new()
@@ -728,7 +729,7 @@ mod tests {
         source.add_quote(200.00, 201.00, 101, "ABC");
         source.add_quote(200.00, 201.00, 101, "ABC");
 
-        let mut client = TestClient::single("Random", source);
+        let mut client = LocalClient::single("Random", source);
         let resp = client.init("Random".to_string()).await.unwrap();
 
         let mut brkr = UistBrokerBuilder::new()
@@ -834,7 +835,7 @@ mod tests {
     #[tokio::test]
     async fn diff_direction_correct_if_need_to_buy() {
         let source = Penelope::random(100, vec!["ABC"]);
-        let mut client = TestClient::single("Random", source);
+        let mut client = LocalClient::single("Random", source);
         let resp = client.init("Random".to_string()).await.unwrap();
 
         let mut brkr = UistBrokerBuilder::new()
@@ -864,7 +865,7 @@ mod tests {
         //This is connected to the previous test, if the above fails then this will never pass.
         //However, if the above passes this could still fail.
         let source = Penelope::random(100, vec!["ABC"]);
-        let mut client = TestClient::single("Random", source);
+        let mut client = LocalClient::single("Random", source);
         let resp = client.init("Random".to_string()).await.unwrap();
 
         let mut brkr = UistBrokerBuilder::new()
@@ -905,7 +906,7 @@ mod tests {
         //for a given security on a certain date. We are interested in the latter case, not the former but it is more
         //difficult to test for the latter, and the code should be the same.
         let source = Penelope::random(100, vec!["ABC"]);
-        let mut client = TestClient::single("Random", source);
+        let mut client = LocalClient::single("Random", source);
         let resp = client.init("Random".to_string()).await.unwrap();
 
         let mut brkr = UistBrokerBuilder::new()
@@ -933,7 +934,7 @@ mod tests {
         //If we get to a point where the client is diffing without cash, we can assume that no further operations are possible
         //and we should panic
         let source = Penelope::random(100, vec!["ABC"]);
-        let mut client = TestClient::single("Random", source);
+        let mut client = LocalClient::single("Random", source);
         let resp = client.init("Random".to_string()).await.unwrap();
 
         let mut brkr = UistBrokerBuilder::new()
@@ -988,7 +989,7 @@ mod tests {
         source.add_quote(100.00, 100.00, 101, "ABC");
         source.add_quote(100.00, 100.00, 103, "ABC");
 
-        let mut client = TestClient::single("Random", source);
+        let mut client = LocalClient::single("Random", source);
         let resp = client.init("Random".to_string()).await.unwrap();
 
         let mut brkr = UistBrokerBuilder::new()
@@ -1033,7 +1034,7 @@ mod tests {
         source.add_quote(75.00, 75.00, 104, "ABC");
         source.add_quote(75.00, 75.00, 105, "ABC");
 
-        let mut client = TestClient::single("Random", source);
+        let mut client = LocalClient::single("Random", source);
         let resp = client.init("Random".to_string()).await.unwrap();
 
         let mut brkr = UistBrokerBuilder::new()
