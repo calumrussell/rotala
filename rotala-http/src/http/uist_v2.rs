@@ -102,6 +102,7 @@ impl AppState {
                 dataset_name,
             };
             self.backtests.insert(new_id, backtest);
+            self.last += 1;
             return Some(new_id);
         }
         None
@@ -109,6 +110,8 @@ impl AppState {
 
     pub fn insert_order(&mut self, order: Order, backtest_id: BacktestId) -> Option<()> {
         if let Some(backtest) = self.backtests.get_mut(&backtest_id) {
+            println!("{:?}", backtest_id);
+            println!("{:?}", backtest.pos);
             backtest.exchange.insert_order(order);
             return Some(());
         }
@@ -285,6 +288,7 @@ pub mod server {
         let (dataset_name,) = path.into_inner();
 
         if let Some(backtest_id) = uist.init(dataset_name) {
+            println!("{:?}", backtest_id);
             Ok(web::Json(InitResponse { backtest_id }))
         } else {
             Err(UistV2Error::UnknownDataset)

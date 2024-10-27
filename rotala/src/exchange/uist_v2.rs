@@ -688,6 +688,36 @@ mod tests {
     }
 
     #[test]
+    fn test_that_orderbook_clears_after_execution() {
+        let bid_level = Level {
+            price: 98.0,
+            size: 20.0,
+        };
+
+        let ask_level = Level {
+            price: 102.0,
+            size: 20.0,
+        };
+
+        let mut depth = Depth::new(100, "ABC");
+        depth.add_level(bid_level.clone(), crate::input::athena::Side::Bid);
+        depth.add_level(ask_level.clone(), crate::input::athena::Side::Ask);
+
+        let mut quotes: DateQuotes = HashMap::new();
+        quotes.insert("ABC".to_string(), depth);
+
+        let mut orderbook = OrderBook::new();
+        let order = Order::market_buy("ABC", 20.0);
+        orderbook.insert_order(order, 100);
+        let trades = orderbook.execute_orders(&quotes, 100);
+
+        let trades1 = orderbook.execute_orders(&quotes, 101);
+
+        assert!(trades.len() == 1);
+        assert!(trades1.is_empty());
+    }
+
+    #[test]
     fn test_that_order_id_is_incrementing_and_unique() {
         let bid_level = Level {
             price: 98.0,
