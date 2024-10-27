@@ -169,7 +169,11 @@ class Broker:
             or order.order_type == OrderType.LimitSell
         ):
             curr_position = self.holdings[order.symbol]
-            if curr_position >= 0 or order.qty > curr_position:
+
+            if curr_position == 0:
+                return False
+
+            if order.qty > curr_position:
                 return False
         return True
 
