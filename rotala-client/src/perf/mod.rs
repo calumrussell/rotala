@@ -281,42 +281,11 @@ impl PerformanceCalculator {
 
 #[cfg(test)]
 mod tests {
-    use std::collections::HashMap;
-
-    use rotala::http::uist_v1::{Client, TestClient};
-    use rotala::input::penelope::Penelope;
-
-    use crate::broker::uist::UistBroker;
-    use crate::broker::uist::UistBrokerBuilder;
-    use crate::broker::BrokerCost;
     use crate::perf::StrategySnapshot;
-    use crate::strategy::staticweight::StaticWeightStrategyBuilder;
 
     use super::Frequency;
     use super::PerformanceCalculator;
     use super::PortfolioCalculations;
-
-    async fn setup() -> UistBroker<TestClient> {
-        let mut source = Penelope::new();
-        source.add_quote(101.0, 102.0, 100, "ABC");
-        source.add_quote(102.0, 103.0, 101, "ABC");
-        source.add_quote(97.0, 98.0, 102, "ABC");
-        source.add_quote(105.0, 106.0, 103, "ABC");
-
-        source.add_quote(501.0, 502.0, 100, "BCD");
-        source.add_quote(503.0, 504.0, 101, "BCD");
-        source.add_quote(498.0, 499.0, 102, "BCD");
-        source.add_quote(495.0, 496.0, 103, "BCD");
-
-        let mut client = TestClient::single("Random", source);
-        let resp = client.init("Random".to_string()).await.unwrap();
-
-        UistBrokerBuilder::new()
-            .with_client(client, resp.backtest_id)
-            .with_trade_costs(vec![BrokerCost::PctOfValue(0.01)])
-            .build()
-            .await
-    }
 
     #[test]
     fn test_that_annualizations_calculate_correctly() {
@@ -335,40 +304,6 @@ mod tests {
             (PortfolioCalculations::annualize_volatility(0.01, &Frequency::Daily) * 100.0).round(),
             16.0
         );
-    }
-
-    #[tokio::test]
-    async fn test_that_portfolio_calculates_performance_accurately() {
-        let brkr = setup().await;
-        //We use less than 100% because some bugs become possible when you are allocating the full
-        //portfolio which perturb the order of operations leading to different perf outputs.
-        let mut target_weights = HashMap::new();
-        target_weights.insert("ABC".to_string(), 0.4);
-        target_weights.insert("BCD".to_string(), 0.4);
-
-        let mut strat = StaticWeightStrategyBuilder::new()
-            .with_brkr(brkr)
-            .with_weights(target_weights)
-            .default();
-
-        strat.init(&100_000.0);
-
-        strat.update().await;
-
-        strat.update().await;
-
-        strat.update().await;
-
-        let output = strat.get_history();
-        println!("{:?}", output);
-        let perf = PerformanceCalculator::calculate(Frequency::Daily, output);
-        println!("{:?}", perf.returns);
-
-        let portfolio_return = perf.ret;
-        //We need to round up to cmp properly
-        let to_comp = (portfolio_return * 1000.0).round();
-        println!("{:?}", to_comp);
-        assert_eq!(to_comp, 24.0);
     }
 
     #[test]

@@ -74,6 +74,5 @@
 //! Long-term:
 //! - Add orderbook with L2 data, this is going to require L2 sources
 pub mod exchange;
-pub mod http;
 pub mod input;
 pub mod source;

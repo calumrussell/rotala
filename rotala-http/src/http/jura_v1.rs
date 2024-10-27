@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use crate::{
+use rotala::{
     exchange::jura_v1::{Fill, JuraV1, Order, OrderId},
     input::penelope::{Penelope, PenelopeQuoteByDate},
 };
@@ -167,7 +167,7 @@ pub mod jurav1_client {
         BacktestId,
     };
 
-    use crate::exchange::jura_v1::{Order, OrderId};
+    use rotala::exchange::jura_v1::{Order, OrderId};
 
     pub trait JuraClient {
         fn tick(&mut self, backtest_id: BacktestId) -> impl Future<Output = Result<TickResponse>>;
@@ -280,14 +280,14 @@ pub mod jurav1_server {
     use serde::{Deserialize, Serialize};
     use std::sync::Mutex;
 
-    use crate::exchange::jura_v1::{Fill, Order, OrderId};
-    use crate::input::penelope::PenelopeQuoteByDate;
     use actix_web::{
         error, get, post,
         web::{self, Path},
         Result,
     };
     use derive_more::{Display, Error};
+    use rotala::exchange::jura_v1::{Fill, Order, OrderId};
+    use rotala::input::penelope::PenelopeQuoteByDate;
 
     use super::AppState;
 
@@ -451,8 +451,8 @@ mod tests {
 
     use super::jurav1_server::*;
     use super::AppState;
-    use crate::exchange::jura_v1::Order;
-    use crate::input::penelope::Penelope;
+    use rotala::exchange::jura_v1::Order;
+    use rotala::input::penelope::Penelope;
 
     use std::sync::Mutex;
 

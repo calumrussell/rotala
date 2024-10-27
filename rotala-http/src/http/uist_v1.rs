@@ -1,31 +1,31 @@
 use std::collections::HashMap;
-use std::future::{self, Future};
+use std::future::Future;
 use std::sync::Mutex;
 
-use anyhow::{Error, Result};
+use anyhow::Result;
 use serde::{Deserialize, Serialize};
 
-use crate::exchange::uist_v2::{Order, Trade, UistV2};
-use crate::input::athena::{Athena, DateBBO};
+use rotala::exchange::uist_v1::{Order, OrderId, Trade, UistV1};
+use rotala::input::penelope::{Penelope, PenelopeQuoteByDate};
 
-type BacktestId = u64;
+pub type BacktestId = u64;
 
 pub struct BacktestState {
     pub id: BacktestId,
     pub date: i64,
     pub pos: usize,
-    pub exchange: UistV2,
+    pub exchange: UistV1,
     pub dataset_name: String,
 }
 
 pub struct AppState {
     pub backtests: HashMap<BacktestId, BacktestState>,
     pub last: BacktestId,
-    pub datasets: HashMap<String, Athena>,
+    pub datasets: HashMap<String, Penelope>,
 }
 
 impl AppState {
-    pub fn create(datasets: &mut HashMap<String, Athena>) -> Self {
+    pub fn create(datasets: &mut HashMap<String, Penelope>) -> Self {
         Self {
             backtests: HashMap::new(),
             last: 0,
@@ -33,8 +33,8 @@ impl AppState {
         }
     }
 
-    pub fn single(name: &str, data: Athena) -> Self {
-        let exchange = UistV2::new();
+    pub fn single(name: &str, data: Penelope) -> Self {
+        let exchange = UistV1::new();
         let backtest = BacktestState {
             id: 0,
             date: *data.get_date(0).unwrap(),
@@ -64,7 +64,7 @@ impl AppState {
                 let mut inserted_orders = Vec::new();
 
                 if let Some(quotes) = dataset.get_quotes(&backtest.date) {
-                    let mut res = backtest.exchange.tick(quotes, backtest.date);
+                    let mut res = backtest.exchange.tick(quotes);
                     executed_trades.append(&mut res.0);
                     inserted_orders.append(&mut res.1);
                 }
@@ -81,10 +81,10 @@ impl AppState {
         None
     }
 
-    pub fn fetch_quotes(&self, backtest_id: BacktestId) -> Option<DateBBO> {
+    pub fn fetch_quotes(&self, backtest_id: BacktestId) -> Option<&PenelopeQuoteByDate> {
         if let Some(backtest) = self.backtests.get(&backtest_id) {
             if let Some(dataset) = self.datasets.get(&backtest.dataset_name) {
-                return dataset.get_bbo(backtest.date);
+                return dataset.get_quotes(&backtest.date);
             }
         }
         None
@@ -93,7 +93,7 @@ impl AppState {
     pub fn init(&mut self, dataset_name: String) -> Option<BacktestId> {
         if let Some(dataset) = self.datasets.get(&dataset_name) {
             let new_id = self.last + 1;
-            let exchange = UistV2::new();
+            let exchange = UistV1::new();
             let backtest = BacktestState {
                 id: new_id,
                 date: *dataset.get_date(0).unwrap(),
@@ -115,12 +115,20 @@ impl AppState {
         None
     }
 
+    pub fn delete_order(&mut self, order_id: OrderId, backtest_id: BacktestId) -> Option<()> {
+        if let Some(backtest) = self.backtests.get_mut(&backtest_id) {
+            backtest.exchange.delete_order(order_id);
+            return Some(());
+        }
+        None
+    }
+
     pub fn new_backtest(&mut self, dataset_name: &str) -> Option<BacktestId> {
         let new_id = self.last + 1;
 
         // Check that dataset exists
         if let Some(dataset) = self.datasets.get(dataset_name) {
-            let exchange = UistV2::new();
+            let exchange = UistV1::new();
 
             let backtest = BacktestState {
                 id: new_id,
@@ -152,8 +160,13 @@ pub struct InsertOrderRequest {
 }
 
 #[derive(Debug, Deserialize, Serialize)]
+pub struct DeleteOrderRequest {
+    pub order_id: OrderId,
+}
+
+#[derive(Debug, Deserialize, Serialize)]
 pub struct FetchQuotesResponse {
-    pub quotes: DateBBO,
+    pub quotes: PenelopeQuoteByDate,
 }
 
 #[derive(Debug, Deserialize, Serialize)]
@@ -174,33 +187,38 @@ pub struct NowResponse {
 }
 
 #[derive(Debug)]
-pub enum UistV2Error {
+pub enum UistV1Error {
     UnknownBacktest,
     UnknownDataset,
 }
 
-impl std::error::Error for UistV2Error {}
+impl std::error::Error for UistV1Error {}
 
-impl core::fmt::Display for UistV2Error {
+impl core::fmt::Display for UistV1Error {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         match self {
-            UistV2Error::UnknownBacktest => write!(f, "UnknownBacktest"),
-            UistV2Error::UnknownDataset => write!(f, "UnknownDataset"),
+            UistV1Error::UnknownBacktest => write!(f, "UnknownBacktest"),
+            UistV1Error::UnknownDataset => write!(f, "UnknownDataset"),
         }
     }
 }
 
-impl actix_web::ResponseError for UistV2Error {
+impl actix_web::ResponseError for UistV1Error {
     fn status_code(&self) -> actix_web::http::StatusCode {
         match self {
-            UistV2Error::UnknownBacktest => actix_web::http::StatusCode::BAD_REQUEST,
-            UistV2Error::UnknownDataset => actix_web::http::StatusCode::BAD_REQUEST,
+            UistV1Error::UnknownBacktest => actix_web::http::StatusCode::BAD_REQUEST,
+            UistV1Error::UnknownDataset => actix_web::http::StatusCode::BAD_REQUEST,
         }
     }
 }
 
 pub trait Client {
     fn tick(&mut self, backtest_id: BacktestId) -> impl Future<Output = Result<TickResponse>>;
+    fn delete_order(
+        &mut self,
+        order_id: OrderId,
+        backtest_id: BacktestId,
+    ) -> impl Future<Output = Result<()>>;
     fn insert_order(
         &mut self,
         order: Order,
@@ -215,187 +233,21 @@ pub trait Client {
     fn now(&mut self, backtest_id: BacktestId) -> impl Future<Output = Result<NowResponse>>;
 }
 
-pub struct TestClient {
-    state: AppState,
-}
-
-impl Client for TestClient {
-    fn init(&mut self, dataset_name: String) -> impl Future<Output = Result<InitResponse>> {
-        if let Some(id) = self.state.init(dataset_name) {
-            future::ready(Ok(InitResponse { backtest_id: id }))
-        } else {
-            future::ready(Err(Error::new(UistV2Error::UnknownDataset)))
-        }
-    }
-
-    fn tick(&mut self, backtest_id: BacktestId) -> impl Future<Output = Result<TickResponse>> {
-        if let Some(resp) = self.state.tick(backtest_id) {
-            future::ready(Ok(TickResponse {
-                inserted_orders: resp.2,
-                executed_trades: resp.1,
-                has_next: resp.0,
-            }))
-        } else {
-            future::ready(Err(Error::new(UistV2Error::UnknownBacktest)))
-        }
-    }
-
-    fn insert_order(
-        &mut self,
-        order: Order,
-        backtest_id: BacktestId,
-    ) -> impl Future<Output = Result<()>> {
-        if let Some(()) = self.state.insert_order(order, backtest_id) {
-            future::ready(Ok(()))
-        } else {
-            future::ready(Err(Error::new(UistV2Error::UnknownBacktest)))
-        }
-    }
-
-    fn fetch_quotes(
-        &mut self,
-        backtest_id: BacktestId,
-    ) -> impl Future<Output = Result<FetchQuotesResponse>> {
-        if let Some(quotes) = self.state.fetch_quotes(backtest_id) {
-            future::ready(Ok(FetchQuotesResponse {
-                quotes: quotes.to_owned(),
-            }))
-        } else {
-            future::ready(Err(Error::new(UistV2Error::UnknownBacktest)))
-        }
-    }
-
-    fn info(&mut self, backtest_id: BacktestId) -> impl Future<Output = Result<InfoResponse>> {
-        if let Some(backtest) = self.state.backtests.get(&backtest_id) {
-            future::ready(Ok(InfoResponse {
-                version: "v1".to_string(),
-                dataset: backtest.dataset_name.clone(),
-            }))
-        } else {
-            future::ready(Err(Error::new(UistV2Error::UnknownBacktest)))
-        }
-    }
-
-    fn now(&mut self, backtest_id: BacktestId) -> impl Future<Output = Result<NowResponse>> {
-        if let Some(backtest) = self.state.backtests.get(&backtest_id) {
-            if let Some(dataset) = self.state.datasets.get(&backtest.dataset_name) {
-                let now = backtest.date;
-                let mut has_next = false;
-                if dataset.has_next(backtest.pos) {
-                    has_next = true;
-                }
-                future::ready(Ok(NowResponse { now, has_next }))
-            } else {
-                future::ready(Err(Error::new(UistV2Error::UnknownDataset)))
-            }
-        } else {
-            future::ready(Err(Error::new(UistV2Error::UnknownBacktest)))
-        }
-    }
-}
-
-impl TestClient {
-    pub fn single(name: &str, data: Athena) -> Self {
-        Self {
-            state: AppState::single(name, data),
-        }
-    }
-}
-
-#[derive(Debug)]
-pub struct HttpClient {
-    pub path: String,
-    pub client: reqwest::Client,
-}
-
-impl Client for HttpClient {
-    async fn tick(&mut self, backtest_id: BacktestId) -> Result<TickResponse> {
-        Ok(self
-            .client
-            .get(self.path.clone() + format!("/backtest/{backtest_id}/tick").as_str())
-            .send()
-            .await?
-            .json::<TickResponse>()
-            .await?)
-    }
-
-    async fn insert_order(&mut self, order: Order, backtest_id: BacktestId) -> Result<()> {
-        let req = InsertOrderRequest { order };
-        Ok(self
-            .client
-            .post(self.path.clone() + format!("/backtest/{backtest_id}/insert_order").as_str())
-            .json(&req)
-            .send()
-            .await?
-            .json::<()>()
-            .await?)
-    }
-
-    async fn fetch_quotes(&mut self, backtest_id: BacktestId) -> Result<FetchQuotesResponse> {
-        Ok(self
-            .client
-            .get(self.path.clone() + format!("/backtest/{backtest_id}/fetch_quotes").as_str())
-            .send()
-            .await?
-            .json::<FetchQuotesResponse>()
-            .await?)
-    }
-
-    async fn init(&mut self, dataset_name: String) -> Result<InitResponse> {
-        Ok(self
-            .client
-            .get(self.path.clone() + format!("/init/{dataset_name}").as_str())
-            .send()
-            .await?
-            .json::<InitResponse>()
-            .await?)
-    }
-
-    async fn info(&mut self, backtest_id: BacktestId) -> Result<InfoResponse> {
-        Ok(self
-            .client
-            .get(self.path.clone() + format!("/backtest/{backtest_id}/info").as_str())
-            .send()
-            .await?
-            .json::<InfoResponse>()
-            .await?)
-    }
-
-    async fn now(&mut self, backtest_id: BacktestId) -> Result<NowResponse> {
-        Ok(self
-            .client
-            .get(self.path.clone() + format!("/backtest/{backtest_id}/now").as_str())
-            .send()
-            .await?
-            .json::<NowResponse>()
-            .await?)
-    }
-}
-
-impl HttpClient {
-    pub fn new(path: String) -> Self {
-        Self {
-            path,
-            client: reqwest::Client::new(),
-        }
-    }
-}
-
 type UistState = Mutex<AppState>;
 
 pub mod server {
     use actix_web::{get, post, web};
 
     use super::{
-        BacktestId, FetchQuotesResponse, InfoResponse, InitResponse, InsertOrderRequest,
-        NowResponse, TickResponse, UistState, UistV2Error,
+        BacktestId, DeleteOrderRequest, FetchQuotesResponse, InfoResponse, InitResponse,
+        InsertOrderRequest, NowResponse, TickResponse, UistState, UistV1Error,
     };
 
     #[get("/backtest/{backtest_id}/tick")]
     pub async fn tick(
         app: web::Data<UistState>,
         path: web::Path<(BacktestId,)>,
-    ) -> Result<web::Json<TickResponse>, UistV2Error> {
+    ) -> Result<web::Json<TickResponse>, UistV1Error> {
         let mut uist = app.lock().unwrap();
         let (backtest_id,) = path.into_inner();
 
@@ -406,7 +258,23 @@ pub mod server {
                 has_next: result.0,
             }))
         } else {
-            Err(UistV2Error::UnknownBacktest)
+            Err(UistV1Error::UnknownBacktest)
+        }
+    }
+
+    #[post("/backtest/{backtest_id}/delete_order")]
+    pub async fn delete_order(
+        app: web::Data<UistState>,
+        path: web::Path<(BacktestId,)>,
+        delete_order: web::Json<DeleteOrderRequest>,
+    ) -> Result<web::Json<()>, UistV1Error> {
+        let mut uist = app.lock().unwrap();
+        let (backtest_id,) = path.into_inner();
+
+        if let Some(()) = uist.delete_order(delete_order.order_id, backtest_id) {
+            Ok(web::Json(()))
+        } else {
+            Err(UistV1Error::UnknownBacktest)
         }
     }
 
@@ -415,13 +283,13 @@ pub mod server {
         app: web::Data<UistState>,
         path: web::Path<(BacktestId,)>,
         insert_order: web::Json<InsertOrderRequest>,
-    ) -> Result<web::Json<()>, UistV2Error> {
+    ) -> Result<web::Json<()>, UistV1Error> {
         let mut uist = app.lock().unwrap();
         let (backtest_id,) = path.into_inner();
         if let Some(()) = uist.insert_order(insert_order.order.clone(), backtest_id) {
             Ok(web::Json(()))
         } else {
-            Err(UistV2Error::UnknownBacktest)
+            Err(UistV1Error::UnknownBacktest)
         }
     }
 
@@ -429,7 +297,7 @@ pub mod server {
     pub async fn fetch_quotes(
         app: web::Data<UistState>,
         path: web::Path<(BacktestId,)>,
-    ) -> Result<web::Json<FetchQuotesResponse>, UistV2Error> {
+    ) -> Result<web::Json<FetchQuotesResponse>, UistV1Error> {
         let uist = app.lock().unwrap();
         let (backtest_id,) = path.into_inner();
 
@@ -438,7 +306,7 @@ pub mod server {
                 quotes: quotes.clone(),
             }))
         } else {
-            Err(UistV2Error::UnknownBacktest)
+            Err(UistV1Error::UnknownBacktest)
         }
     }
 
@@ -446,14 +314,14 @@ pub mod server {
     pub async fn init(
         app: web::Data<UistState>,
         path: web::Path<(String,)>,
-    ) -> Result<web::Json<InitResponse>, UistV2Error> {
+    ) -> Result<web::Json<InitResponse>, UistV1Error> {
         let mut uist = app.lock().unwrap();
         let (dataset_name,) = path.into_inner();
 
         if let Some(backtest_id) = uist.init(dataset_name) {
             Ok(web::Json(InitResponse { backtest_id }))
         } else {
-            Err(UistV2Error::UnknownDataset)
+            Err(UistV1Error::UnknownDataset)
         }
     }
 
@@ -461,7 +329,7 @@ pub mod server {
     pub async fn info(
         app: web::Data<UistState>,
         path: web::Path<(BacktestId,)>,
-    ) -> Result<web::Json<InfoResponse>, UistV2Error> {
+    ) -> Result<web::Json<InfoResponse>, UistV1Error> {
         let uist = app.lock().unwrap();
         let (backtest_id,) = path.into_inner();
 
@@ -471,7 +339,7 @@ pub mod server {
                 dataset: resp.dataset_name.clone(),
             }))
         } else {
-            Err(UistV2Error::UnknownBacktest)
+            Err(UistV1Error::UnknownBacktest)
         }
     }
 
@@ -479,7 +347,7 @@ pub mod server {
     pub async fn now(
         app: web::Data<UistState>,
         path: web::Path<(BacktestId,)>,
-    ) -> Result<web::Json<NowResponse>, UistV2Error> {
+    ) -> Result<web::Json<NowResponse>, UistV1Error> {
         let uist = app.lock().unwrap();
         let (backtest_id,) = path.into_inner();
 
@@ -492,10 +360,10 @@ pub mod server {
                 }
                 Ok(web::Json(NowResponse { now, has_next }))
             } else {
-                Err(UistV2Error::UnknownDataset)
+                Err(UistV1Error::UnknownDataset)
             }
         } else {
-            Err(UistV2Error::UnknownBacktest)
+            Err(UistV1Error::UnknownBacktest)
         }
     }
 }
@@ -504,9 +372,8 @@ pub mod server {
 mod tests {
     use actix_web::{test, web, App};
 
-    use crate::exchange::uist_v2::Order;
-    use crate::http::uist_v1::NowResponse;
-    use crate::input::athena::Athena;
+    use rotala::exchange::uist_v1::Order;
+    use rotala::input::penelope::Penelope;
 
     use super::server::*;
     use super::{AppState, FetchQuotesResponse, InitResponse, InsertOrderRequest, TickResponse};
@@ -514,7 +381,7 @@ mod tests {
 
     #[actix_web::test]
     async fn test_single_trade_loop() {
-        let uist = Athena::random(100, vec!["ABC", "BCD"]);
+        let uist = Penelope::random(100, vec!["ABC", "BCD"]);
         let dataset_name = "fake";
         let state = AppState::single(dataset_name, uist);
 
@@ -529,7 +396,7 @@ mod tests {
                 .service(fetch_quotes)
                 .service(tick)
                 .service(insert_order)
-                .service(now),
+                .service(delete_order),
         )
         .await;
 
@@ -550,14 +417,9 @@ mod tests {
             .to_request();
         let _resp2: TickResponse = test::call_and_read_body_json(&app, req2).await;
 
-        let now_request = test::TestRequest::get()
-            .uri(format!("/backtest/{backtest_id}/now").as_str())
-            .to_request();
-        let now_response: NowResponse = test::call_and_read_body_json(&app, now_request).await;
-
         let req3 = test::TestRequest::post()
             .set_json(InsertOrderRequest {
-                order: Order::market_buy("ABC", 100.0, now_response.now),
+                order: Order::market_buy("ABC", 100.0),
             })
             .uri(format!("/backtest/{backtest_id}/insert_order").as_str())
             .to_request();

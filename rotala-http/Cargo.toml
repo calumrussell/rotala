@@ -1,5 +1,5 @@
 [package]
-name = "rotala"
+name = "rotala-http"
 version = "0.4.1"
 edition = "2021"
 authors = ["Calum Russell <calum.mj.russell@gmail.com>"]
@@ -10,6 +10,7 @@ readme = "README.md"
 rust-version = "1.75"
 
 [dependencies]
+actix-web = "4"
 time = { version = "0.3.17", features = ["macros", "parsing"] }
 rand = "0.8.4"
 rand_distr = "0.4.1"
@@ -19,13 +20,21 @@ csv = "1.1.6"
 serde = { version = "1.0.193", features = ["derive"] }
 serde_json = "1.0.108"
 tokio = { version = "1.35.1", features = ["full"] }
+derive_more = { version = "1.0.0", features = ["full"] }
+anyhow = "1.0.86"
+rotala = { path = "../rotala/" }
 
 [dev-dependencies]
 criterion = { version = "0.5.1", features = ["async_tokio"] }
 
-[lib]
-bench = false
+[[bin]]
+name = "uist_server_v1"
+path = "./src/bin/uist_server_v1.rs"
 
-[[bench]]
-name = "sim_orderbook"
-harness = false
+[[bin]]
+name = "uist_server_v2"
+path = "./src/bin/uist_server_v2.rs"
+
+[[bin]]
+name = "jura_server_v1"
+path = "./src/bin/jura_server_v1.rs"

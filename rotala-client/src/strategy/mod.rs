@@ -13,7 +13,6 @@
 pub mod staticweight;
 
 #[allow(unused)]
-
 /// Used to log cash flows which may be used in performance calculations.
 pub enum StrategyEvent {
     WithdrawSuccess(f64),
