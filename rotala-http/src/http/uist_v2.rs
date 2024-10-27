@@ -5,7 +5,7 @@ use std::sync::Mutex;
 use anyhow::Result;
 use serde::{Deserialize, Serialize};
 
-use rotala::exchange::uist_v2::{Order, Trade, UistV2};
+use rotala::exchange::uist_v2::{InnerOrder, Order, Trade, UistV2};
 use rotala::input::athena::{Athena, DateBBO};
 
 pub type BacktestId = u64;
@@ -56,7 +56,7 @@ impl AppState {
         }
     }
 
-    pub fn tick(&mut self, backtest_id: BacktestId) -> Option<(bool, Vec<Trade>, Vec<Order>)> {
+    pub fn tick(&mut self, backtest_id: BacktestId) -> Option<(bool, Vec<Trade>, Vec<InnerOrder>)> {
         if let Some(backtest) = self.backtests.get_mut(&backtest_id) {
             if let Some(dataset) = self.datasets.get(&backtest.dataset_name) {
                 let mut has_next = false;
@@ -143,7 +143,7 @@ impl AppState {
 pub struct TickResponse {
     pub has_next: bool,
     pub executed_trades: Vec<Trade>,
-    pub inserted_orders: Vec<Order>,
+    pub inserted_orders: Vec<InnerOrder>,
 }
 
 #[derive(Debug, Deserialize, Serialize)]
@@ -338,7 +338,6 @@ pub mod server {
 mod tests {
     use actix_web::{test, web, App};
 
-    use crate::http::uist_v1::NowResponse;
     use rotala::exchange::uist_v2::Order;
     use rotala::input::athena::Athena;
 
@@ -384,14 +383,9 @@ mod tests {
             .to_request();
         let _resp2: TickResponse = test::call_and_read_body_json(&app, req2).await;
 
-        let now_request = test::TestRequest::get()
-            .uri(format!("/backtest/{backtest_id}/now").as_str())
-            .to_request();
-        let now_response: NowResponse = test::call_and_read_body_json(&app, now_request).await;
-
         let req3 = test::TestRequest::post()
             .set_json(InsertOrderRequest {
-                order: Order::market_buy("ABC", 100.0, now_response.now),
+                order: Order::market_buy("ABC", 100.0),
             })
             .uri(format!("/backtest/{backtest_id}/insert_order").as_str())
             .to_request();
