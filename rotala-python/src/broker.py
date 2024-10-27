@@ -140,7 +140,7 @@ class Broker:
         self.holdings = {}
         self.pending_orders = []
         self.trade_log = []
-        self.order_log = []
+        self.order_inserted_on_last_tick = []
         self.portfolio_values = []
         self.backtest_id = None
         self.ts = None
@@ -233,6 +233,7 @@ class Broker:
                     f"{self.backtest_id}-{self.ts} FAILED INSERT ORDER: {order}"
                 )
 
+        self.order_inserted_on_last_tick = []
         tick_response = self.http.tick()
         for trade_json in tick_response["executed_trades"]:
             trade = Trade.from_dict(trade_json)
@@ -240,7 +241,7 @@ class Broker:
             self.trade_log.append(trade)
 
         for order in tick_response["inserted_orders"]:
-            self.order_log.append(order)
+            self.order_inserted_on_last_tick.append(order)
 
         if not tick_response["has_next"]:
             logger.critical("Sim finished")
