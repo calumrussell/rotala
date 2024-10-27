@@ -139,7 +139,6 @@ class Broker:
         self.dataset_name = builder.dataset_name
         self.holdings = {}
         self.pending_orders = []
-        self.finished = False
         self.trade_log = []
         self.order_log = []
         self.portfolio_values = []
@@ -196,9 +195,6 @@ class Broker:
         self._update_holdings(trade.symbol, signed_qty)
 
     def insert_order(self, order: Order):
-        if self.finished:
-            return
-
         # Orders are only flushed when we call tick
         self.pending_orders.append(order)
 
@@ -221,11 +217,8 @@ class Broker:
         return value
 
     def tick(self):
-        if self.finished:
-            logger.critical("Sim finished")
-            exit(0)
-
         logger.info(f"{self.backtest_id}-{self.ts} TICK")
+
         while len(self.pending_orders) > 0:
             order = self.pending_orders.pop()
             if self._validate_order(order):
@@ -246,7 +239,8 @@ class Broker:
             self.order_log.append(order)
 
         if not tick_response["has_next"]:
-            self.finished = True
+            logger.critical("Sim finished")
+            exit(0)
         else:
             self.latest_quotes = self.http.fetch_quotes()["quotes"]
             if self.latest_quotes:
