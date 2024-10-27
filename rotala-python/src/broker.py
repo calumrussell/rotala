@@ -1,7 +1,10 @@
 from enum import Enum
 import json
+import logging
 
 from src.http import HttpClient
+
+logger = logging.getLogger(__name__)
 
 
 class BrokerBuilder:
@@ -58,11 +61,14 @@ class Order:
         self.qty = qty
         self.price = price
 
+    def __str__(self):
+        return f"{self.order_type} {self.symbol} {self.qty} {self.price}"
+
     def serialize(self):
         if self.price:
-            return f"{{\"order_type\": \"{self.order_type.name}\", \"symbol\": \"{self.symbol}\", \"qty\": {self.qty}, \"price\": {self.price}, \"recieved\": 0}}"
+            return f'{{"order_type": "{self.order_type.name}", "symbol": "{self.symbol}", "qty": {self.qty}, "price": {self.price}, "recieved": 0}}'
         else:
-            return f"{{\"order_type\": \"{self.order_type.name}\", \"symbol\": \"{self.symbol}\", \"qty\": {self.qty}, \"price\": null, \"recieved\": 0}}"
+            return f'{{"order_type": "{self.order_type.name}", "symbol": "{self.symbol}", "qty": {self.qty}, "price": null, "recieved": 0}}'
 
     @staticmethod
     def from_json(json_str):
@@ -91,15 +97,27 @@ class Trade:
         self.date = date
         self.typ = typ
 
+    def __str__(self):
+        return f"{self.typ} {self.quantity}/{self.value} {self.symbol}"
+
     @staticmethod
     def from_dict(trade_dict: dict):
-        return Trade(
-            trade_dict["symbol"],
-            trade_dict["value"],
-            trade_dict["quantity"],
-            trade_dict["date"],
-            trade_dict["typ"],
-        )
+        if trade_dict["typ"] == "Buy":
+            return Trade(
+                trade_dict["symbol"],
+                trade_dict["value"],
+                trade_dict["quantity"],
+                trade_dict["date"],
+                TradeType.Buy,
+            )
+        else:
+            return Trade(
+                trade_dict["symbol"],
+                trade_dict["value"],
+                trade_dict["quantity"],
+                trade_dict["date"],
+                TradeType.Sell,
+            )
 
     @staticmethod
     def from_json(json_str: str):
@@ -121,20 +139,29 @@ class Broker:
         self.dataset_name = builder.dataset_name
         self.holdings = {}
         self.pending_orders = []
-        self.finished = False
         self.trade_log = []
         self.order_log = []
         self.portfolio_values = []
+        self.backtest_id = None
+        self.ts = None
 
         # Initializes backtest_id, can ignore result
-        self.http.init(self.dataset_name)
+        init_response = self.http.init(self.dataset_name)
+        self.backtest_id = init_response["backtest_id"]
         quotes_resp = self.http.fetch_quotes()
         self.latest_quotes = quotes_resp["quotes"]
+        self.ts = list(self.latest_quotes.values())[0]["date"]
 
     def _update_holdings(self, position: str, chg: float):
         if position not in self.holdings:
             self.holdings[position] = 0
-        self.holdings[position] += chg
+
+        curr_position = self.holdings[position]
+        new_position = curr_position + chg
+        logger.info(
+            f"{self.backtest_id}-{self.ts} POSITION CHG: {position} {curr_position} -> {new_position}"
+        )
+        self.holdings[position] = new_position
 
     def _validate_order(self, order) -> bool:
         if (
@@ -142,20 +169,32 @@ class Broker:
             or order.order_type == OrderType.LimitSell
         ):
             curr_position = self.holdings[order.symbol]
-            if curr_position == 0 or order.qty > curr_position:
+            if curr_position >= 0 or order.qty > curr_position:
                 return False
         return True
 
     def _process_trade(self, trade: Trade):
-        self.cash = self.cash - trade.value
-        signed_qty = trade.quantity if trade.typ == TradeType.Buy else -trade.quantity
+        logger.info(f"{self.backtest_id}-{self.ts} EXECUTED: {trade}")
 
+        before_trade = self.cash
+        after_trade = (
+            self.cash - trade.value
+            if trade.typ == TradeType.Buy
+            else self.cash + trade.value
+        )
+
+        logger.info(
+            f"{self.backtest_id}-{self.ts} CASH: {before_trade} -> {after_trade}"
+        )
+        self.cash = after_trade
+        if self.cash < 0:
+            logger.critical("Run out of cash. Stopping sim.")
+            exit(1)
+
+        signed_qty = trade.quantity if trade.typ == TradeType.Buy else -trade.quantity
         self._update_holdings(trade.symbol, signed_qty)
 
     def insert_order(self, order: Order):
-        if self.finished:
-            return
-
         # Orders are only flushed when we call tick
         self.pending_orders.append(order)
 
@@ -174,20 +213,21 @@ class Broker:
             if quote:
                 qty = self.holdings[symbol]
                 symbol_bid = quote["bid"]
-                value+= qty*symbol_bid
+                value += qty * symbol_bid
         return value
 
     def tick(self):
-        if self.finished:
-            print("Sim finished, cannot tick again so exiting.")
-            print(self.portfolio_values)
-            exit(0)
+        logger.info(f"{self.backtest_id}-{self.ts} TICK")
 
         while len(self.pending_orders) > 0:
-            ##TODO: fails silently if validation fails, should log error
             order = self.pending_orders.pop()
             if self._validate_order(order):
+                logger.info(f"{self.backtest_id}-{self.ts} INSERT ORDER: {order}")
                 self.http.insert_order(order)
+            else:
+                logger.info(
+                    f"{self.backtest_id}-{self.ts} FAILED INSERT ORDER: {order}"
+                )
 
         tick_response = self.http.tick()
         for trade_json in tick_response["executed_trades"]:
@@ -199,8 +239,13 @@ class Broker:
             self.order_log.append(order)
 
         if not tick_response["has_next"]:
-            self.finished = True
+            logger.critical("Sim finished")
+            exit(0)
         else:
             self.latest_quotes = self.http.fetch_quotes()["quotes"]
+            if self.latest_quotes:
+                self.ts = list(self.latest_quotes.values())[0]["date"]
 
-        self.portfolio_values.append(self.get_current_value())
+        curr_value = self.get_current_value()
+        logger.info(f"{self.backtest_id}-{self.ts} TOTAL VALUE: {curr_value}")
+        self.portfolio_values.append(curr_value)
