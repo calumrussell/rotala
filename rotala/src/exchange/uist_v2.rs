@@ -238,7 +238,7 @@ impl Default for OrderBook {
 impl OrderBook {
     pub fn new() -> Self {
         Self {
-            inner: std::collections::VecDeque::new(),
+            inner: VecDeque::new(),
             latency: LatencyModel::None,
             last_order_id: 0,
         }
@@ -354,31 +354,45 @@ impl OrderBook {
             return trade_results;
         }
 
-        for order in self.inner.iter() {
+        let mut new_inner: VecDeque<InnerOrder> = VecDeque::new();
+
+        while !self.inner.is_empty() {
+            let order = self.inner.pop_front().unwrap();
             let security_id = &order.symbol;
 
-            if !self.latency.cmp_order(now, order) {
+            if !self.latency.cmp_order(now, &order) {
+                new_inner.push_back(order);
                 continue;
             }
 
             if let Some(depth) = quotes.get(security_id) {
                 let mut trades = match order.order_type {
                     OrderType::MarketBuy => {
-                        Self::fill_order(depth, order, true, f64::MAX, &mut filled)
+                        Self::fill_order(depth, &order, true, f64::MAX, &mut filled)
                     }
                     OrderType::MarketSell => {
-                        Self::fill_order(depth, order, false, f64::MIN, &mut filled)
+                        Self::fill_order(depth, &order, false, f64::MIN, &mut filled)
                     }
                     OrderType::LimitBuy => {
-                        Self::fill_order(depth, order, true, order.price.unwrap(), &mut filled)
+                        Self::fill_order(depth, &order, true, order.price.unwrap(), &mut filled)
                     }
                     OrderType::LimitSell => {
-                        Self::fill_order(depth, order, false, order.price.unwrap(), &mut filled)
+                        Self::fill_order(depth, &order, false, order.price.unwrap(), &mut filled)
                     }
                 };
+
+                if trades.is_empty() {
+                    new_inner.push_back(order);
+                }
+
                 trade_results.append(&mut trades)
+            } else {
+                new_inner.push_back(order);
             }
         }
+        self.inner = new_inner;
+        print!("{:?}", self.inner);
+
         trade_results
     }
 }
@@ -682,6 +696,9 @@ mod tests {
         let trades_100 = orderbook.execute_orders(&quotes, 100);
         let trades_101 = orderbook.execute_orders(&quotes, 101);
         let trades_102 = orderbook.execute_orders(&quotes, 102);
+
+        println!("{:?}", trades_101);
+
         assert!(trades_100.is_empty());
         assert!(trades_101.is_empty());
         assert!(trades_102.len() == 1);
