@@ -686,4 +686,50 @@ mod tests {
         assert!(trades_101.is_empty());
         assert!(trades_102.len() == 1);
     }
+
+    #[test]
+    fn test_that_order_id_is_incrementing_and_unique() {
+        let bid_level = Level {
+            price: 98.0,
+            size: 20.0,
+        };
+
+        let ask_level = Level {
+            price: 102.0,
+            size: 20.0,
+        };
+
+        let mut depth = Depth::new(100, "ABC");
+        depth.add_level(bid_level.clone(), crate::input::athena::Side::Bid);
+        depth.add_level(ask_level.clone(), crate::input::athena::Side::Ask);
+
+        let mut depth_101 = Depth::new(101, "ABC");
+        depth_101.add_level(bid_level.clone(), crate::input::athena::Side::Bid);
+        depth_101.add_level(ask_level.clone(), crate::input::athena::Side::Ask);
+
+        let mut depth_102 = Depth::new(102, "ABC");
+        depth_102.add_level(bid_level, crate::input::athena::Side::Bid);
+        depth_102.add_level(ask_level, crate::input::athena::Side::Ask);
+
+        let mut quotes: DateQuotes = HashMap::new();
+        quotes.insert("ABC".to_string(), depth);
+        quotes.insert("ABC".to_string(), depth_101);
+        quotes.insert("ABC".to_string(), depth_102);
+
+        let mut orderbook = OrderBook::new();
+        let order = Order::limit_buy("ABC", 20.0, 103.00);
+        let order1 = Order::limit_buy("ABC", 20.0, 103.00);
+        let order2 = Order::limit_buy("ABC", 20.0, 103.00);
+
+        let res = orderbook.insert_order(order, 100);
+        let res1 = orderbook.insert_order(order1, 100);
+        let _ = orderbook.execute_orders(&quotes, 100);
+
+        let res2 = orderbook.insert_order(order2, 101);
+        let _ = orderbook.execute_orders(&quotes, 101);
+
+        assert!(res.order_id == 0);
+        assert!(res1.order_id == 1);
+        assert!(res2.order_id == 2);
+    }
 }
