@@ -34,7 +34,3 @@ path = "./src/bin/uist_server_v1.rs"
 [[bin]]
 name = "uist_server_v2"
 path = "./src/bin/uist_server_v2.rs"
-
-[[bin]]
-name = "jura_server_v1"
-path = "./src/bin/jura_server_v1.rs"
