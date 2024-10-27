@@ -170,7 +170,7 @@ class Broker:
             or order.order_type == OrderType.LimitSell
         ):
             curr_position = self.holdings[order.symbol]
-            if curr_position == 0 or order.qty > curr_position:
+            if curr_position >= 0 or order.qty > curr_position:
                 return False
         return True
 
@@ -227,11 +227,14 @@ class Broker:
 
         logger.info(f"{self.backtest_id}-{self.ts} TICK")
         while len(self.pending_orders) > 0:
-            ##TODO: fails silently if validation fails, should log error
             order = self.pending_orders.pop()
             if self._validate_order(order):
                 logger.info(f"{self.backtest_id}-{self.ts} INSERT ORDER: {order}")
                 self.http.insert_order(order)
+            else:
+                logger.info(
+                    f"{self.backtest_id}-{self.ts} FAILED INSERT ORDER: {order}"
+                )
 
         tick_response = self.http.tick()
         for trade_json in tick_response["executed_trades"]:
