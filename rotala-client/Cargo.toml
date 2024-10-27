@@ -14,13 +14,14 @@ time = { version = "0.3.17", features = ["macros", "parsing"] }
 rand = "0.8.4"
 rand_distr = "0.4.1"
 log = "0.4.17"
-env_logger = "0.11.0"
 pyo3 = { version = "0.22.1", optional = true }
-async-trait = "0.1.73"
 tokio = { version = "1.32.0", features = ["full"] }
 futures = "0.3.28"
 rotala = { path = "../rotala/" }
 rotala-http = { path = "../rotala-http/" }
+anyhow = "1.0.86"
+reqwest = { version = "0.12.5", features = ["blocking", "json"] }
+env_logger = "0.11.5"
 
 [dev-dependencies]
 reqwest = { version = "0.12.5", features = ["blocking"] }
@@ -34,3 +35,7 @@ bench = false
 [[bench]]
 name = "sim_benchmark"
 harness = false
+
+[[bin]]
+name = "uist_client_test"
+path = "./src/bin/uist_client_test.rs"
