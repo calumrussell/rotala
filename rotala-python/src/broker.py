@@ -36,10 +36,10 @@ class BrokerBuilder:
 
 
 class OrderType(Enum):
-    MarketSell = 0
-    MarketBuy = 1
-    LimitBuy = 2
-    LimitSell = 3
+    MarketSell = "MarketSell"
+    MarketBuy = "MarketBuy"
+    LimitBuy = "LimitBuy"
+    LimitSell = "LimitSell"
 
 
 class Order:
@@ -71,9 +71,19 @@ class Order:
             return f'{{"order_type": "{self.order_type.name}", "symbol": "{self.symbol}", "qty": {self.qty}, "price": null, "recieved": 0}}'
 
     @staticmethod
+    def from_dict(order):
+        order_type = OrderType(order["order_type"])
+        return Order(
+            order_type,
+            order["symbol"],
+            order["qty"],
+            order["price"],
+        )
+
+    @staticmethod
     def from_json(json_str):
         to_dict = json.loads(json_str)
-        Order(
+        return Order(
             to_dict["order_type"],
             to_dict["symbol"],
             to_dict["symbol"],
@@ -83,8 +93,8 @@ class Order:
 
 
 class TradeType(Enum):
-    Buy = 0
-    Sell = 1
+    Buy = "Buy"
+    Sell = "Sell"
 
 
 class Trade:
@@ -111,24 +121,15 @@ class Trade:
 
     @staticmethod
     def from_dict(trade_dict: dict):
-        if trade_dict["typ"] == "Buy":
-            return Trade(
-                trade_dict["symbol"],
-                trade_dict["value"],
-                trade_dict["quantity"],
-                trade_dict["date"],
-                TradeType.Buy,
-                trade_dict["order_id"],
-            )
-        else:
-            return Trade(
-                trade_dict["symbol"],
-                trade_dict["value"],
-                trade_dict["quantity"],
-                trade_dict["date"],
-                TradeType.Sell,
-                trade_dict["order_id"],
-            )
+        trade_type = TradeType(trade_dict["typ"])
+        return Trade(
+            trade_dict["symbol"],
+            trade_dict["value"],
+            trade_dict["quantity"],
+            trade_dict["date"],
+            trade_type,
+            trade_dict["order_id"],
+        )
 
     @staticmethod
     def from_json(json_str: str):
@@ -255,7 +256,7 @@ class Broker:
             # This should always be the case
             if trade.order_id in self.unexecuted_orders:
                 order = self.unexecuted_orders[trade.order_id]
-                if trade.quantity > order["qty"]:
+                if trade.quantity > order.qty:
                     order["quantity"] -= trade.quantity
                 else:
                     del self.unexecuted_orders[trade.order_id]
@@ -264,7 +265,7 @@ class Broker:
             self.trade_log.append(trade)
 
         for order in tick_response["inserted_orders"]:
-            self.unexecuted_orders[order["order_id"]] = order
+            self.unexecuted_orders[order["order_id"]] = Order.from_dict(order)
             self.order_inserted_on_last_tick.append(order)
 
         if not tick_response["has_next"]:
