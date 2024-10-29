@@ -4,6 +4,8 @@ use serde::{Deserialize, Serialize};
 
 use crate::input::athena::{DateQuotes, Depth, Level};
 
+pub type OrderId = u64;
+
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct Quote {
     pub bid: f64,
@@ -92,6 +94,7 @@ pub struct Trade {
     pub quantity: f64,
     pub date: i64,
     pub typ: TradeType,
+    pub order_id: OrderId,
 }
 
 #[derive(Debug)]
@@ -219,7 +222,7 @@ pub struct InnerOrder {
     pub qty: f64,
     pub price: Option<f64>,
     pub recieved_timestamp: i64,
-    pub order_id: u64,
+    pub order_id: OrderId,
 }
 
 #[derive(Debug)]
@@ -301,6 +304,7 @@ impl OrderBook {
                     quantity: qty,
                     date: depth.date,
                     typ: TradeType::Buy,
+                    order_id: order.order_id,
                 };
                 trades.push(trade);
                 filled.insert_fill(&order.symbol, ask, qty);
@@ -329,6 +333,7 @@ impl OrderBook {
                     quantity: qty,
                     date: depth.date,
                     typ: TradeType::Sell,
+                    order_id: order.order_id,
                 };
                 trades.push(trade);
                 filled.insert_fill(&order.symbol, bid, qty);
