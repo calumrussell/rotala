@@ -89,16 +89,25 @@ class TradeType(Enum):
 
 class Trade:
     def __init__(
-        self, symbol: str, value: float, quantity: float, date: int, typ: TradeType
+        self,
+        symbol: str,
+        value: float,
+        quantity: float,
+        date: int,
+        typ: TradeType,
+        order_id: int,
     ):
         self.symbol = symbol
         self.value = value
         self.quantity = quantity
         self.date = date
         self.typ = typ
+        self.order_id = order_id
 
     def __str__(self):
-        return f"{self.typ} {self.quantity}/{self.value} {self.symbol}"
+        return (
+            f"{self.typ} {self.order_id} - {self.quantity}/{self.value} {self.symbol}"
+        )
 
     @staticmethod
     def from_dict(trade_dict: dict):
@@ -109,6 +118,7 @@ class Trade:
                 trade_dict["quantity"],
                 trade_dict["date"],
                 TradeType.Buy,
+                trade_dict["order_id"],
             )
         else:
             return Trade(
@@ -117,6 +127,7 @@ class Trade:
                 trade_dict["quantity"],
                 trade_dict["date"],
                 TradeType.Sell,
+                trade_dict["order_id"],
             )
 
     @staticmethod
@@ -128,6 +139,7 @@ class Trade:
             to_dict["quantity"],
             to_dict["date"],
             to_dict["typ"],
+            to_dict["order_id"],
         )
 
 
@@ -141,6 +153,7 @@ class Broker:
         self.pending_orders = []
         self.trade_log = []
         self.order_inserted_on_last_tick = []
+        self.unexecuted_orders = {}
         self.portfolio_values = []
         self.backtest_id = None
         self.ts = None
@@ -223,6 +236,7 @@ class Broker:
     def tick(self):
         logger.info(f"{self.backtest_id}-{self.ts} TICK")
 
+        # Flush pending orders
         while len(self.pending_orders) > 0:
             order = self.pending_orders.pop()
             if self._validate_order(order):
@@ -233,14 +247,24 @@ class Broker:
                     f"{self.backtest_id}-{self.ts} FAILED INSERT ORDER: {order}"
                 )
 
+        # Tick, reconcile our state
         self.order_inserted_on_last_tick = []
         tick_response = self.http.tick()
         for trade_json in tick_response["executed_trades"]:
             trade = Trade.from_dict(trade_json)
+            # This should always be the case
+            if trade.order_id in self.unexecuted_orders:
+                order = self.unexecuted_orders[trade.order_id]
+                if trade.quantity > order["qty"]:
+                    order["quantity"] -= trade.quantity
+                else:
+                    del self.unexecuted_orders[trade.order_id]
+
             self._process_trade(trade)
             self.trade_log.append(trade)
 
         for order in tick_response["inserted_orders"]:
+            self.unexecuted_orders[order["order_id"]] = order
             self.order_inserted_on_last_tick.append(order)
 
         if not tick_response["has_next"]:
