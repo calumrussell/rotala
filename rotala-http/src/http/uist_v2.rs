@@ -6,7 +6,7 @@ use anyhow::Result;
 use serde::{Deserialize, Serialize};
 
 use rotala::exchange::uist_v2::{InnerOrder, Order, Trade, UistV2};
-use rotala::input::athena::{Athena, DateBBO};
+use rotala::input::athena::{Athena, DateBBO, DateDepth};
 
 pub type BacktestId = u64;
 
@@ -90,6 +90,15 @@ impl AppState {
         None
     }
 
+    pub fn fetch_depth(&self, backtest_id: BacktestId) -> Option<DateDepth> {
+        if let Some(backtest) = self.backtests.get(&backtest_id) {
+            if let Some(dataset) = self.datasets.get(&backtest.dataset_name) {
+                return dataset.get_quotes(&backtest.date).cloned();
+            }
+        }
+        None
+    }
+
     pub fn init(&mut self, dataset_name: String) -> Option<BacktestId> {
         if let Some(dataset) = self.datasets.get(&dataset_name) {
             let new_id = self.last + 1;
@@ -158,6 +167,11 @@ pub struct FetchQuotesResponse {
 }
 
 #[derive(Debug, Deserialize, Serialize)]
+pub struct FetchDepthResponse {
+    pub quotes: DateDepth,
+}
+
+#[derive(Debug, Deserialize, Serialize)]
 pub struct InitResponse {
     pub backtest_id: BacktestId,
 }
@@ -211,6 +225,10 @@ pub trait Client {
         &mut self,
         backtest_id: BacktestId,
     ) -> impl Future<Output = Result<FetchQuotesResponse>>;
+    fn fetch_depth(
+        &mut self,
+        backtest_id: BacktestId,
+    ) -> impl Future<Output = Result<FetchDepthResponse>>;
     fn init(&mut self, dataset_name: String) -> impl Future<Output = Result<InitResponse>>;
     fn info(&mut self, backtest_id: BacktestId) -> impl Future<Output = Result<InfoResponse>>;
     fn now(&mut self, backtest_id: BacktestId) -> impl Future<Output = Result<NowResponse>>;
@@ -222,8 +240,8 @@ pub mod server {
     use actix_web::{get, post, web};
 
     use super::{
-        BacktestId, FetchQuotesResponse, InfoResponse, InitResponse, InsertOrderRequest,
-        NowResponse, TickResponse, UistState, UistV2Error,
+        BacktestId, FetchDepthResponse, FetchQuotesResponse, InfoResponse, InitResponse,
+        InsertOrderRequest, NowResponse, TickResponse, UistState, UistV2Error,
     };
 
     #[get("/backtest/{backtest_id}/tick")]
@@ -270,6 +288,23 @@ pub mod server {
 
         if let Some(quotes) = uist.fetch_quotes(backtest_id) {
             Ok(web::Json(FetchQuotesResponse {
+                quotes: quotes.clone(),
+            }))
+        } else {
+            Err(UistV2Error::UnknownBacktest)
+        }
+    }
+
+    #[get("/backtest/{backtest_id}/fetch_depth")]
+    pub async fn fetch_depth(
+        app: web::Data<UistState>,
+        path: web::Path<(BacktestId,)>,
+    ) -> Result<web::Json<FetchDepthResponse>, UistV2Error> {
+        let uist = app.lock().unwrap();
+        let (backtest_id,) = path.into_inner();
+
+        if let Some(quotes) = uist.fetch_depth(backtest_id) {
+            Ok(web::Json(FetchDepthResponse {
                 quotes: quotes.clone(),
             }))
         } else {
@@ -343,7 +378,10 @@ mod tests {
     use rotala::input::athena::Athena;
 
     use super::server::*;
-    use super::{AppState, FetchQuotesResponse, InitResponse, InsertOrderRequest, TickResponse};
+    use super::{
+        AppState, FetchDepthResponse, FetchQuotesResponse, InitResponse, InsertOrderRequest,
+        TickResponse,
+    };
     use std::sync::Mutex;
 
     #[actix_web::test]
@@ -361,6 +399,7 @@ mod tests {
                 .service(info)
                 .service(init)
                 .service(fetch_quotes)
+                .service(fetch_depth)
                 .service(tick)
                 .service(insert_order)
                 .service(now),
@@ -373,6 +412,11 @@ mod tests {
         let resp: InitResponse = test::call_and_read_body_json(&app, req).await;
 
         let backtest_id = resp.backtest_id;
+
+        let req0 = test::TestRequest::get()
+            .uri(format!("/backtest/{backtest_id}/fetch_depth").as_str())
+            .to_request();
+        let _resp0: FetchDepthResponse = test::call_and_read_body_json(&app, req0).await;
 
         let req1 = test::TestRequest::get()
             .uri(format!("/backtest/{backtest_id}/fetch_quotes").as_str())
