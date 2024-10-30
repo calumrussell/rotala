@@ -1,5 +1,9 @@
-use std::collections::{HashMap, VecDeque};
+use std::{
+    collections::{HashMap, VecDeque},
+    fmt::Display,
+};
 
+use anyhow::{Error, Result};
 use serde::{Deserialize, Serialize};
 
 use crate::input::athena::{DateDepth, Depth, Level};
@@ -226,6 +230,19 @@ pub struct InnerOrder {
 }
 
 #[derive(Debug)]
+pub enum OrderBookError {
+    OrderIdNotFound,
+}
+
+impl Display for OrderBookError {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        write!(f, "OrderBookError")
+    }
+}
+
+impl std::error::Error for OrderBookError {}
+
+#[derive(Debug)]
 pub struct OrderBook {
     inner: VecDeque<InnerOrder>,
     latency: LatencyModel,
@@ -245,6 +262,17 @@ impl OrderBook {
             latency: LatencyModel::None,
             last_order_id: 0,
         }
+    }
+
+    //Used for testing
+    pub fn get_total_order_qty_by_symbol(&self, symbol: &str) -> f64 {
+        let mut total = 0.0;
+        for order in &self.inner {
+            if order.symbol == symbol {
+                total += order.qty
+            }
+        }
+        total
     }
 
     pub fn with_latency(latency: i64) -> Self {
@@ -396,9 +424,58 @@ impl OrderBook {
             }
         }
         self.inner = new_inner;
-        print!("{:?}", self.inner);
-
         trade_results
+    }
+
+    //Users will either want to change the quantity or cancel, so we can accept qty_change argument
+    //and there is no other behaviour we need to support
+    pub fn modify_order(&mut self, order_id: OrderId, qty_change: f64) -> Result<()> {
+        let mut position: Option<usize> = None;
+
+        for (i, order) in self.inner.iter().enumerate() {
+            if order.order_id == order_id {
+                position = Some(i);
+                break;
+            }
+        }
+
+        match position {
+            Some(pos) => {
+                //Can unwrap safely because this is produced above
+                let mut order_copied = self.inner.get(pos).unwrap().clone();
+
+                let mut new_order_qty = order_copied.qty;
+
+                if qty_change > 0.0 {
+                    new_order_qty += qty_change
+                } else {
+                    let qty_left = order_copied.qty + qty_change;
+                    if qty_left > 0.0 {
+                        new_order_qty += qty_change
+                    } else {
+                        // We are trying to remove more than the total number of shares
+                        // left on the order so will assume user wants to cancel
+                        self.inner.remove(pos);
+                    }
+                }
+
+                order_copied.qty = new_order_qty;
+                self.inner.remove(pos);
+                self.inner.insert(pos, order_copied);
+                Ok(())
+            }
+            None => Err(Error::new(OrderBookError::OrderIdNotFound)),
+        }
+    }
+
+    pub fn cancel_order(&mut self, order_id: OrderId) -> Result<()> {
+        for (i, order) in self.inner.iter().enumerate() {
+            if order.order_id == order_id {
+                self.inner.remove(i);
+                return Ok(());
+            }
+        }
+        Err(Error::new(OrderBookError::OrderIdNotFound))
     }
 }
 
@@ -410,6 +487,52 @@ mod tests {
         exchange::uist_v2::{Order, OrderBook},
         input::athena::{DateDepth, Depth, Level},
     };
+
+    #[test]
+    fn test_that_nonexistent_buy_order_cancel_throws_error() {
+        let mut orderbook = OrderBook::new();
+        let res = orderbook.cancel_order(10);
+        assert!(res.is_err())
+    }
+
+    #[test]
+    fn test_that_nonexistent_buy_order_modify_throws_error() {
+        let mut orderbook = OrderBook::new();
+        let res = orderbook.modify_order(10, 100.0);
+        assert!(res.is_err())
+    }
+
+    #[test]
+    fn test_that_buy_order_can_be_cancelled_and_modified() {
+        let bid_level = Level {
+            price: 100.0,
+            size: 100.0,
+        };
+
+        let ask_level = Level {
+            price: 102.0,
+            size: 100.0,
+        };
+
+        let mut depth = Depth::new(100, "ABC");
+        depth.add_level(bid_level, crate::input::athena::Side::Bid);
+        depth.add_level(ask_level, crate::input::athena::Side::Ask);
+
+        let mut quotes: DateDepth = HashMap::new();
+        quotes.insert("ABC".to_string(), depth);
+
+        let mut orderbook = OrderBook::new();
+
+        let order = Order::market_buy("ABC", 100.0);
+        let oid = orderbook.insert_order(order, 100).order_id;
+        let _res = orderbook.cancel_order(oid);
+        assert!(orderbook.get_total_order_qty_by_symbol("ABC") == 0.0);
+
+        let order1 = Order::market_buy("ABC", 200.0);
+        let oid1 = orderbook.insert_order(order1, 100).order_id;
+        let _res1 = orderbook.modify_order(oid1, 100.0);
+        assert!(orderbook.get_total_order_qty_by_symbol("ABC") == 300.0);
+    }
 
     #[test]
     fn test_that_buy_order_will_lift_all_volume_when_order_is_equal_to_depth_size() {
