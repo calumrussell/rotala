@@ -2,7 +2,7 @@ use std::collections::{HashMap, VecDeque};
 
 use serde::{Deserialize, Serialize};
 
-use crate::input::athena::{DateQuotes, Depth, Level};
+use crate::input::athena::{DateDepth, Depth, Level};
 
 pub type OrderId = u64;
 
@@ -129,7 +129,7 @@ impl UistV2 {
         self.order_buffer.push(order);
     }
 
-    pub fn tick(&mut self, quotes: &DateQuotes, now: i64) -> (Vec<Trade>, Vec<InnerOrder>) {
+    pub fn tick(&mut self, quotes: &DateDepth, now: i64) -> (Vec<Trade>, Vec<InnerOrder>) {
         //To eliminate lookahead bias, we only insert new orders after we have executed any orders
         //that were on the stack first
         let executed_trades = self.orderbook.execute_orders(quotes, now);
@@ -348,7 +348,7 @@ impl OrderBook {
 
     pub fn execute_orders(
         &mut self,
-        quotes: &crate::input::athena::DateQuotes,
+        quotes: &crate::input::athena::DateDepth,
         now: i64,
     ) -> Vec<Trade> {
         //Tracks liquidity that has been used at each level
@@ -408,7 +408,7 @@ mod tests {
 
     use crate::{
         exchange::uist_v2::{Order, OrderBook},
-        input::athena::{DateQuotes, Depth, Level},
+        input::athena::{DateDepth, Depth, Level},
     };
 
     #[test]
@@ -427,7 +427,7 @@ mod tests {
         depth.add_level(bid_level, crate::input::athena::Side::Bid);
         depth.add_level(ask_level, crate::input::athena::Side::Ask);
 
-        let mut quotes: DateQuotes = HashMap::new();
+        let mut quotes: DateDepth = HashMap::new();
         quotes.insert("ABC".to_string(), depth);
 
         let mut orderbook = OrderBook::new();
@@ -457,7 +457,7 @@ mod tests {
         depth.add_level(bid_level, crate::input::athena::Side::Bid);
         depth.add_level(ask_level, crate::input::athena::Side::Ask);
 
-        let mut quotes: DateQuotes = HashMap::new();
+        let mut quotes: DateDepth = HashMap::new();
         quotes.insert("ABC".to_string(), depth);
 
         let mut orderbook = OrderBook::new();
@@ -487,7 +487,7 @@ mod tests {
         depth.add_level(bid_level, crate::input::athena::Side::Bid);
         depth.add_level(ask_level, crate::input::athena::Side::Ask);
 
-        let mut quotes: DateQuotes = HashMap::new();
+        let mut quotes: DateDepth = HashMap::new();
         quotes.insert("ABC".to_string(), depth);
 
         let mut orderbook = OrderBook::new();
@@ -523,7 +523,7 @@ mod tests {
         depth.add_level(ask_level, crate::input::athena::Side::Ask);
         depth.add_level(ask_level_1, crate::input::athena::Side::Ask);
 
-        let mut quotes: DateQuotes = HashMap::new();
+        let mut quotes: DateDepth = HashMap::new();
         quotes.insert("ABC".to_string(), depth);
 
         let mut orderbook = OrderBook::new();
@@ -569,7 +569,7 @@ mod tests {
         depth.add_level(ask_level_1, crate::input::athena::Side::Ask);
         depth.add_level(ask_level_2, crate::input::athena::Side::Ask);
 
-        let mut quotes: DateQuotes = HashMap::new();
+        let mut quotes: DateDepth = HashMap::new();
         quotes.insert("ABC".to_string(), depth);
 
         let mut orderbook = OrderBook::new();
@@ -616,7 +616,7 @@ mod tests {
         depth.add_level(bid_level_2, crate::input::athena::Side::Bid);
         depth.add_level(ask_level, crate::input::athena::Side::Ask);
 
-        let mut quotes: DateQuotes = HashMap::new();
+        let mut quotes: DateDepth = HashMap::new();
         quotes.insert("ABC".to_string(), depth);
 
         let mut orderbook = OrderBook::new();
@@ -651,7 +651,7 @@ mod tests {
         depth.add_level(bid_level, crate::input::athena::Side::Bid);
         depth.add_level(ask_level, crate::input::athena::Side::Ask);
 
-        let mut quotes: DateQuotes = HashMap::new();
+        let mut quotes: DateDepth = HashMap::new();
         quotes.insert("ABC".to_string(), depth);
 
         let mut orderbook = OrderBook::new();
@@ -689,7 +689,7 @@ mod tests {
         depth_102.add_level(bid_level, crate::input::athena::Side::Bid);
         depth_102.add_level(ask_level, crate::input::athena::Side::Ask);
 
-        let mut quotes: DateQuotes = HashMap::new();
+        let mut quotes: DateDepth = HashMap::new();
         quotes.insert("ABC".to_string(), depth);
         quotes.insert("ABC".to_string(), depth_101);
         quotes.insert("ABC".to_string(), depth_102);
@@ -725,7 +725,7 @@ mod tests {
         depth.add_level(bid_level.clone(), crate::input::athena::Side::Bid);
         depth.add_level(ask_level.clone(), crate::input::athena::Side::Ask);
 
-        let mut quotes: DateQuotes = HashMap::new();
+        let mut quotes: DateDepth = HashMap::new();
         quotes.insert("ABC".to_string(), depth);
 
         let mut orderbook = OrderBook::new();
@@ -763,7 +763,7 @@ mod tests {
         depth_102.add_level(bid_level, crate::input::athena::Side::Bid);
         depth_102.add_level(ask_level, crate::input::athena::Side::Ask);
 
-        let mut quotes: DateQuotes = HashMap::new();
+        let mut quotes: DateDepth = HashMap::new();
         quotes.insert("ABC".to_string(), depth);
         quotes.insert("ABC".to_string(), depth_101);
         quotes.insert("ABC".to_string(), depth_102);
