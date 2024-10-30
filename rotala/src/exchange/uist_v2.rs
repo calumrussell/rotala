@@ -33,6 +33,12 @@ impl From<crate::input::athena::BBO> for Quote {
     }
 }
 
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub enum OrderModification {
+    CancelOrder(OrderId),
+    ModifyOrder(OrderId, f64),
+}
+
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Deserialize, Serialize)]
 pub enum OrderType {
     MarketSell,
@@ -107,6 +113,7 @@ pub struct UistV2 {
     trade_log: Vec<Trade>,
     //This is cleared on every tick
     order_buffer: Vec<Order>,
+    order_modification_buffer: Vec<OrderModification>,
 }
 
 impl UistV2 {
@@ -115,6 +122,7 @@ impl UistV2 {
             orderbook: OrderBook::default(),
             trade_log: Vec::new(),
             order_buffer: Vec::new(),
+            order_modification_buffer: Vec::new(),
         }
     }
 
@@ -125,12 +133,14 @@ impl UistV2 {
         })
     }
 
-    pub fn modify_order(&mut self, order_id: OrderId, qty_change: f64) -> Result<()> {
-        self.orderbook.modify_order(order_id, qty_change)
+    pub fn modify_order(&mut self, order_id: OrderId, qty_change: f64) {
+        let order_mod = OrderModification::ModifyOrder(order_id, qty_change);
+        self.order_modification_buffer.push(order_mod);
     }
 
-    pub fn cancel_order(&mut self, order_id: OrderId) -> Result<()> {
-        self.orderbook.cancel_order(order_id)
+    pub fn cancel_order(&mut self, order_id: OrderId) {
+        let order_mod = OrderModification::CancelOrder(order_id);
+        self.order_modification_buffer.push(order_mod);
     }
 
     pub fn insert_order(&mut self, order: Order) {
