@@ -3,8 +3,8 @@ use reqwest;
 use rotala::exchange::uist_v2::Order;
 use rotala::input::athena::Athena;
 use rotala_http::http::uist_v2::{
-    AppState, BacktestId, Client, FetchQuotesResponse, InfoResponse, InitResponse,
-    InsertOrderRequest, NowResponse, TickResponse, UistV2Error,
+    AppState, BacktestId, Client, FetchDepthResponse, FetchQuotesResponse, InfoResponse,
+    InitResponse, InsertOrderRequest, NowResponse, TickResponse, UistV2Error,
 };
 use std::future::{self, Future};
 
@@ -44,6 +44,16 @@ impl Client for HttpClient {
             .send()
             .await?
             .json::<FetchQuotesResponse>()
+            .await?)
+    }
+
+    async fn fetch_depth(&mut self, backtest_id: BacktestId) -> Result<FetchDepthResponse> {
+        Ok(self
+            .client
+            .get(self.path.clone() + format!("/backtest/{backtest_id}/fetch_depth").as_str())
+            .send()
+            .await?
+            .json::<FetchDepthResponse>()
             .await?)
     }
 
@@ -132,6 +142,17 @@ impl Client for TestClient {
             future::ready(Ok(FetchQuotesResponse {
                 quotes: quotes.to_owned(),
             }))
+        } else {
+            future::ready(Err(Error::new(UistV2Error::UnknownBacktest)))
+        }
+    }
+
+    fn fetch_depth(
+        &mut self,
+        backtest_id: BacktestId,
+    ) -> impl Future<Output = Result<FetchDepthResponse>> {
+        if let Some(quotes) = self.state.fetch_depth(backtest_id) {
+            future::ready(Ok(FetchDepthResponse { quotes }))
         } else {
             future::ready(Err(Error::new(UistV2Error::UnknownBacktest)))
         }
