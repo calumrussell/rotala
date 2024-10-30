@@ -167,6 +167,15 @@ impl UistV2 {
             inserted_orders.push(inner_order);
         }
 
+        for order_mod in &self.order_modification_buffer {
+            let _res = match order_mod {
+                OrderModification::CancelOrder(order_id) => self.orderbook.cancel_order(*order_id),
+                OrderModification::ModifyOrder(order_id, qty_change) => {
+                    self.orderbook.modify_order(*order_id, *qty_change)
+                }
+            };
+        }
+
         self.order_buffer.clear();
         (executed_trades, inserted_orders)
     }
