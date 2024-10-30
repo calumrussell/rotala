@@ -125,6 +125,14 @@ impl UistV2 {
         })
     }
 
+    pub fn modify_order(&mut self, order_id: OrderId, qty_change: f64) -> Result<()> {
+        self.orderbook.modify_order(order_id, qty_change)
+    }
+
+    pub fn cancel_order(&mut self, order_id: OrderId) -> Result<()> {
+        self.orderbook.cancel_order(order_id)
+    }
+
     pub fn insert_order(&mut self, order: Order) {
         // Orders are only inserted into the book when tick is called, this is to ensure proper
         // ordering of trades
