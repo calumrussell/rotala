@@ -26,6 +26,7 @@ async fn main() -> std::io::Result<()> {
             .service(info)
             .service(init)
             .service(fetch_quotes)
+            .service(fetch_depth)
             .service(tick)
             .service(insert_order)
     })

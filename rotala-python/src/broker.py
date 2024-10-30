@@ -163,7 +163,9 @@ class Broker:
         init_response = self.http.init(self.dataset_name)
         self.backtest_id = init_response["backtest_id"]
         quotes_resp = self.http.fetch_quotes()
+        depth_resp = self.http.fetch_depth()
         self.latest_quotes = quotes_resp["quotes"]
+        self.latest_depth = depth_resp["quotes"]
         self.ts = list(self.latest_quotes.values())[0]["date"]
 
     def _update_holdings(self, position: str, chg: float):
@@ -218,6 +220,9 @@ class Broker:
 
     def get_quotes(self):
         return self.latest_quotes
+
+    def get_depth(self):
+        return self.latest_depth
 
     def get_position(self, symbol) -> float:
         return self.holdings.get(symbol, 0)
@@ -275,6 +280,7 @@ class Broker:
             self.latest_quotes = self.http.fetch_quotes()["quotes"]
             if self.latest_quotes:
                 self.ts = list(self.latest_quotes.values())[0]["date"]
+            self.latest_depth = self.http.fetch_depth()["quotes"]
 
         curr_value = self.get_current_value()
         logger.info(f"{self.backtest_id}-{self.ts} TOTAL VALUE: {curr_value}")

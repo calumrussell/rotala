@@ -22,10 +22,13 @@ if __name__ == "__main__":
     should_continue = True
 
     last_five = []
+    last_five_depth = []
 
     while True:
         last_five.append(brkr.latest_quotes["SOL"])
         last_five = last_five[:5]
+
+        last_five_depth.append(brkr.latest_depth["SOL"])
 
         avg = calc_avg(last_five)
         curr = brkr.latest_quotes["SOL"]["ask"]

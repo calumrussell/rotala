@@ -88,7 +88,7 @@ pub struct BBO {
     pub date: i64,
 }
 
-pub type DateQuotes = HashMap<String, Depth>;
+pub type DateDepth = HashMap<String, Depth>;
 
 pub type DateBBO = HashMap<String, BBO>;
 
@@ -97,15 +97,15 @@ pub struct Athena {
     //TODO: this is not great, added because the dates weren't being added at all, not sure if this
     //is really ideal path
     dates_seen: HashSet<i64>,
-    inner: HashMap<i64, DateQuotes>,
+    inner: HashMap<i64, DateDepth>,
 }
 
 impl Athena {
-    pub fn get_quotes(&self, date: &i64) -> Option<&DateQuotes> {
+    pub fn get_quotes(&self, date: &i64) -> Option<&DateDepth> {
         self.inner.get(date)
     }
 
-    fn get_quotes_unchecked(&self, date: &i64) -> &DateQuotes {
+    fn get_quotes_unchecked(&self, date: &i64) -> &DateDepth {
         self.get_quotes(date).unwrap()
     }
 
