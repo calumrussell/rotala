@@ -29,6 +29,8 @@ async fn main() -> std::io::Result<()> {
             .service(fetch_depth)
             .service(tick)
             .service(insert_order)
+            .service(modify_order)
+            .service(cancel_order)
     })
     .bind((address, port))?
     .run()
