@@ -146,6 +146,7 @@ impl Client for TestClient {
     fn tick(&mut self, backtest_id: BacktestId) -> impl Future<Output = Result<TickResponse>> {
         if let Some(resp) = self.state.tick(backtest_id) {
             future::ready(Ok(TickResponse {
+                modified_orders: resp.3,
                 inserted_orders: resp.2,
                 executed_trades: resp.1,
                 has_next: resp.0,
