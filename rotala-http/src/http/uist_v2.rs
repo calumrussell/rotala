@@ -331,7 +331,7 @@ pub mod server {
         let mut uist = app.lock().unwrap();
         let (backtest_id,) = path.into_inner();
         if let Some(()) = uist.modify_order(
-            modify_order.order_id.clone(),
+            modify_order.order_id,
             modify_order.quantity_change,
             backtest_id,
         ) {
@@ -349,7 +349,7 @@ pub mod server {
     ) -> Result<web::Json<()>, UistV2Error> {
         let mut uist = app.lock().unwrap();
         let (backtest_id,) = path.into_inner();
-        if let Some(()) = uist.cancel_order(cancel_order.order_id.clone(), backtest_id) {
+        if let Some(()) = uist.cancel_order(cancel_order.order_id, backtest_id) {
             Ok(web::Json(()))
         } else {
             Err(UistV2Error::UnknownBacktest)
