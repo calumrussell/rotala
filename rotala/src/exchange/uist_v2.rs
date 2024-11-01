@@ -92,6 +92,18 @@ impl Order {
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
+pub enum ModifyResultType {
+    Modify,
+    Cancel,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct ModifyResult {
+    pub modify_type: ModifyResultType,
+    pub order_id: OrderId,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
 pub enum TradeType {
     Buy,
     Sell,
@@ -151,15 +163,19 @@ impl UistV2 {
         self.order_buffer.push(order);
     }
 
-    pub fn tick(&mut self, quotes: &DateDepth, now: i64) -> (Vec<Trade>, Vec<InnerOrder>) {
+    pub fn tick(
+        &mut self,
+        quotes: &DateDepth,
+        now: i64,
+    ) -> (Vec<Trade>, Vec<InnerOrder>, Vec<ModifyResult>) {
         //To eliminate lookahead bias, we only insert new orders after we have executed any orders
         //that were on the stack first
         let executed_trades = self.orderbook.execute_orders(quotes, now);
         for executed_trade in &executed_trades {
             self.trade_log.push(executed_trade.clone());
         }
-
         let mut inserted_orders = Vec::new();
+
         self.sort_order_buffer();
         //TODO: remove this overhead, shouldn't need a clone here
         for order in self.order_buffer.iter() {
@@ -167,17 +183,37 @@ impl UistV2 {
             inserted_orders.push(inner_order);
         }
 
+        let mut modified_orders = Vec::new();
         for order_mod in &self.order_modification_buffer {
-            let _res = match order_mod {
+            let res = match order_mod {
                 OrderModification::CancelOrder(order_id) => self.orderbook.cancel_order(*order_id),
                 OrderModification::ModifyOrder(order_id, qty_change) => {
                     self.orderbook.modify_order(*order_id, *qty_change)
                 }
             };
+
+            //If we didn't succeed then we tried to modify an order that didn't exist so we just
+            //ignore this totally as a no-op and move on
+            if let Ok(..) = res {
+                let modification_result_destructure = match order_mod {
+                    OrderModification::CancelOrder(order_id) => {
+                        (order_id, ModifyResultType::Cancel)
+                    }
+                    OrderModification::ModifyOrder(order_id, _qty_change) => {
+                        (order_id, ModifyResultType::Modify)
+                    }
+                };
+
+                let modification_result = ModifyResult {
+                    order_id: *modification_result_destructure.0,
+                    modify_type: modification_result_destructure.1,
+                };
+                modified_orders.push(modification_result);
+            }
         }
 
         self.order_buffer.clear();
-        (executed_trades, inserted_orders)
+        (executed_trades, inserted_orders, modified_orders)
     }
 }
 
@@ -456,7 +492,7 @@ impl OrderBook {
 
     //Users will either want to change the quantity or cancel, so we can accept qty_change argument
     //and there is no other behaviour we need to support
-    pub fn modify_order(&mut self, order_id: OrderId, qty_change: f64) -> Result<()> {
+    pub fn modify_order(&mut self, order_id: OrderId, qty_change: f64) -> Result<OrderId> {
         let mut position: Option<usize> = None;
 
         for (i, order) in self.inner.iter().enumerate() {
@@ -489,17 +525,17 @@ impl OrderBook {
                 order_copied.qty = new_order_qty;
                 self.inner.remove(pos);
                 self.inner.insert(pos, order_copied);
-                Ok(())
+                Ok(order_id)
             }
             None => Err(Error::new(OrderBookError::OrderIdNotFound)),
         }
     }
 
-    pub fn cancel_order(&mut self, order_id: OrderId) -> Result<()> {
+    pub fn cancel_order(&mut self, order_id: OrderId) -> Result<OrderId> {
         for (i, order) in self.inner.iter().enumerate() {
             if order.order_id == order_id {
                 self.inner.remove(i);
-                return Ok(());
+                return Ok(order_id);
             }
         }
         Err(Error::new(OrderBookError::OrderIdNotFound))
