@@ -33,6 +33,30 @@ class HttpClient:
         )
         return r.json()
 
+    def modify_order(self, order_id, quantity_change):
+        if self.backtest_id is None:
+            raise ValueError("Called before init")
+
+        val = f'{{"order_id": {order_id}, "quantity_change": {quantity_change}'
+        r = requests.post(
+            f"{self.base_url}/backtest/{self.backtest_id}/modify_order",
+            data=val,
+            headers={"Content-type": "application/json"},
+        )
+        return r.json()
+
+    def cancel_order(self, order_id):
+        if self.backtest_id is None:
+            raise ValueError("Called before init")
+
+        val = f'{{"order_id": {order_id}'
+        r = requests.post(
+            f"{self.base_url}/backtest/{self.backtest_id}/cancel_order",
+            data=val,
+            headers={"Content-type": "application/json"},
+        )
+        return r.json()
+
     def fetch_quotes(self):
         if self.backtest_id is None:
             raise ValueError("Called before init")
