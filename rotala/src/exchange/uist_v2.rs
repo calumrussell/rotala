@@ -194,7 +194,7 @@ impl UistV2 {
 
             //If we didn't succeed then we tried to modify an order that didn't exist so we just
             //ignore this totally as a no-op and move on
-            if let Ok(..) = res {
+            if res.is_ok() {
                 let modification_result_destructure = match order_mod {
                     OrderModification::CancelOrder(order_id) => {
                         (order_id, ModifyResultType::Cancel)

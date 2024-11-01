@@ -9,6 +9,7 @@ use rotala::exchange::uist_v2::{InnerOrder, ModifyResult, Order, OrderId, Trade,
 use rotala::input::athena::{Athena, DateBBO, DateDepth};
 
 pub type BacktestId = u64;
+pub type TickResponseType = (bool, Vec<Trade>, Vec<InnerOrder>, Vec<ModifyResult>);
 
 pub struct BacktestState {
     pub id: BacktestId,
@@ -56,10 +57,7 @@ impl AppState {
         }
     }
 
-    pub fn tick(
-        &mut self,
-        backtest_id: BacktestId,
-    ) -> Option<(bool, Vec<Trade>, Vec<InnerOrder>, Vec<ModifyResult>)> {
+    pub fn tick(&mut self, backtest_id: BacktestId) -> Option<TickResponseType> {
         if let Some(backtest) = self.backtests.get_mut(&backtest_id) {
             if let Some(dataset) = self.datasets.get(&backtest.dataset_name) {
                 let mut has_next = false;
