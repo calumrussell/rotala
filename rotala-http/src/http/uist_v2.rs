@@ -5,10 +5,11 @@ use std::sync::Mutex;
 use anyhow::Result;
 use serde::{Deserialize, Serialize};
 
-use rotala::exchange::uist_v2::{InnerOrder, Order, Trade, UistV2};
+use rotala::exchange::uist_v2::{InnerOrder, ModifyResult, Order, OrderId, Trade, UistV2};
 use rotala::input::athena::{Athena, DateBBO, DateDepth};
 
 pub type BacktestId = u64;
+pub type TickResponseType = (bool, Vec<Trade>, Vec<InnerOrder>, Vec<ModifyResult>);
 
 pub struct BacktestState {
     pub id: BacktestId,
@@ -56,15 +57,18 @@ impl AppState {
         }
     }
 
-    pub fn tick(&mut self, backtest_id: BacktestId) -> Option<(bool, Vec<Trade>, Vec<InnerOrder>)> {
+    pub fn tick(&mut self, backtest_id: BacktestId) -> Option<TickResponseType> {
         if let Some(backtest) = self.backtests.get_mut(&backtest_id) {
             if let Some(dataset) = self.datasets.get(&backtest.dataset_name) {
                 let mut has_next = false;
+                //TODO: this has perf implications, not quite sure why memory is being created here
                 let mut executed_trades = Vec::new();
                 let mut inserted_orders = Vec::new();
+                let mut modified_orders = Vec::new();
 
                 if let Some(quotes) = dataset.get_quotes(&backtest.date) {
                     let mut res = backtest.exchange.tick(quotes, backtest.date);
+                    modified_orders.append(&mut res.2);
                     executed_trades.append(&mut res.0);
                     inserted_orders.append(&mut res.1);
                 }
@@ -75,7 +79,7 @@ impl AppState {
                     backtest.date = *dataset.get_date(new_pos).unwrap();
                 }
                 backtest.pos = new_pos;
-                return Some((has_next, executed_trades, inserted_orders));
+                return Some((has_next, executed_trades, inserted_orders, modified_orders));
             }
         }
         None
@@ -125,6 +129,27 @@ impl AppState {
         None
     }
 
+    pub fn modify_order(
+        &mut self,
+        order_id: OrderId,
+        quantity_change: f64,
+        backtest_id: BacktestId,
+    ) -> Option<()> {
+        if let Some(backtest) = self.backtests.get_mut(&backtest_id) {
+            backtest.exchange.modify_order(order_id, quantity_change);
+            return Some(());
+        }
+        None
+    }
+
+    pub fn cancel_order(&mut self, order_id: OrderId, backtest_id: BacktestId) -> Option<()> {
+        if let Some(backtest) = self.backtests.get_mut(&backtest_id) {
+            backtest.exchange.cancel_order(order_id);
+            return Some(());
+        }
+        None
+    }
+
     pub fn new_backtest(&mut self, dataset_name: &str) -> Option<BacktestId> {
         let new_id = self.last + 1;
 
@@ -154,11 +179,23 @@ pub struct TickResponse {
     pub has_next: bool,
     pub executed_trades: Vec<Trade>,
     pub inserted_orders: Vec<InnerOrder>,
+    pub modified_orders: Vec<ModifyResult>,
 }
 
 #[derive(Debug, Deserialize, Serialize)]
 pub struct InsertOrderRequest {
     pub order: Order,
+}
+
+#[derive(Debug, Deserialize, Serialize)]
+pub struct ModifyOrderRequest {
+    pub order_id: OrderId,
+    pub quantity_change: f64,
+}
+
+#[derive(Debug, Deserialize, Serialize)]
+pub struct CancelOrderRequest {
+    pub order_id: OrderId,
 }
 
 #[derive(Debug, Deserialize, Serialize)]
@@ -221,6 +258,17 @@ pub trait Client {
         order: Order,
         backtest_id: BacktestId,
     ) -> impl Future<Output = Result<()>>;
+    fn modify_order(
+        &mut self,
+        order_id: OrderId,
+        quantity_change: f64,
+        backtest_id: BacktestId,
+    ) -> impl Future<Output = Result<()>>;
+    fn cancel_order(
+        &mut self,
+        order_id: OrderId,
+        backtest_id: BacktestId,
+    ) -> impl Future<Output = Result<()>>;
     fn fetch_quotes(
         &mut self,
         backtest_id: BacktestId,
@@ -240,8 +288,9 @@ pub mod server {
     use actix_web::{get, post, web};
 
     use super::{
-        BacktestId, FetchDepthResponse, FetchQuotesResponse, InfoResponse, InitResponse,
-        InsertOrderRequest, NowResponse, TickResponse, UistState, UistV2Error,
+        BacktestId, CancelOrderRequest, FetchDepthResponse, FetchQuotesResponse, InfoResponse,
+        InitResponse, InsertOrderRequest, ModifyOrderRequest, NowResponse, TickResponse, UistState,
+        UistV2Error,
     };
 
     #[get("/backtest/{backtest_id}/tick")]
@@ -254,6 +303,7 @@ pub mod server {
 
         if let Some(result) = uist.tick(backtest_id) {
             Ok(web::Json(TickResponse {
+                modified_orders: result.3,
                 inserted_orders: result.2,
                 executed_trades: result.1,
                 has_next: result.0,
@@ -272,6 +322,40 @@ pub mod server {
         let mut uist = app.lock().unwrap();
         let (backtest_id,) = path.into_inner();
         if let Some(()) = uist.insert_order(insert_order.order.clone(), backtest_id) {
+            Ok(web::Json(()))
+        } else {
+            Err(UistV2Error::UnknownBacktest)
+        }
+    }
+
+    #[post("/backtest/{backtest_id}/modify_order")]
+    pub async fn modify_order(
+        app: web::Data<UistState>,
+        path: web::Path<(BacktestId,)>,
+        modify_order: web::Json<ModifyOrderRequest>,
+    ) -> Result<web::Json<()>, UistV2Error> {
+        let mut uist = app.lock().unwrap();
+        let (backtest_id,) = path.into_inner();
+        if let Some(()) = uist.modify_order(
+            modify_order.order_id,
+            modify_order.quantity_change,
+            backtest_id,
+        ) {
+            Ok(web::Json(()))
+        } else {
+            Err(UistV2Error::UnknownBacktest)
+        }
+    }
+
+    #[post("/backtest/{backtest_id}/cancel_order")]
+    pub async fn cancel_order(
+        app: web::Data<UistState>,
+        path: web::Path<(BacktestId,)>,
+        cancel_order: web::Json<CancelOrderRequest>,
+    ) -> Result<web::Json<()>, UistV2Error> {
+        let mut uist = app.lock().unwrap();
+        let (backtest_id,) = path.into_inner();
+        if let Some(()) = uist.cancel_order(cancel_order.order_id, backtest_id) {
             Ok(web::Json(()))
         } else {
             Err(UistV2Error::UnknownBacktest)
@@ -402,6 +486,8 @@ mod tests {
                 .service(fetch_depth)
                 .service(tick)
                 .service(insert_order)
+                .service(modify_order)
+                .service(cancel_order)
                 .service(now),
         )
         .await;
