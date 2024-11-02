@@ -1,10 +1,10 @@
 use anyhow::{Error, Result};
 use reqwest;
-use rotala::exchange::uist_v2::{Order, OrderId};
+use rotala::exchange::uist_v2::Order;
 use rotala::input::athena::Athena;
 use rotala_http::http::uist_v2::{
-    AppState, BacktestId, CancelOrderRequest, Client, InfoResponse, InitResponse,
-    InsertOrderRequest, ModifyOrderRequest, NowResponse, TickResponse, UistV2Error,
+    AppState, BacktestId, Client, InfoResponse, InitResponse, InsertOrderRequest, NowResponse,
+    TickResponse, UistV2Error,
 };
 use std::future::{self, Future};
 
@@ -30,38 +30,6 @@ impl Client for HttpClient {
         Ok(self
             .client
             .post(self.path.clone() + format!("/backtest/{backtest_id}/insert_order").as_str())
-            .json(&req)
-            .send()
-            .await?
-            .json::<()>()
-            .await?)
-    }
-
-    async fn modify_order(
-        &mut self,
-        order_id: OrderId,
-        quantity_change: f64,
-        backtest_id: BacktestId,
-    ) -> Result<()> {
-        let req = ModifyOrderRequest {
-            order_id,
-            quantity_change,
-        };
-        Ok(self
-            .client
-            .post(self.path.clone() + format!("/backtest/{backtest_id}/modify_order").as_str())
-            .json(&req)
-            .send()
-            .await?
-            .json::<()>()
-            .await?)
-    }
-
-    async fn cancel_order(&mut self, order_id: OrderId, backtest_id: BacktestId) -> Result<()> {
-        let req = CancelOrderRequest { order_id };
-        Ok(self
-            .client
-            .post(self.path.clone() + format!("/backtest/{backtest_id}/cancel_order").as_str())
             .json(&req)
             .send()
             .await?
@@ -129,11 +97,10 @@ impl Client for TestClient {
     fn tick(&mut self, backtest_id: BacktestId) -> impl Future<Output = Result<TickResponse>> {
         if let Some(resp) = self.state.tick(backtest_id) {
             future::ready(Ok(TickResponse {
-                depth: resp.5,
-                bbo: resp.4,
-                modified_orders: resp.3,
+                depth: resp.4,
+                bbo: resp.3,
                 inserted_orders: resp.2,
-                executed_trades: resp.1,
+                executed_orders: resp.1,
                 has_next: resp.0,
             }))
         } else {
@@ -147,34 +114,6 @@ impl Client for TestClient {
         backtest_id: BacktestId,
     ) -> impl Future<Output = Result<()>> {
         if let Some(()) = self.state.insert_order(order, backtest_id) {
-            future::ready(Ok(()))
-        } else {
-            future::ready(Err(Error::new(UistV2Error::UnknownBacktest)))
-        }
-    }
-
-    fn modify_order(
-        &mut self,
-        order_id: OrderId,
-        quantity_change: f64,
-        backtest_id: BacktestId,
-    ) -> impl Future<Output = Result<()>> {
-        if let Some(()) = self
-            .state
-            .modify_order(order_id, quantity_change, backtest_id)
-        {
-            future::ready(Ok(()))
-        } else {
-            future::ready(Err(Error::new(UistV2Error::UnknownBacktest)))
-        }
-    }
-
-    fn cancel_order(
-        &mut self,
-        order_id: OrderId,
-        backtest_id: BacktestId,
-    ) -> impl Future<Output = Result<()>> {
-        if let Some(()) = self.state.cancel_order(order_id, backtest_id) {
             future::ready(Ok(()))
         } else {
             future::ready(Err(Error::new(UistV2Error::UnknownBacktest)))
