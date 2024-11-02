@@ -294,7 +294,7 @@ impl OrderBook {
     //Used for testing
     pub fn get_total_order_qty_by_symbol(&self, symbol: &str) -> f64 {
         let mut total = 0.0;
-        for (_order_id, order) in &self.inner {
+        for order in self.inner.values() {
             if order.symbol == symbol {
                 total += order.qty
             }
@@ -337,7 +337,10 @@ impl OrderBook {
         orderbook: &mut BTreeMap<OrderId, InnerOrder>,
     ) -> Vec<OrderResult> {
         let mut res = Vec::new();
-        if let Some(_) = orderbook.remove(&order_to_cancel.order_id_ref.unwrap()) {
+        if orderbook
+            .remove(&order_to_cancel.order_id_ref.unwrap())
+            .is_some()
+        {
             let order_result = OrderResult {
                 symbol: order_to_cancel.symbol.clone(),
                 value: 0.0,
@@ -511,36 +514,36 @@ impl OrderBook {
         for (order_id, order) in orders.iter() {
             let security_id = &order.symbol;
 
-            if !self.latency.cmp_order(now, &order) {
-                unexecuted_orders.insert(order_id.clone(), order.clone());
+            if !self.latency.cmp_order(now, order) {
+                unexecuted_orders.insert(*order_id, order.clone());
                 continue;
             }
 
             if let Some(depth) = quotes.get(security_id) {
                 let mut trades = match order.order_type {
                     OrderType::MarketBuy => {
-                        Self::fill_order(depth, &order, true, f64::MAX, &mut filled)
+                        Self::fill_order(depth, order, true, f64::MAX, &mut filled)
                     }
                     OrderType::MarketSell => {
-                        Self::fill_order(depth, &order, false, f64::MIN, &mut filled)
+                        Self::fill_order(depth, order, false, f64::MIN, &mut filled)
                     }
                     OrderType::LimitBuy => {
-                        Self::fill_order(depth, &order, true, order.price.unwrap(), &mut filled)
+                        Self::fill_order(depth, order, true, order.price.unwrap(), &mut filled)
                     }
                     OrderType::LimitSell => {
-                        Self::fill_order(depth, &order, false, order.price.unwrap(), &mut filled)
+                        Self::fill_order(depth, order, false, order.price.unwrap(), &mut filled)
                     }
                     // There shouldn't be any cancel or modifies by this point
                     _ => vec![],
                 };
 
                 if trades.is_empty() {
-                    unexecuted_orders.insert(order_id.clone(), order.clone());
+                    unexecuted_orders.insert(*order_id, order.clone());
                 }
 
                 trade_results.append(&mut trades)
             } else {
-                unexecuted_orders.insert(order_id.clone(), order.clone());
+                unexecuted_orders.insert(*order_id, order.clone());
             }
         }
         self.inner = unexecuted_orders;
