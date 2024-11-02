@@ -179,20 +179,6 @@ class Broker:
         )
         self.holdings[position] = new_position
 
-    def _validate_order(self, order) -> bool:
-        if (
-            order.order_type == OrderType.MarketSell
-            or order.order_type == OrderType.LimitSell
-        ):
-            curr_position = self.holdings[order.symbol]
-
-            if curr_position == 0:
-                return False
-
-            if order.qty > curr_position:
-                return False
-        return True
-
     def _process_trade(self, trade: Trade):
         logger.info(f"{self.backtest_id}-{self.ts} EXECUTED: {trade}")
 
@@ -217,6 +203,10 @@ class Broker:
     def insert_order(self, order: Order):
         # Orders are only flushed when we call tick
         self.pending_orders.append(order)
+
+    def cancel_order(self, order_id):
+        logger.info(f"{self.backtest_id}-{self.ts} CANCEL ORDER: {order_id}")
+        self.http.cancel_order(order_id)
 
     def get_quotes(self):
         return self.latest_quotes
@@ -245,13 +235,8 @@ class Broker:
         # Flush pending orders
         while len(self.pending_orders) > 0:
             order = self.pending_orders.pop()
-            if self._validate_order(order):
-                logger.info(f"{self.backtest_id}-{self.ts} INSERT ORDER: {order}")
-                self.http.insert_order(order)
-            else:
-                logger.info(
-                    f"{self.backtest_id}-{self.ts} FAILED INSERT ORDER: {order}"
-                )
+            logger.info(f"{self.backtest_id}-{self.ts} INSERT ORDER: {order}")
+            self.http.insert_order(order)
 
         # Tick, reconcile our state
         self.order_inserted_on_last_tick = []
@@ -268,6 +253,13 @@ class Broker:
 
             self._process_trade(trade)
             self.trade_log.append(trade)
+
+        for order in tick_response["modified_orders"]:
+            if order["modify_type"] == "Cancel":
+                del self.unexecuted_orders[order["order_id"]]
+            else:
+                logger.critical("Unsupported order modification type")
+                exit(1)
 
         for order in tick_response["inserted_orders"]:
             self.unexecuted_orders[order["order_id"]] = Order.from_dict(order)

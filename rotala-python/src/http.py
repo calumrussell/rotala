@@ -1,4 +1,3 @@
-import json
 import requests
 
 
@@ -49,7 +48,7 @@ class HttpClient:
         if self.backtest_id is None:
             raise ValueError("Called before init")
 
-        val = f'{{"order_id": {order_id}'
+        val = f'{{"order_id": {order_id}}}'
         r = requests.post(
             f"{self.base_url}/backtest/{self.backtest_id}/cancel_order",
             data=val,
