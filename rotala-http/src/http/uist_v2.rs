@@ -9,7 +9,14 @@ use rotala::exchange::uist_v2::{InnerOrder, ModifyResult, Order, OrderId, Trade,
 use rotala::input::athena::{Athena, DateBBO, DateDepth};
 
 pub type BacktestId = u64;
-pub type TickResponseType = (bool, Vec<Trade>, Vec<InnerOrder>, Vec<ModifyResult>);
+pub type TickResponseType = (
+    bool,
+    Vec<Trade>,
+    Vec<InnerOrder>,
+    Vec<ModifyResult>,
+    DateBBO,
+    DateDepth,
+);
 
 pub struct BacktestState {
     pub id: BacktestId,
@@ -79,44 +86,43 @@ impl AppState {
                     backtest.date = *dataset.get_date(new_pos).unwrap();
                 }
                 backtest.pos = new_pos;
-                return Some((has_next, executed_trades, inserted_orders, modified_orders));
+
+                let bbo = dataset.get_bbo(backtest.date).unwrap();
+                //TODO: shouldn't clone here
+                let depth = dataset.get_quotes(&backtest.date).unwrap().clone();
+                return Some((
+                    has_next,
+                    executed_trades,
+                    inserted_orders,
+                    modified_orders,
+                    bbo,
+                    depth,
+                ));
             }
         }
         None
     }
 
-    pub fn fetch_quotes(&self, backtest_id: BacktestId) -> Option<DateBBO> {
-        if let Some(backtest) = self.backtests.get(&backtest_id) {
-            if let Some(dataset) = self.datasets.get(&backtest.dataset_name) {
-                return dataset.get_bbo(backtest.date);
-            }
-        }
-        None
-    }
-
-    pub fn fetch_depth(&self, backtest_id: BacktestId) -> Option<DateDepth> {
-        if let Some(backtest) = self.backtests.get(&backtest_id) {
-            if let Some(dataset) = self.datasets.get(&backtest.dataset_name) {
-                return dataset.get_quotes(&backtest.date).cloned();
-            }
-        }
-        None
-    }
-
-    pub fn init(&mut self, dataset_name: String) -> Option<BacktestId> {
+    pub fn init(&mut self, dataset_name: String) -> Option<(BacktestId, DateBBO, DateDepth)> {
         if let Some(dataset) = self.datasets.get(&dataset_name) {
             let new_id = self.last + 1;
             let exchange = UistV2::new();
+
+            let start_date = *dataset.get_date(0).unwrap();
             let backtest = BacktestState {
                 id: new_id,
-                date: *dataset.get_date(0).unwrap(),
+                date: start_date,
                 pos: 0,
                 exchange,
                 dataset_name,
             };
             self.backtests.insert(new_id, backtest);
             self.last += 1;
-            return Some(new_id);
+
+            let bbo = dataset.get_bbo(start_date).unwrap();
+            //TODO: shouldn't clone here
+            let depth = dataset.get_quotes(&start_date).unwrap().clone();
+            return Some((new_id, bbo, depth));
         }
         None
     }
@@ -180,6 +186,8 @@ pub struct TickResponse {
     pub executed_trades: Vec<Trade>,
     pub inserted_orders: Vec<InnerOrder>,
     pub modified_orders: Vec<ModifyResult>,
+    pub bbo: DateBBO,
+    pub depth: DateDepth,
 }
 
 #[derive(Debug, Deserialize, Serialize)]
@@ -199,18 +207,10 @@ pub struct CancelOrderRequest {
 }
 
 #[derive(Debug, Deserialize, Serialize)]
-pub struct FetchQuotesResponse {
-    pub quotes: DateBBO,
-}
-
-#[derive(Debug, Deserialize, Serialize)]
-pub struct FetchDepthResponse {
-    pub quotes: DateDepth,
-}
-
-#[derive(Debug, Deserialize, Serialize)]
 pub struct InitResponse {
     pub backtest_id: BacktestId,
+    pub bbo: DateBBO,
+    pub depth: DateDepth,
 }
 
 #[derive(Debug, Deserialize, Serialize)]
@@ -269,14 +269,6 @@ pub trait Client {
         order_id: OrderId,
         backtest_id: BacktestId,
     ) -> impl Future<Output = Result<()>>;
-    fn fetch_quotes(
-        &mut self,
-        backtest_id: BacktestId,
-    ) -> impl Future<Output = Result<FetchQuotesResponse>>;
-    fn fetch_depth(
-        &mut self,
-        backtest_id: BacktestId,
-    ) -> impl Future<Output = Result<FetchDepthResponse>>;
     fn init(&mut self, dataset_name: String) -> impl Future<Output = Result<InitResponse>>;
     fn info(&mut self, backtest_id: BacktestId) -> impl Future<Output = Result<InfoResponse>>;
     fn now(&mut self, backtest_id: BacktestId) -> impl Future<Output = Result<NowResponse>>;
@@ -288,9 +280,8 @@ pub mod server {
     use actix_web::{get, post, web};
 
     use super::{
-        BacktestId, CancelOrderRequest, FetchDepthResponse, FetchQuotesResponse, InfoResponse,
-        InitResponse, InsertOrderRequest, ModifyOrderRequest, NowResponse, TickResponse, UistState,
-        UistV2Error,
+        BacktestId, CancelOrderRequest, InfoResponse, InitResponse, InsertOrderRequest,
+        ModifyOrderRequest, NowResponse, TickResponse, UistState, UistV2Error,
     };
 
     #[get("/backtest/{backtest_id}/tick")]
@@ -303,6 +294,8 @@ pub mod server {
 
         if let Some(result) = uist.tick(backtest_id) {
             Ok(web::Json(TickResponse {
+                depth: result.5,
+                bbo: result.4,
                 modified_orders: result.3,
                 inserted_orders: result.2,
                 executed_trades: result.1,
@@ -362,40 +355,6 @@ pub mod server {
         }
     }
 
-    #[get("/backtest/{backtest_id}/fetch_quotes")]
-    pub async fn fetch_quotes(
-        app: web::Data<UistState>,
-        path: web::Path<(BacktestId,)>,
-    ) -> Result<web::Json<FetchQuotesResponse>, UistV2Error> {
-        let uist = app.lock().unwrap();
-        let (backtest_id,) = path.into_inner();
-
-        if let Some(quotes) = uist.fetch_quotes(backtest_id) {
-            Ok(web::Json(FetchQuotesResponse {
-                quotes: quotes.clone(),
-            }))
-        } else {
-            Err(UistV2Error::UnknownBacktest)
-        }
-    }
-
-    #[get("/backtest/{backtest_id}/fetch_depth")]
-    pub async fn fetch_depth(
-        app: web::Data<UistState>,
-        path: web::Path<(BacktestId,)>,
-    ) -> Result<web::Json<FetchDepthResponse>, UistV2Error> {
-        let uist = app.lock().unwrap();
-        let (backtest_id,) = path.into_inner();
-
-        if let Some(quotes) = uist.fetch_depth(backtest_id) {
-            Ok(web::Json(FetchDepthResponse {
-                quotes: quotes.clone(),
-            }))
-        } else {
-            Err(UistV2Error::UnknownBacktest)
-        }
-    }
-
     #[get("/init/{dataset_name}")]
     pub async fn init(
         app: web::Data<UistState>,
@@ -404,8 +363,12 @@ pub mod server {
         let mut uist = app.lock().unwrap();
         let (dataset_name,) = path.into_inner();
 
-        if let Some(backtest_id) = uist.init(dataset_name) {
-            Ok(web::Json(InitResponse { backtest_id }))
+        if let Some((backtest_id, bbo, depth)) = uist.init(dataset_name) {
+            Ok(web::Json(InitResponse {
+                backtest_id,
+                bbo,
+                depth,
+            }))
         } else {
             Err(UistV2Error::UnknownDataset)
         }
@@ -462,10 +425,7 @@ mod tests {
     use rotala::input::athena::Athena;
 
     use super::server::*;
-    use super::{
-        AppState, FetchDepthResponse, FetchQuotesResponse, InitResponse, InsertOrderRequest,
-        TickResponse,
-    };
+    use super::{AppState, InitResponse, InsertOrderRequest, TickResponse};
     use std::sync::Mutex;
 
     #[actix_web::test]
@@ -482,8 +442,6 @@ mod tests {
                 .app_data(uist_state)
                 .service(info)
                 .service(init)
-                .service(fetch_quotes)
-                .service(fetch_depth)
                 .service(tick)
                 .service(insert_order)
                 .service(modify_order)
@@ -498,16 +456,6 @@ mod tests {
         let resp: InitResponse = test::call_and_read_body_json(&app, req).await;
 
         let backtest_id = resp.backtest_id;
-
-        let req0 = test::TestRequest::get()
-            .uri(format!("/backtest/{backtest_id}/fetch_depth").as_str())
-            .to_request();
-        let _resp0: FetchDepthResponse = test::call_and_read_body_json(&app, req0).await;
-
-        let req1 = test::TestRequest::get()
-            .uri(format!("/backtest/{backtest_id}/fetch_quotes").as_str())
-            .to_request();
-        let _resp1: FetchQuotesResponse = test::call_and_read_body_json(&app, req1).await;
 
         let req2 = test::TestRequest::get()
             .uri(format!("/backtest/{backtest_id}/tick").as_str())
