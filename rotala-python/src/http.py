@@ -56,20 +56,6 @@ class HttpClient:
         )
         return r.json()
 
-    def fetch_quotes(self):
-        if self.backtest_id is None:
-            raise ValueError("Called before init")
-
-        r = requests.get(f"{self.base_url}/backtest/{self.backtest_id}/fetch_quotes")
-        return r.json()
-
-    def fetch_depth(self):
-        if self.backtest_id is None:
-            raise ValueError("Called before init")
-
-        r = requests.get(f"{self.base_url}/backtest/{self.backtest_id}/fetch_depth")
-        return r.json()
-
     def info(self):
         if self.backtest_id is None:
             raise ValueError("Called before init")
