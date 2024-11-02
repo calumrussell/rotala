@@ -162,10 +162,8 @@ class Broker:
         # Initializes backtest_id, can ignore result
         init_response = self.http.init(self.dataset_name)
         self.backtest_id = init_response["backtest_id"]
-        quotes_resp = self.http.fetch_quotes()
-        depth_resp = self.http.fetch_depth()
-        self.latest_quotes = quotes_resp["quotes"]
-        self.latest_depth = depth_resp["quotes"]
+        self.latest_quotes = init_response["bbo"]
+        self.latest_depth = init_response["depth"]
         self.ts = list(self.latest_quotes.values())[0]["date"]
 
     def _update_holdings(self, position: str, chg: float):
@@ -269,10 +267,10 @@ class Broker:
             logger.critical("Sim finished")
             exit(0)
         else:
-            self.latest_quotes = self.http.fetch_quotes()["quotes"]
+            self.latest_quotes = tick_response["bbo"]
+            self.latest_depth = tick_response["depth"]
             if self.latest_quotes:
                 self.ts = list(self.latest_quotes.values())[0]["date"]
-            self.latest_depth = self.http.fetch_depth()["quotes"]
 
         curr_value = self.get_current_value()
         logger.info(f"{self.backtest_id}-{self.ts} TOTAL VALUE: {curr_value}")

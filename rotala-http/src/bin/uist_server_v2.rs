@@ -25,8 +25,6 @@ async fn main() -> std::io::Result<()> {
             .app_data(uist_state.clone())
             .service(info)
             .service(init)
-            .service(fetch_quotes)
-            .service(fetch_depth)
             .service(tick)
             .service(insert_order)
             .service(modify_order)

@@ -3,9 +3,8 @@ use reqwest;
 use rotala::exchange::uist_v2::{Order, OrderId};
 use rotala::input::athena::Athena;
 use rotala_http::http::uist_v2::{
-    AppState, BacktestId, CancelOrderRequest, Client, FetchDepthResponse, FetchQuotesResponse,
-    InfoResponse, InitResponse, InsertOrderRequest, ModifyOrderRequest, NowResponse, TickResponse,
-    UistV2Error,
+    AppState, BacktestId, CancelOrderRequest, Client, InfoResponse, InitResponse,
+    InsertOrderRequest, ModifyOrderRequest, NowResponse, TickResponse, UistV2Error,
 };
 use std::future::{self, Future};
 
@@ -70,26 +69,6 @@ impl Client for HttpClient {
             .await?)
     }
 
-    async fn fetch_quotes(&mut self, backtest_id: BacktestId) -> Result<FetchQuotesResponse> {
-        Ok(self
-            .client
-            .get(self.path.clone() + format!("/backtest/{backtest_id}/fetch_quotes").as_str())
-            .send()
-            .await?
-            .json::<FetchQuotesResponse>()
-            .await?)
-    }
-
-    async fn fetch_depth(&mut self, backtest_id: BacktestId) -> Result<FetchDepthResponse> {
-        Ok(self
-            .client
-            .get(self.path.clone() + format!("/backtest/{backtest_id}/fetch_depth").as_str())
-            .send()
-            .await?
-            .json::<FetchDepthResponse>()
-            .await?)
-    }
-
     async fn init(&mut self, dataset_name: String) -> Result<InitResponse> {
         Ok(self
             .client
@@ -136,8 +115,12 @@ pub struct TestClient {
 
 impl Client for TestClient {
     fn init(&mut self, dataset_name: String) -> impl Future<Output = Result<InitResponse>> {
-        if let Some(id) = self.state.init(dataset_name) {
-            future::ready(Ok(InitResponse { backtest_id: id }))
+        if let Some((backtest_id, bbo, depth)) = self.state.init(dataset_name) {
+            future::ready(Ok(InitResponse {
+                backtest_id,
+                bbo,
+                depth,
+            }))
         } else {
             future::ready(Err(Error::new(UistV2Error::UnknownDataset)))
         }
@@ -146,6 +129,8 @@ impl Client for TestClient {
     fn tick(&mut self, backtest_id: BacktestId) -> impl Future<Output = Result<TickResponse>> {
         if let Some(resp) = self.state.tick(backtest_id) {
             future::ready(Ok(TickResponse {
+                depth: resp.5,
+                bbo: resp.4,
                 modified_orders: resp.3,
                 inserted_orders: resp.2,
                 executed_trades: resp.1,
@@ -191,30 +176,6 @@ impl Client for TestClient {
     ) -> impl Future<Output = Result<()>> {
         if let Some(()) = self.state.cancel_order(order_id, backtest_id) {
             future::ready(Ok(()))
-        } else {
-            future::ready(Err(Error::new(UistV2Error::UnknownBacktest)))
-        }
-    }
-
-    fn fetch_quotes(
-        &mut self,
-        backtest_id: BacktestId,
-    ) -> impl Future<Output = Result<FetchQuotesResponse>> {
-        if let Some(quotes) = self.state.fetch_quotes(backtest_id) {
-            future::ready(Ok(FetchQuotesResponse {
-                quotes: quotes.to_owned(),
-            }))
-        } else {
-            future::ready(Err(Error::new(UistV2Error::UnknownBacktest)))
-        }
-    }
-
-    fn fetch_depth(
-        &mut self,
-        backtest_id: BacktestId,
-    ) -> impl Future<Output = Result<FetchDepthResponse>> {
-        if let Some(quotes) = self.state.fetch_depth(backtest_id) {
-            future::ready(Ok(FetchDepthResponse { quotes }))
         } else {
             future::ready(Err(Error::new(UistV2Error::UnknownBacktest)))
         }
