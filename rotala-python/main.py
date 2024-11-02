@@ -40,11 +40,11 @@ def risk_management(unexecuted_orders, total_value):
 def create_orders(bid_grid, ask_grid):
     orders = []
     for level in bid_grid:
-        order = Order(OrderType.LimitBuy, "SOL", 10, level)
+        order = Order(OrderType.LimitBuy, "SOL", 10, level, None)
         orders.append(order)
 
     for level in ask_grid:
-        order = Order(OrderType.LimitSell, "SOL", 10, level)
+        order = Order(OrderType.LimitSell, "SOL", 10, level, None)
         orders.append(order)
     return orders
 
