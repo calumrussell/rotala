@@ -580,6 +580,26 @@ mod tests {
         quotes
     }
 
+    fn quotes1() -> DateDepth {
+        let bid_level = Level {
+            price: 98.0,
+            size: 20.0,
+        };
+
+        let ask_level = Level {
+            price: 102.0,
+            size: 20.0,
+        };
+
+        let mut depth = Depth::new(100, "ABC");
+        depth.add_level(bid_level, crate::input::athena::Side::Bid);
+        depth.add_level(ask_level, crate::input::athena::Side::Ask);
+
+        let mut quotes: DateDepth = HashMap::new();
+        quotes.insert("ABC".to_string(), depth);
+        quotes
+    }
+
     #[test]
     fn test_that_nonexistent_buy_order_cancel_produces_empty_result() {
         let quotes = quotes();
@@ -622,22 +642,7 @@ mod tests {
 
     #[test]
     fn test_that_buy_order_will_lift_all_volume_when_order_is_equal_to_depth_size() {
-        let bid_level = Level {
-            price: 100.0,
-            size: 100.0,
-        };
-
-        let ask_level = Level {
-            price: 102.0,
-            size: 100.0,
-        };
-
-        let mut depth = Depth::new(100, "ABC");
-        depth.add_level(bid_level, crate::input::athena::Side::Bid);
-        depth.add_level(ask_level, crate::input::athena::Side::Ask);
-
-        let mut quotes: DateDepth = HashMap::new();
-        quotes.insert("ABC".to_string(), depth);
+        let quotes = quotes();
 
         let mut orderbook = OrderBook::new();
         let order = Order::market_buy("ABC", 100.0);
@@ -652,22 +657,7 @@ mod tests {
 
     #[test]
     fn test_that_sell_order_will_lift_all_volume_when_order_is_equal_to_depth_size() {
-        let bid_level = Level {
-            price: 100.0,
-            size: 100.0,
-        };
-
-        let ask_level = Level {
-            price: 102.0,
-            size: 100.0,
-        };
-
-        let mut depth = Depth::new(100, "ABC");
-        depth.add_level(bid_level, crate::input::athena::Side::Bid);
-        depth.add_level(ask_level, crate::input::athena::Side::Ask);
-
-        let mut quotes: DateDepth = HashMap::new();
-        quotes.insert("ABC".to_string(), depth);
+        let quotes = quotes();
 
         let mut orderbook = OrderBook::new();
         let order = Order::market_sell("ABC", 100.0);
@@ -682,23 +672,7 @@ mod tests {
 
     #[test]
     fn test_that_order_will_lift_order_qty_when_order_is_less_than_depth_size() {
-        let bid_level = Level {
-            price: 100.0,
-            size: 100.0,
-        };
-
-        let ask_level = Level {
-            price: 102.0,
-            size: 100.0,
-        };
-
-        let mut depth = Depth::new(100, "ABC");
-        depth.add_level(bid_level, crate::input::athena::Side::Bid);
-        depth.add_level(ask_level, crate::input::athena::Side::Ask);
-
-        let mut quotes: DateDepth = HashMap::new();
-        quotes.insert("ABC".to_string(), depth);
-
+        let quotes = quotes();
         let mut orderbook = OrderBook::new();
         let order = Order::market_buy("ABC", 50.0);
         orderbook.insert_order(order, 100);
@@ -846,23 +820,7 @@ mod tests {
 
     #[test]
     fn test_that_repeated_orders_do_not_use_same_liquidty() {
-        let bid_level = Level {
-            price: 98.0,
-            size: 20.0,
-        };
-
-        let ask_level = Level {
-            price: 102.0,
-            size: 20.0,
-        };
-
-        let mut depth = Depth::new(100, "ABC");
-        depth.add_level(bid_level, crate::input::athena::Side::Bid);
-        depth.add_level(ask_level, crate::input::athena::Side::Ask);
-
-        let mut quotes: DateDepth = HashMap::new();
-        quotes.insert("ABC".to_string(), depth);
-
+        let quotes = quotes1();
         let mut orderbook = OrderBook::new();
         let first_order = Order::limit_buy("ABC", 20.0, 103.00);
         orderbook.insert_order(first_order, 100);
@@ -920,23 +878,7 @@ mod tests {
 
     #[test]
     fn test_that_orderbook_clears_after_execution() {
-        let bid_level = Level {
-            price: 98.0,
-            size: 20.0,
-        };
-
-        let ask_level = Level {
-            price: 102.0,
-            size: 20.0,
-        };
-
-        let mut depth = Depth::new(100, "ABC");
-        depth.add_level(bid_level.clone(), crate::input::athena::Side::Bid);
-        depth.add_level(ask_level.clone(), crate::input::athena::Side::Ask);
-
-        let mut quotes: DateDepth = HashMap::new();
-        quotes.insert("ABC".to_string(), depth);
-
+        let quotes = quotes1();
         let mut orderbook = OrderBook::new();
         let order = Order::market_buy("ABC", 20.0);
         orderbook.insert_order(order, 100);
