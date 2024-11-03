@@ -40,11 +40,18 @@ class OrderType(Enum):
     MarketBuy = "MarketBuy"
     LimitBuy = "LimitBuy"
     LimitSell = "LimitSell"
+    Modify = "Modify"
+    Cancel = "Cancel"
 
 
 class Order:
     def __init__(
-        self, order_type: OrderType, symbol: str, qty: float, price: float | None
+        self,
+        order_type: OrderType,
+        symbol: str,
+        qty: float,
+        price: float | None,
+        order_id_ref: float | None,
     ):
         if order_type == OrderType.MarketSell or order_type == OrderType.MarketBuy:
             if price is not None:
@@ -60,15 +67,19 @@ class Order:
         self.symbol = symbol
         self.qty = qty
         self.price = price
+        self.order_id_ref = order_id_ref
 
     def __str__(self):
         return f"{self.order_type} {self.symbol} {self.qty} {self.price}"
 
     def serialize(self):
+        base = f'{{"order_type": "{self.order_type.name}", "symbol": "{self.symbol}", "qty": {self.qty}'
         if self.price:
-            return f'{{"order_type": "{self.order_type.name}", "symbol": "{self.symbol}", "qty": {self.qty}, "price": {self.price}, "recieved": 0}}'
-        else:
-            return f'{{"order_type": "{self.order_type.name}", "symbol": "{self.symbol}", "qty": {self.qty}, "price": null, "recieved": 0}}'
+            base += f', "price": {self.price}'
+        if self.order_id_ref:
+            base += f', "order_id_ref": {self.order_id_ref}'
+        base += "}"
+        return base
 
     @staticmethod
     def from_dict(order):
@@ -78,6 +89,7 @@ class Order:
             order["symbol"],
             order["qty"],
             order["price"],
+            order["order_id_ref"],
         )
 
     @staticmethod
@@ -86,25 +98,27 @@ class Order:
         return Order(
             to_dict["order_type"],
             to_dict["symbol"],
-            to_dict["symbol"],
             to_dict["qty"],
             to_dict["price"],
+            to_dict["order_id_ref"],
         )
 
 
-class TradeType(Enum):
+class OrderResultType(Enum):
     Buy = "Buy"
     Sell = "Sell"
+    Modify = "Modify"
+    Cancel = "Cancel"
 
 
-class Trade:
+class OrderResult:
     def __init__(
         self,
         symbol: str,
         value: float,
         quantity: float,
         date: int,
-        typ: TradeType,
+        typ: OrderResultType,
         order_id: int,
     ):
         self.symbol = symbol
@@ -120,21 +134,21 @@ class Trade:
         )
 
     @staticmethod
-    def from_dict(trade_dict: dict):
-        trade_type = TradeType(trade_dict["typ"])
-        return Trade(
-            trade_dict["symbol"],
-            trade_dict["value"],
-            trade_dict["quantity"],
-            trade_dict["date"],
+    def from_dict(from_dict: dict):
+        trade_type = OrderResultType(from_dict["typ"])
+        return OrderResult(
+            from_dict["symbol"],
+            from_dict["value"],
+            from_dict["quantity"],
+            from_dict["date"],
             trade_type,
-            trade_dict["order_id"],
+            from_dict["order_id"],
         )
 
     @staticmethod
     def from_json(json_str: str):
         to_dict = json.loads(json_str)
-        return Trade(
+        return OrderResult(
             to_dict["symbol"],
             to_dict["value"],
             to_dict["quantity"],
@@ -177,34 +191,48 @@ class Broker:
         )
         self.holdings[position] = new_position
 
-    def _process_trade(self, trade: Trade):
-        logger.info(f"{self.backtest_id}-{self.ts} EXECUTED: {trade}")
+    def _process_order_result(self, result: OrderResult):
+        logger.info(f"{self.backtest_id}-{self.ts} EXECUTED: {result}")
 
-        before_trade = self.cash
-        after_trade = (
-            self.cash - trade.value
-            if trade.typ == TradeType.Buy
-            else self.cash + trade.value
-        )
+        if result.typ == OrderResultType.Buy or result.typ == OrderResultType.Sell:
+            before_trade = self.cash
+            after_trade = (
+                self.cash - result.value
+                if result.typ == OrderResultType.Buy
+                else self.cash + result.value
+            )
 
-        logger.info(
-            f"{self.backtest_id}-{self.ts} CASH: {before_trade} -> {after_trade}"
-        )
-        self.cash = after_trade
-        if self.cash < 0:
-            logger.critical("Run out of cash. Stopping sim.")
-            exit(1)
+            logger.info(
+                f"{self.backtest_id}-{self.ts} CASH: {before_trade} -> {after_trade}"
+            )
+            self.cash = after_trade
+            if self.cash < 0:
+                logger.critical("Run out of cash. Stopping sim.")
+                exit(1)
 
-        signed_qty = trade.quantity if trade.typ == TradeType.Buy else -trade.quantity
-        self._update_holdings(trade.symbol, signed_qty)
+            signed_qty = (
+                result.quantity
+                if result.typ == OrderResultType.Buy
+                else -result.quantity
+            )
+            self._update_holdings(result.symbol, signed_qty)
+
+            if result.order_id in self.unexecuted_orders:
+                order = self.unexecuted_orders[result.order_id]
+                if result.quantity > order.qty:
+                    order["quantity"] -= result.quantity
+                else:
+                    del self.unexecuted_orders[result.order_id]
+        else:
+            if result.typ == OrderResultType.Cancel:
+                del self.unexecuted_orders[result.order_id]
+            else:
+                logger.critical("Unsupported order modification type")
+                exit(1)
 
     def insert_order(self, order: Order):
         # Orders are only flushed when we call tick
         self.pending_orders.append(order)
-
-    def cancel_order(self, order_id):
-        logger.info(f"{self.backtest_id}-{self.ts} CANCEL ORDER: {order_id}")
-        self.http.cancel_order(order_id)
 
     def get_quotes(self):
         return self.latest_quotes
@@ -239,25 +267,10 @@ class Broker:
         # Tick, reconcile our state
         self.order_inserted_on_last_tick = []
         tick_response = self.http.tick()
-        for trade_json in tick_response["executed_trades"]:
-            trade = Trade.from_dict(trade_json)
-            # This should always be the case
-            if trade.order_id in self.unexecuted_orders:
-                order = self.unexecuted_orders[trade.order_id]
-                if trade.quantity > order.qty:
-                    order["quantity"] -= trade.quantity
-                else:
-                    del self.unexecuted_orders[trade.order_id]
-
-            self._process_trade(trade)
-            self.trade_log.append(trade)
-
-        for order in tick_response["modified_orders"]:
-            if order["modify_type"] == "Cancel":
-                del self.unexecuted_orders[order["order_id"]]
-            else:
-                logger.critical("Unsupported order modification type")
-                exit(1)
+        for order_result_json in tick_response["executed_orders"]:
+            order_result = OrderResult.from_dict(order_result_json)
+            self._process_order_result(order_result)
+            self.trade_log.append(order_result)
 
         for order in tick_response["inserted_orders"]:
             self.unexecuted_orders[order["order_id"]] = Order.from_dict(order)

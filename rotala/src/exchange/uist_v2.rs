@@ -1,9 +1,8 @@
 use std::{
-    collections::{HashMap, VecDeque},
+    collections::{BTreeMap, HashMap},
     fmt::Display,
 };
 
-use anyhow::{Error, Result};
 use serde::{Deserialize, Serialize};
 
 use crate::input::athena::{DateDepth, Depth, Level};
@@ -33,18 +32,14 @@ impl From<crate::input::athena::BBO> for Quote {
     }
 }
 
-#[derive(Clone, Debug, Deserialize, Serialize)]
-pub enum OrderModification {
-    CancelOrder(OrderId),
-    ModifyOrder(OrderId, f64),
-}
-
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Deserialize, Serialize)]
 pub enum OrderType {
     MarketSell,
     MarketBuy,
     LimitBuy,
     LimitSell,
+    Cancel,
+    Modify,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
@@ -53,6 +48,7 @@ pub struct Order {
     pub symbol: String,
     pub qty: f64,
     pub price: Option<f64>,
+    pub order_id_ref: Option<OrderId>,
 }
 
 impl Order {
@@ -62,6 +58,7 @@ impl Order {
             symbol: symbol.into(),
             qty: shares,
             price: None,
+            order_id_ref: None,
         }
     }
 
@@ -71,6 +68,7 @@ impl Order {
             symbol: symbol.into(),
             qty: shares,
             price: Some(price),
+            order_id_ref: None,
         }
     }
 
@@ -89,52 +87,60 @@ impl Order {
     pub fn limit_sell(symbol: impl Into<String>, shares: f64, price: f64) -> Self {
         Order::delayed(OrderType::LimitSell, symbol, shares, price)
     }
+
+    pub fn modify_order(symbol: impl Into<String>, order_id: OrderId, qty_change: f64) -> Self {
+        Self {
+            order_id_ref: Some(order_id),
+            order_type: OrderType::Modify,
+            symbol: symbol.into(),
+            price: None,
+            qty: qty_change,
+        }
+    }
+
+    pub fn cancel_order(symbol: impl Into<String>, order_id: OrderId) -> Self {
+        Self {
+            order_id_ref: Some(order_id),
+            order_type: OrderType::Cancel,
+            symbol: symbol.into(),
+            price: None,
+            qty: 0.0,
+        }
+    }
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
-pub enum ModifyResultType {
+pub enum OrderResultType {
+    Buy,
+    Sell,
     Modify,
     Cancel,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
-pub struct ModifyResult {
-    pub modify_type: ModifyResultType,
-    pub order_id: OrderId,
-}
-
-#[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
-pub enum TradeType {
-    Buy,
-    Sell,
-}
-
-#[derive(Clone, Debug, Deserialize, Serialize)]
-pub struct Trade {
+pub struct OrderResult {
     pub symbol: String,
     pub value: f64,
     pub quantity: f64,
     pub date: i64,
-    pub typ: TradeType,
+    pub typ: OrderResultType,
     pub order_id: OrderId,
 }
 
 #[derive(Debug)]
 pub struct UistV2 {
     orderbook: OrderBook,
-    trade_log: Vec<Trade>,
+    order_result_log: Vec<OrderResult>,
     //This is cleared on every tick
     order_buffer: Vec<Order>,
-    order_modification_buffer: Vec<OrderModification>,
 }
 
 impl UistV2 {
     pub fn new() -> Self {
         Self {
             orderbook: OrderBook::default(),
-            trade_log: Vec::new(),
+            order_result_log: Vec::new(),
             order_buffer: Vec::new(),
-            order_modification_buffer: Vec::new(),
         }
     }
 
@@ -145,16 +151,6 @@ impl UistV2 {
         })
     }
 
-    pub fn modify_order(&mut self, order_id: OrderId, qty_change: f64) {
-        let order_mod = OrderModification::ModifyOrder(order_id, qty_change);
-        self.order_modification_buffer.push(order_mod);
-    }
-
-    pub fn cancel_order(&mut self, order_id: OrderId) {
-        let order_mod = OrderModification::CancelOrder(order_id);
-        self.order_modification_buffer.push(order_mod);
-    }
-
     pub fn insert_order(&mut self, order: Order) {
         // Orders are only inserted into the book when tick is called, this is to ensure proper
         // ordering of trades
@@ -163,16 +159,12 @@ impl UistV2 {
         self.order_buffer.push(order);
     }
 
-    pub fn tick(
-        &mut self,
-        quotes: &DateDepth,
-        now: i64,
-    ) -> (Vec<Trade>, Vec<InnerOrder>, Vec<ModifyResult>) {
+    pub fn tick(&mut self, quotes: &DateDepth, now: i64) -> (Vec<OrderResult>, Vec<InnerOrder>) {
         //To eliminate lookahead bias, we only insert new orders after we have executed any orders
         //that were on the stack first
         let executed_trades = self.orderbook.execute_orders(quotes, now);
         for executed_trade in &executed_trades {
-            self.trade_log.push(executed_trade.clone());
+            self.order_result_log.push(executed_trade.clone());
         }
         let mut inserted_orders = Vec::new();
 
@@ -183,37 +175,8 @@ impl UistV2 {
             inserted_orders.push(inner_order);
         }
 
-        let mut modified_orders = Vec::new();
-        for order_mod in &self.order_modification_buffer {
-            let res = match order_mod {
-                OrderModification::CancelOrder(order_id) => self.orderbook.cancel_order(*order_id),
-                OrderModification::ModifyOrder(order_id, qty_change) => {
-                    self.orderbook.modify_order(*order_id, *qty_change)
-                }
-            };
-
-            //If we didn't succeed then we tried to modify an order that didn't exist so we just
-            //ignore this totally as a no-op and move on
-            if res.is_ok() {
-                let modification_result_destructure = match order_mod {
-                    OrderModification::CancelOrder(order_id) => {
-                        (order_id, ModifyResultType::Cancel)
-                    }
-                    OrderModification::ModifyOrder(order_id, _qty_change) => {
-                        (order_id, ModifyResultType::Modify)
-                    }
-                };
-
-                let modification_result = ModifyResult {
-                    order_id: *modification_result_destructure.0,
-                    modify_type: modification_result_destructure.1,
-                };
-                modified_orders.push(modification_result);
-            }
-        }
-
         self.order_buffer.clear();
-        (executed_trades, inserted_orders, modified_orders)
+        (executed_trades, inserted_orders)
     }
 }
 
@@ -290,6 +253,7 @@ pub struct InnerOrder {
     pub price: Option<f64>,
     pub recieved_timestamp: i64,
     pub order_id: OrderId,
+    pub order_id_ref: Option<OrderId>,
 }
 
 #[derive(Debug)]
@@ -307,7 +271,7 @@ impl std::error::Error for OrderBookError {}
 
 #[derive(Debug)]
 pub struct OrderBook {
-    inner: VecDeque<InnerOrder>,
+    inner: BTreeMap<OrderId, InnerOrder>,
     latency: LatencyModel,
     last_order_id: u64,
 }
@@ -321,7 +285,7 @@ impl Default for OrderBook {
 impl OrderBook {
     pub fn new() -> Self {
         Self {
-            inner: VecDeque::new(),
+            inner: BTreeMap::new(),
             latency: LatencyModel::None,
             last_order_id: 0,
         }
@@ -330,7 +294,7 @@ impl OrderBook {
     //Used for testing
     pub fn get_total_order_qty_by_symbol(&self, symbol: &str) -> f64 {
         let mut total = 0.0;
-        for order in &self.inner {
+        for order in self.inner.values() {
             if order.symbol == symbol {
                 total += order.qty
             }
@@ -340,7 +304,7 @@ impl OrderBook {
 
     pub fn with_latency(latency: i64) -> Self {
         Self {
-            inner: std::collections::VecDeque::new(),
+            inner: BTreeMap::new(),
             latency: LatencyModel::FixedPeriod(latency),
             last_order_id: 0,
         }
@@ -351,18 +315,81 @@ impl OrderBook {
             recieved_timestamp: now,
             order_id: self.last_order_id,
             order_type: order.order_type,
-            symbol: order.symbol,
+            symbol: order.symbol.clone(),
             qty: order.qty,
             price: order.price,
+            order_id_ref: order.order_id_ref,
         };
 
+        self.inner.insert(self.last_order_id, inner_order.clone());
         self.last_order_id += 1;
-        self.inner.push_back(inner_order.clone());
         inner_order
     }
 
     pub fn is_empty(&self) -> bool {
         self.inner.is_empty()
+    }
+
+    // Only returns a single `OrderResult` but we return a `Vec` for empty condition
+    fn cancel_order(
+        now: i64,
+        order_to_cancel: &InnerOrder,
+        orderbook: &mut BTreeMap<OrderId, InnerOrder>,
+    ) -> Vec<OrderResult> {
+        let mut res = Vec::new();
+        if orderbook
+            .remove(&order_to_cancel.order_id_ref.unwrap())
+            .is_some()
+        {
+            let order_result = OrderResult {
+                symbol: order_to_cancel.symbol.clone(),
+                value: 0.0,
+                quantity: 0.0,
+                date: now,
+                typ: OrderResultType::Cancel,
+                order_id: order_to_cancel.order_id,
+            };
+            res.push(order_result);
+        }
+
+        res
+    }
+
+    // Only returns a single `OrderResult` but we return a `Vec` for empty condition
+    fn modify_order(
+        now: i64,
+        order_to_modify: &InnerOrder,
+        orderbook: &mut BTreeMap<OrderId, InnerOrder>,
+    ) -> Vec<OrderResult> {
+        let mut res = Vec::new();
+
+        if let Some(order) = orderbook.get_mut(&order_to_modify.order_id_ref.unwrap()) {
+            let qty_change = order_to_modify.qty;
+
+            if qty_change > 0.0 {
+                order.qty += qty_change;
+            } else {
+                let qty_left = order.qty + qty_change;
+                if qty_left > 0.0 {
+                    order.qty += qty_change;
+                } else {
+                    // we are trying to remove more than the total number of shares
+                    // left on the order so will assume user wants to cancel
+                    orderbook.remove(&order_to_modify.order_id);
+                }
+            }
+
+            let order_result = OrderResult {
+                symbol: order_to_modify.symbol.clone(),
+                value: 0.0,
+                quantity: 0.0,
+                date: now,
+                typ: OrderResultType::Modify,
+                order_id: order_to_modify.order_id,
+            };
+            res.push(order_result);
+        }
+        res
     }
 
     fn fill_order(
@@ -371,7 +398,7 @@ impl OrderBook {
         is_buy: bool,
         price_check: f64,
         filled: &mut FillTracker,
-    ) -> Vec<Trade> {
+    ) -> Vec<OrderResult> {
         let mut to_fill = order.qty;
         let mut trades = Vec::new();
 
@@ -389,12 +416,12 @@ impl OrderBook {
 
                 let qty = if size >= to_fill { to_fill } else { size };
                 to_fill -= qty;
-                let trade = Trade {
+                let trade = OrderResult {
                     symbol: order.symbol.clone(),
                     value: ask.price * order.qty,
                     quantity: qty,
                     date: depth.date,
-                    typ: TradeType::Buy,
+                    typ: OrderResultType::Buy,
                     order_id: order.order_id,
                 };
                 trades.push(trade);
@@ -418,12 +445,12 @@ impl OrderBook {
 
                 let qty = if size >= to_fill { to_fill } else { size };
                 to_fill -= qty;
-                let trade = Trade {
+                let trade = OrderResult {
                     symbol: order.symbol.clone(),
                     value: bid.price * order.qty,
                     quantity: qty,
                     date: depth.date,
-                    typ: TradeType::Sell,
+                    typ: OrderResultType::Sell,
                     order_id: order.order_id,
                 };
                 trades.push(trade);
@@ -441,7 +468,7 @@ impl OrderBook {
         &mut self,
         quotes: &crate::input::athena::DateDepth,
         now: i64,
-    ) -> Vec<Trade> {
+    ) -> Vec<OrderResult> {
         //Tracks liquidity that has been used at each level
         let mut filled: FillTracker = FillTracker::new();
 
@@ -450,95 +477,77 @@ impl OrderBook {
             return trade_results;
         }
 
-        let mut new_inner: VecDeque<InnerOrder> = VecDeque::new();
+        // Split out cancel and modifies, and then implement on a copy of orderbook
+        let mut cancel_and_modify: Vec<InnerOrder> = Vec::new();
+        let mut orders: BTreeMap<OrderId, InnerOrder> = BTreeMap::new();
+        while let Some((order_id, order)) = self.inner.pop_first() {
+            match order.order_type {
+                OrderType::Cancel | OrderType::Modify => {
+                    cancel_and_modify.push(order);
+                }
+                _ => {
+                    orders.insert(order_id, order);
+                }
+            }
+        }
 
-        while !self.inner.is_empty() {
-            let order = self.inner.pop_front().unwrap();
+        for order in cancel_and_modify {
+            match order.order_type {
+                OrderType::Cancel => {
+                    let mut res = Self::cancel_order(now, &order, &mut orders);
+                    if !res.is_empty() {
+                        trade_results.append(&mut res);
+                    }
+                }
+                OrderType::Modify => {
+                    let mut res = Self::modify_order(now, &order, &mut orders);
+                    if !res.is_empty() {
+                        trade_results.append(&mut res);
+                    }
+                }
+                _ => {}
+            }
+        }
+
+        //TODO: really bad should be able to take somewhere?
+        let mut unexecuted_orders = BTreeMap::new();
+        for (order_id, order) in orders.iter() {
             let security_id = &order.symbol;
 
-            if !self.latency.cmp_order(now, &order) {
-                new_inner.push_back(order);
+            if !self.latency.cmp_order(now, order) {
+                unexecuted_orders.insert(*order_id, order.clone());
                 continue;
             }
 
             if let Some(depth) = quotes.get(security_id) {
                 let mut trades = match order.order_type {
                     OrderType::MarketBuy => {
-                        Self::fill_order(depth, &order, true, f64::MAX, &mut filled)
+                        Self::fill_order(depth, order, true, f64::MAX, &mut filled)
                     }
                     OrderType::MarketSell => {
-                        Self::fill_order(depth, &order, false, f64::MIN, &mut filled)
+                        Self::fill_order(depth, order, false, f64::MIN, &mut filled)
                     }
                     OrderType::LimitBuy => {
-                        Self::fill_order(depth, &order, true, order.price.unwrap(), &mut filled)
+                        Self::fill_order(depth, order, true, order.price.unwrap(), &mut filled)
                     }
                     OrderType::LimitSell => {
-                        Self::fill_order(depth, &order, false, order.price.unwrap(), &mut filled)
+                        Self::fill_order(depth, order, false, order.price.unwrap(), &mut filled)
                     }
+                    // There shouldn't be any cancel or modifies by this point
+                    _ => vec![],
                 };
 
                 if trades.is_empty() {
-                    new_inner.push_back(order);
+                    unexecuted_orders.insert(*order_id, order.clone());
                 }
 
                 trade_results.append(&mut trades)
             } else {
-                new_inner.push_back(order);
+                unexecuted_orders.insert(*order_id, order.clone());
             }
         }
-        self.inner = new_inner;
+        self.inner = unexecuted_orders;
         trade_results
-    }
-
-    //Users will either want to change the quantity or cancel, so we can accept qty_change argument
-    //and there is no other behaviour we need to support
-    pub fn modify_order(&mut self, order_id: OrderId, qty_change: f64) -> Result<OrderId> {
-        let mut position: Option<usize> = None;
-
-        for (i, order) in self.inner.iter().enumerate() {
-            if order.order_id == order_id {
-                position = Some(i);
-                break;
-            }
-        }
-
-        match position {
-            Some(pos) => {
-                //Can unwrap safely because this is produced above
-                let mut order_copied = self.inner.get(pos).unwrap().clone();
-
-                let mut new_order_qty = order_copied.qty;
-
-                if qty_change > 0.0 {
-                    new_order_qty += qty_change
-                } else {
-                    let qty_left = order_copied.qty + qty_change;
-                    if qty_left > 0.0 {
-                        new_order_qty += qty_change
-                    } else {
-                        // We are trying to remove more than the total number of shares
-                        // left on the order so will assume user wants to cancel
-                        self.inner.remove(pos);
-                    }
-                }
-
-                order_copied.qty = new_order_qty;
-                self.inner.remove(pos);
-                self.inner.insert(pos, order_copied);
-                Ok(order_id)
-            }
-            None => Err(Error::new(OrderBookError::OrderIdNotFound)),
-        }
-    }
-
-    pub fn cancel_order(&mut self, order_id: OrderId) -> Result<OrderId> {
-        for (i, order) in self.inner.iter().enumerate() {
-            if order.order_id == order_id {
-                self.inner.remove(i);
-                return Ok(order_id);
-            }
-        }
-        Err(Error::new(OrderBookError::OrderIdNotFound))
     }
 }
 
@@ -551,70 +560,89 @@ mod tests {
         input::athena::{DateDepth, Depth, Level},
     };
 
+    fn quotes() -> DateDepth {
+        let bid_level = Level {
+            price: 100.0,
+            size: 100.0,
+        };
+
+        let ask_level = Level {
+            price: 102.0,
+            size: 100.0,
+        };
+
+        let mut depth = Depth::new(100, "ABC");
+        depth.add_level(bid_level, crate::input::athena::Side::Bid);
+        depth.add_level(ask_level, crate::input::athena::Side::Ask);
+
+        let mut quotes: DateDepth = HashMap::new();
+        quotes.insert("ABC".to_string(), depth);
+        quotes
+    }
+
+    fn quotes1() -> DateDepth {
+        let bid_level = Level {
+            price: 98.0,
+            size: 20.0,
+        };
+
+        let ask_level = Level {
+            price: 102.0,
+            size: 20.0,
+        };
+
+        let mut depth = Depth::new(100, "ABC");
+        depth.add_level(bid_level, crate::input::athena::Side::Bid);
+        depth.add_level(ask_level, crate::input::athena::Side::Ask);
+
+        let mut quotes: DateDepth = HashMap::new();
+        quotes.insert("ABC".to_string(), depth);
+        quotes
+    }
+
     #[test]
-    fn test_that_nonexistent_buy_order_cancel_throws_error() {
+    fn test_that_nonexistent_buy_order_cancel_produces_empty_result() {
+        let quotes = quotes();
         let mut orderbook = OrderBook::new();
-        let res = orderbook.cancel_order(10);
-        assert!(res.is_err())
+        orderbook.insert_order(Order::cancel_order("ABC", 10), 100);
+        let res = orderbook.execute_orders(&quotes, 100);
+        assert!(res.is_empty())
     }
 
     #[test]
     fn test_that_nonexistent_buy_order_modify_throws_error() {
+        let quotes = quotes();
         let mut orderbook = OrderBook::new();
-        let res = orderbook.modify_order(10, 100.0);
-        assert!(res.is_err())
+        orderbook.insert_order(Order::modify_order("ABC", 10, 100.0), 100);
+        let res = orderbook.execute_orders(&quotes, 100);
+        assert!(res.is_empty())
     }
 
     #[test]
     fn test_that_buy_order_can_be_cancelled_and_modified() {
-        let bid_level = Level {
-            price: 100.0,
-            size: 100.0,
-        };
-
-        let ask_level = Level {
-            price: 102.0,
-            size: 100.0,
-        };
-
-        let mut depth = Depth::new(100, "ABC");
-        depth.add_level(bid_level, crate::input::athena::Side::Bid);
-        depth.add_level(ask_level, crate::input::athena::Side::Ask);
-
-        let mut quotes: DateDepth = HashMap::new();
-        quotes.insert("ABC".to_string(), depth);
+        let quotes = quotes();
 
         let mut orderbook = OrderBook::new();
+        let oid = orderbook
+            .insert_order(Order::limit_buy("ABC", 100.0, 1.0), 100)
+            .order_id;
 
-        let order = Order::market_buy("ABC", 100.0);
-        let oid = orderbook.insert_order(order, 100).order_id;
-        let _res = orderbook.cancel_order(oid);
-        assert!(orderbook.get_total_order_qty_by_symbol("ABC") == 0.0);
+        orderbook.insert_order(Order::cancel_order("ABC", oid), 100);
+        let res = orderbook.execute_orders(&quotes, 100);
+        println!("{:?}", res);
+        assert!(res.len() == 1);
 
-        let order1 = Order::market_buy("ABC", 200.0);
-        let oid1 = orderbook.insert_order(order1, 100).order_id;
-        let _res1 = orderbook.modify_order(oid1, 100.0);
-        assert!(orderbook.get_total_order_qty_by_symbol("ABC") == 300.0);
+        let oid1 = orderbook
+            .insert_order(Order::limit_buy("ABC", 200.0, 1.0), 100)
+            .order_id;
+        orderbook.insert_order(Order::modify_order("ABC", oid1, 100.0), 100);
+        let res = orderbook.execute_orders(&quotes, 100);
+        assert!(res.len() == 1);
     }
 
     #[test]
     fn test_that_buy_order_will_lift_all_volume_when_order_is_equal_to_depth_size() {
-        let bid_level = Level {
-            price: 100.0,
-            size: 100.0,
-        };
-
-        let ask_level = Level {
-            price: 102.0,
-            size: 100.0,
-        };
-
-        let mut depth = Depth::new(100, "ABC");
-        depth.add_level(bid_level, crate::input::athena::Side::Bid);
-        depth.add_level(ask_level, crate::input::athena::Side::Ask);
-
-        let mut quotes: DateDepth = HashMap::new();
-        quotes.insert("ABC".to_string(), depth);
+        let quotes = quotes();
 
         let mut orderbook = OrderBook::new();
         let order = Order::market_buy("ABC", 100.0);
@@ -629,22 +657,7 @@ mod tests {
 
     #[test]
     fn test_that_sell_order_will_lift_all_volume_when_order_is_equal_to_depth_size() {
-        let bid_level = Level {
-            price: 100.0,
-            size: 100.0,
-        };
-
-        let ask_level = Level {
-            price: 102.0,
-            size: 100.0,
-        };
-
-        let mut depth = Depth::new(100, "ABC");
-        depth.add_level(bid_level, crate::input::athena::Side::Bid);
-        depth.add_level(ask_level, crate::input::athena::Side::Ask);
-
-        let mut quotes: DateDepth = HashMap::new();
-        quotes.insert("ABC".to_string(), depth);
+        let quotes = quotes();
 
         let mut orderbook = OrderBook::new();
         let order = Order::market_sell("ABC", 100.0);
@@ -659,23 +672,7 @@ mod tests {
 
     #[test]
     fn test_that_order_will_lift_order_qty_when_order_is_less_than_depth_size() {
-        let bid_level = Level {
-            price: 100.0,
-            size: 100.0,
-        };
-
-        let ask_level = Level {
-            price: 102.0,
-            size: 100.0,
-        };
-
-        let mut depth = Depth::new(100, "ABC");
-        depth.add_level(bid_level, crate::input::athena::Side::Bid);
-        depth.add_level(ask_level, crate::input::athena::Side::Ask);
-
-        let mut quotes: DateDepth = HashMap::new();
-        quotes.insert("ABC".to_string(), depth);
-
+        let quotes = quotes();
         let mut orderbook = OrderBook::new();
         let order = Order::market_buy("ABC", 50.0);
         orderbook.insert_order(order, 100);
@@ -823,23 +820,7 @@ mod tests {
 
     #[test]
     fn test_that_repeated_orders_do_not_use_same_liquidty() {
-        let bid_level = Level {
-            price: 98.0,
-            size: 20.0,
-        };
-
-        let ask_level = Level {
-            price: 102.0,
-            size: 20.0,
-        };
-
-        let mut depth = Depth::new(100, "ABC");
-        depth.add_level(bid_level, crate::input::athena::Side::Bid);
-        depth.add_level(ask_level, crate::input::athena::Side::Ask);
-
-        let mut quotes: DateDepth = HashMap::new();
-        quotes.insert("ABC".to_string(), depth);
-
+        let quotes = quotes1();
         let mut orderbook = OrderBook::new();
         let first_order = Order::limit_buy("ABC", 20.0, 103.00);
         orderbook.insert_order(first_order, 100);
@@ -897,23 +878,7 @@ mod tests {
 
     #[test]
     fn test_that_orderbook_clears_after_execution() {
-        let bid_level = Level {
-            price: 98.0,
-            size: 20.0,
-        };
-
-        let ask_level = Level {
-            price: 102.0,
-            size: 20.0,
-        };
-
-        let mut depth = Depth::new(100, "ABC");
-        depth.add_level(bid_level.clone(), crate::input::athena::Side::Bid);
-        depth.add_level(ask_level.clone(), crate::input::athena::Side::Ask);
-
-        let mut quotes: DateDepth = HashMap::new();
-        quotes.insert("ABC".to_string(), depth);
-
+        let quotes = quotes1();
         let mut orderbook = OrderBook::new();
         let order = Order::market_buy("ABC", 20.0);
         orderbook.insert_order(order, 100);
