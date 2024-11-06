@@ -159,6 +159,10 @@ impl UistV2 {
         self.order_buffer.push(order);
     }
 
+    pub fn insert_orders(&mut self, orders: &mut Vec<Order>) {
+        self.order_buffer.append(orders);
+    }
+
     pub fn tick(&mut self, quotes: &DateDepth, now: i64) -> (Vec<OrderResult>, Vec<InnerOrder>) {
         //To eliminate lookahead bias, we only insert new orders after we have executed any orders
         //that were on the stack first
@@ -337,19 +341,19 @@ impl OrderBook {
         orderbook: &mut BTreeMap<OrderId, InnerOrder>,
     ) -> Vec<OrderResult> {
         let mut res = Vec::new();
-        if orderbook
-            .remove(&order_to_cancel.order_id_ref.unwrap())
-            .is_some()
-        {
-            let order_result = OrderResult {
-                symbol: order_to_cancel.symbol.clone(),
-                value: 0.0,
-                quantity: 0.0,
-                date: now,
-                typ: OrderResultType::Cancel,
-                order_id: order_to_cancel.order_id,
-            };
-            res.push(order_result);
+        //Fails silently if you send garbage in
+        if let Some(order_id) = &order_to_cancel.order_id_ref {
+            if orderbook.remove(order_id).is_some() {
+                let order_result = OrderResult {
+                    symbol: order_to_cancel.symbol.clone(),
+                    value: 0.0,
+                    quantity: 0.0,
+                    date: now,
+                    typ: OrderResultType::Cancel,
+                    order_id: order_to_cancel.order_id,
+                };
+                res.push(order_result);
+            }
         }
 
         res

@@ -56,12 +56,6 @@ class Order:
         if order_type == OrderType.MarketSell or order_type == OrderType.MarketBuy:
             if price is not None:
                 raise ValueError("Order price must be None for Market order")
-        else:
-            if price is None:
-                raise ValueError("Order price must be not None for Limit order")
-
-        if qty <= 0:
-            raise ValueError("Order qty must be greater than zero")
 
         self.order_type = order_type
         self.symbol = symbol
@@ -72,11 +66,19 @@ class Order:
     def __str__(self):
         return f"{self.order_type} {self.symbol} {self.qty} {self.price}"
 
+    def is_transaction(self) -> bool:
+        return (
+            self.order_type == OrderType.LimitBuy
+            or self.order_type == OrderType.LimitSell
+            or self.order_type == OrderType.MarketBuy
+            or self.order_type == OrderType.MarketSell
+        )
+
     def serialize(self):
         base = f'{{"order_type": "{self.order_type.name}", "symbol": "{self.symbol}", "qty": {self.qty}'
         if self.price:
             base += f', "price": {self.price}'
-        if self.order_id_ref:
+        if self.order_id_ref is not None:
             base += f', "order_id_ref": {self.order_id_ref}'
         base += "}"
         return base
@@ -259,10 +261,11 @@ class Broker:
         logger.info(f"{self.backtest_id}-{self.ts} TICK")
 
         # Flush pending orders
-        while len(self.pending_orders) > 0:
-            order = self.pending_orders.pop()
-            logger.info(f"{self.backtest_id}-{self.ts} INSERT ORDER: {order}")
-            self.http.insert_order(order)
+        logger.info(
+            f"{self.backtest_id}-{self.ts} INSERTING {len(self.pending_orders)} ORDER"
+        )
+        self.http.insert_orders(self.pending_orders)
+        self.pending_orders = []
 
         # Tick, reconcile our state
         self.order_inserted_on_last_tick = []

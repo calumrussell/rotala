@@ -111,9 +111,13 @@ impl AppState {
         None
     }
 
-    pub fn insert_order(&mut self, order: Order, backtest_id: BacktestId) -> Option<()> {
+    pub fn insert_orders(
+        &mut self,
+        orders: &mut Vec<Order>,
+        backtest_id: BacktestId,
+    ) -> Option<()> {
         if let Some(backtest) = self.backtests.get_mut(&backtest_id) {
-            backtest.exchange.insert_order(order);
+            backtest.exchange.insert_orders(orders);
             return Some(());
         }
         None
@@ -154,7 +158,7 @@ pub struct TickResponse {
 
 #[derive(Debug, Deserialize, Serialize)]
 pub struct InsertOrderRequest {
-    pub order: Order,
+    pub orders: Vec<Order>,
 }
 
 #[derive(Debug, Deserialize, Serialize)]
@@ -215,9 +219,9 @@ impl actix_web::ResponseError for UistV2Error {
 
 pub trait Client {
     fn tick(&mut self, backtest_id: BacktestId) -> impl Future<Output = Result<TickResponse>>;
-    fn insert_order(
+    fn insert_orders(
         &mut self,
-        order: Order,
+        orders: Vec<Order>,
         backtest_id: BacktestId,
     ) -> impl Future<Output = Result<()>>;
     fn init(&mut self, dataset_name: String) -> impl Future<Output = Result<InitResponse>>;
@@ -256,15 +260,15 @@ pub mod server {
         }
     }
 
-    #[post("/backtest/{backtest_id}/insert_order")]
-    pub async fn insert_order(
+    #[post("/backtest/{backtest_id}/insert_orders")]
+    pub async fn insert_orders(
         app: web::Data<UistState>,
         path: web::Path<(BacktestId,)>,
         insert_order: web::Json<InsertOrderRequest>,
     ) -> Result<web::Json<()>, UistV2Error> {
         let mut uist = app.lock().unwrap();
         let (backtest_id,) = path.into_inner();
-        if let Some(()) = uist.insert_order(insert_order.order.clone(), backtest_id) {
+        if let Some(()) = uist.insert_orders(&mut insert_order.orders.clone(), backtest_id) {
             Ok(web::Json(()))
         } else {
             Err(UistV2Error::UnknownBacktest)
@@ -359,7 +363,7 @@ mod tests {
                 .service(info)
                 .service(init)
                 .service(tick)
-                .service(insert_order)
+                .service(insert_orders)
                 .service(now),
         )
         .await;
@@ -378,9 +382,9 @@ mod tests {
 
         let req3 = test::TestRequest::post()
             .set_json(InsertOrderRequest {
-                order: Order::market_buy("ABC", 100.0),
+                orders: vec![Order::market_buy("ABC", 100.0)],
             })
-            .uri(format!("/backtest/{backtest_id}/insert_order").as_str())
+            .uri(format!("/backtest/{backtest_id}/insert_orders").as_str())
             .to_request();
         test::call_and_read_body(&app, req3).await;
 
@@ -394,6 +398,7 @@ mod tests {
             .to_request();
         let resp5: TickResponse = test::call_and_read_body_json(&app, req5).await;
 
+        println!("{:?}", resp5.executed_orders);
         assert!(resp5.executed_orders.len() == 1);
         assert!(resp5.executed_orders.first().unwrap().symbol == "ABC")
     }
