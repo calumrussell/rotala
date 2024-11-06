@@ -20,13 +20,14 @@ class HttpClient:
         r = requests.get(f"{self.base_url}/backtest/{self.backtest_id}/tick")
         return r.json()
 
-    def insert_order(self, order):
+    def insert_orders(self, orders):
         if self.backtest_id is None:
             raise ValueError("Called before init")
 
-        val = f'{{"order": {order.serialize()}}}'
+        serialized_orders_str = ",".join([o.serialize() for o in orders])
+        val = f'{{"orders": [{serialized_orders_str}]}}'
         r = requests.post(
-            f"{self.base_url}/backtest/{self.backtest_id}/insert_order",
+            f"{self.base_url}/backtest/{self.backtest_id}/insert_orders",
             data=val,
             headers={"Content-type": "application/json"},
         )
