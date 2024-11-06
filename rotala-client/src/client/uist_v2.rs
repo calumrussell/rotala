@@ -25,11 +25,11 @@ impl Client for HttpClient {
             .await?)
     }
 
-    async fn insert_order(&mut self, order: Order, backtest_id: BacktestId) -> Result<()> {
-        let req = InsertOrderRequest { order };
+    async fn insert_orders(&mut self, orders: Vec<Order>, backtest_id: BacktestId) -> Result<()> {
+        let req = InsertOrderRequest { orders };
         Ok(self
             .client
-            .post(self.path.clone() + format!("/backtest/{backtest_id}/insert_order").as_str())
+            .post(self.path.clone() + format!("/backtest/{backtest_id}/insert_orders").as_str())
             .json(&req)
             .send()
             .await?
@@ -108,12 +108,13 @@ impl Client for TestClient {
         }
     }
 
-    fn insert_order(
+    fn insert_orders(
         &mut self,
-        order: Order,
+        orders: Vec<Order>,
         backtest_id: BacktestId,
     ) -> impl Future<Output = Result<()>> {
-        if let Some(()) = self.state.insert_order(order, backtest_id) {
+        //TODO: this clone is horrible
+        if let Some(()) = self.state.insert_orders(&mut orders.clone(), backtest_id) {
             future::ready(Ok(()))
         } else {
             future::ready(Err(Error::new(UistV2Error::UnknownBacktest)))

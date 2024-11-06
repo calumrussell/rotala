@@ -26,7 +26,7 @@ async fn main() -> std::io::Result<()> {
             .service(info)
             .service(init)
             .service(tick)
-            .service(insert_order)
+            .service(insert_orders)
     })
     .bind((address, port))?
     .run()
