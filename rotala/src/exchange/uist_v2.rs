@@ -159,6 +159,10 @@ impl UistV2 {
         self.order_buffer.push(order);
     }
 
+    pub fn insert_orders(&mut self, orders: &mut Vec<Order>) {
+        self.order_buffer.append(orders);
+    }
+
     pub fn tick(&mut self, quotes: &DateDepth, now: i64) -> (Vec<OrderResult>, Vec<InnerOrder>) {
         //To eliminate lookahead bias, we only insert new orders after we have executed any orders
         //that were on the stack first
