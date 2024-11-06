@@ -341,19 +341,19 @@ impl OrderBook {
         orderbook: &mut BTreeMap<OrderId, InnerOrder>,
     ) -> Vec<OrderResult> {
         let mut res = Vec::new();
-        if orderbook
-            .remove(&order_to_cancel.order_id_ref.unwrap())
-            .is_some()
-        {
-            let order_result = OrderResult {
-                symbol: order_to_cancel.symbol.clone(),
-                value: 0.0,
-                quantity: 0.0,
-                date: now,
-                typ: OrderResultType::Cancel,
-                order_id: order_to_cancel.order_id,
-            };
-            res.push(order_result);
+        //Fails silently if you send garbage in
+        if let Some(order_id) = &order_to_cancel.order_id_ref {
+            if orderbook.remove(order_id).is_some() {
+                let order_result = OrderResult {
+                    symbol: order_to_cancel.symbol.clone(),
+                    value: 0.0,
+                    quantity: 0.0,
+                    date: now,
+                    typ: OrderResultType::Cancel,
+                    order_id: order_to_cancel.order_id,
+                };
+                res.push(order_result);
+            }
         }
 
         res
