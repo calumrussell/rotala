@@ -11,6 +11,7 @@ use rotala_http::http::uist_v1::{
 
 #[actix_web::main]
 async fn main() -> std::io::Result<()> {
+    env_logger::init();
     let args: Vec<String> = env::args().collect();
 
     let address: String = args[1].clone();
