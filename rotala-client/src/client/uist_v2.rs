@@ -6,7 +6,10 @@ use rotala_http::http::uist_v2::{
     AppState, BacktestId, Client, InfoResponse, InitResponse, InsertOrderRequest, NowResponse,
     TickResponse, UistV2Error,
 };
-use std::future::{self, Future};
+use std::{
+    future::{self, Future},
+    mem,
+};
 
 #[derive(Debug)]
 pub struct HttpClient {
@@ -15,7 +18,7 @@ pub struct HttpClient {
 }
 
 impl Client for HttpClient {
-    async fn tick(&mut self, backtest_id: BacktestId) -> Result<TickResponse> {
+    async fn tick(&self, backtest_id: BacktestId) -> Result<TickResponse> {
         Ok(self
             .client
             .get(self.path.clone() + format!("/backtest/{backtest_id}/tick").as_str())
@@ -25,7 +28,7 @@ impl Client for HttpClient {
             .await?)
     }
 
-    async fn insert_orders(&mut self, orders: Vec<Order>, backtest_id: BacktestId) -> Result<()> {
+    async fn insert_orders(&self, orders: Vec<Order>, backtest_id: BacktestId) -> Result<()> {
         let req = InsertOrderRequest { orders };
         Ok(self
             .client
@@ -37,7 +40,7 @@ impl Client for HttpClient {
             .await?)
     }
 
-    async fn init(&mut self, dataset_name: String) -> Result<InitResponse> {
+    async fn init(&self, dataset_name: String) -> Result<InitResponse> {
         Ok(self
             .client
             .get(self.path.clone() + format!("/init/{dataset_name}").as_str())
@@ -47,7 +50,7 @@ impl Client for HttpClient {
             .await?)
     }
 
-    async fn info(&mut self, backtest_id: BacktestId) -> Result<InfoResponse> {
+    async fn info(&self, backtest_id: BacktestId) -> Result<InfoResponse> {
         Ok(self
             .client
             .get(self.path.clone() + format!("/backtest/{backtest_id}/info").as_str())
@@ -57,7 +60,7 @@ impl Client for HttpClient {
             .await?)
     }
 
-    async fn now(&mut self, backtest_id: BacktestId) -> Result<NowResponse> {
+    async fn now(&self, backtest_id: BacktestId) -> Result<NowResponse> {
         Ok(self
             .client
             .get(self.path.clone() + format!("/backtest/{backtest_id}/now").as_str())
@@ -82,7 +85,7 @@ pub struct TestClient {
 }
 
 impl Client for TestClient {
-    fn init(&mut self, dataset_name: String) -> impl Future<Output = Result<InitResponse>> {
+    fn init(&self, dataset_name: String) -> impl Future<Output = Result<InitResponse>> {
         if let Some((backtest_id, bbo, depth)) = self.state.init(dataset_name) {
             future::ready(Ok(InitResponse {
                 backtest_id,
@@ -94,7 +97,7 @@ impl Client for TestClient {
         }
     }
 
-    fn tick(&mut self, backtest_id: BacktestId) -> impl Future<Output = Result<TickResponse>> {
+    fn tick(&self, backtest_id: BacktestId) -> impl Future<Output = Result<TickResponse>> {
         if let Some(resp) = self.state.tick(backtest_id) {
             future::ready(Ok(TickResponse {
                 depth: resp.4,
@@ -109,19 +112,19 @@ impl Client for TestClient {
     }
 
     fn insert_orders(
-        &mut self,
-        orders: Vec<Order>,
+        &self,
+        mut orders: Vec<Order>,
         backtest_id: BacktestId,
     ) -> impl Future<Output = Result<()>> {
-        //TODO: this clone is horrible
-        if let Some(()) = self.state.insert_orders(&mut orders.clone(), backtest_id) {
+        let take_orders = mem::take(&mut orders);
+        if let Some(()) = self.state.insert_orders(take_orders, backtest_id) {
             future::ready(Ok(()))
         } else {
             future::ready(Err(Error::new(UistV2Error::UnknownBacktest)))
         }
     }
 
-    fn info(&mut self, backtest_id: BacktestId) -> impl Future<Output = Result<InfoResponse>> {
+    fn info(&self, backtest_id: BacktestId) -> impl Future<Output = Result<InfoResponse>> {
         if let Some(backtest) = self.state.backtests.get(&backtest_id) {
             future::ready(Ok(InfoResponse {
                 version: "v1".to_string(),
@@ -132,7 +135,7 @@ impl Client for TestClient {
         }
     }
 
-    fn now(&mut self, backtest_id: BacktestId) -> impl Future<Output = Result<NowResponse>> {
+    fn now(&self, backtest_id: BacktestId) -> impl Future<Output = Result<NowResponse>> {
         if let Some(backtest) = self.state.backtests.get(&backtest_id) {
             if let Some(dataset) = self.state.datasets.get(&backtest.dataset_name) {
                 let now = backtest.date;
