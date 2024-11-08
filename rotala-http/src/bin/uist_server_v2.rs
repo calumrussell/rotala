@@ -1,5 +1,4 @@
 use std::env;
-use std::sync::Mutex;
 
 use actix_web::{web, App, HttpServer};
 use rotala::input::athena::Athena;
@@ -9,6 +8,7 @@ use std::path::Path;
 
 #[actix_web::main]
 async fn main() -> std::io::Result<()> {
+    env_logger::init();
     let args: Vec<String> = env::args().collect();
 
     let address: String = args[1].clone();
@@ -18,7 +18,7 @@ async fn main() -> std::io::Result<()> {
     let source = Athena::from_file(file_path);
     let app_state = AppState::single("Test", source);
 
-    let uist_state = web::Data::new(Mutex::new(app_state));
+    let uist_state = web::Data::new(app_state);
 
     HttpServer::new(move || {
         App::new()

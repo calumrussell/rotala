@@ -1,6 +1,7 @@
 use std::{
     collections::{BTreeMap, HashMap},
     fmt::Display,
+    mem,
 };
 
 use serde::{Deserialize, Serialize};
@@ -159,8 +160,9 @@ impl UistV2 {
         self.order_buffer.push(order);
     }
 
-    pub fn insert_orders(&mut self, orders: &mut Vec<Order>) {
-        self.order_buffer.append(orders);
+    pub fn insert_orders(&mut self, mut orders: Vec<Order>) {
+        let mut orders = mem::take(&mut orders);
+        self.order_buffer.append(&mut orders);
     }
 
     pub fn tick(&mut self, quotes: &DateDepth, now: i64) -> (Vec<OrderResult>, Vec<InnerOrder>) {
