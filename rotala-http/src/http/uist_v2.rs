@@ -1,8 +1,10 @@
 use std::collections::HashMap;
 use std::future::Future;
-use std::sync::Mutex;
+use std::sync::atomic::AtomicU64;
 
 use anyhow::Result;
+use dashmap::try_result::TryResult;
+use dashmap::DashMap;
 use serde::{Deserialize, Serialize};
 
 use rotala::exchange::uist_v2::{InnerOrder, Order, OrderId, OrderResult, UistV2};
@@ -20,22 +22,23 @@ pub struct BacktestState {
 }
 
 pub struct AppState {
-    pub backtests: HashMap<BacktestId, BacktestState>,
-    pub last: BacktestId,
+    pub backtests: DashMap<BacktestId, BacktestState>,
+    pub last: AtomicU64,
     pub datasets: HashMap<String, Athena>,
 }
 
 impl AppState {
     pub fn create(datasets: &mut HashMap<String, Athena>) -> Self {
         Self {
-            backtests: HashMap::new(),
-            last: 0,
+            backtests: DashMap::new(),
+            last: AtomicU64::new(0),
             datasets: std::mem::take(datasets),
         }
     }
 
     pub fn single(name: &str, data: Athena) -> Self {
         let exchange = UistV2::new();
+
         let backtest = BacktestState {
             id: 0,
             date: *data.get_date(0).unwrap(),
@@ -47,101 +50,120 @@ impl AppState {
         let mut datasets = HashMap::new();
         datasets.insert(name.into(), data);
 
-        let mut backtests = HashMap::new();
+        let backtests = DashMap::new();
         backtests.insert(0, backtest);
 
         Self {
             backtests,
-            last: 1,
+            last: AtomicU64::new(1),
             datasets,
         }
     }
 
-    pub fn tick(&mut self, backtest_id: BacktestId) -> Option<TickResponseType> {
-        if let Some(backtest) = self.backtests.get_mut(&backtest_id) {
+    pub fn tick(&self, backtest_id: BacktestId) -> Option<TickResponseType> {
+        if let TryResult::Present(mut backtest) = self.backtests.try_get_mut(&backtest_id) {
             if let Some(dataset) = self.datasets.get(&backtest.dataset_name) {
                 let mut has_next = false;
-                //TODO: this has perf implications, not quite sure why memory is being created here
+
                 let mut executed_orders = Vec::new();
                 let mut inserted_orders = Vec::new();
+                let curr_date = backtest.date;
 
-                if let Some(quotes) = dataset.get_quotes(&backtest.date) {
-                    let mut res = backtest.exchange.tick(quotes, backtest.date);
+                if let Some(quotes) = dataset.get_quotes(&curr_date) {
+                    let mut res = backtest.exchange.tick(quotes, curr_date);
                     executed_orders.append(&mut res.0);
                     inserted_orders.append(&mut res.1);
                 }
 
                 let new_pos = backtest.pos + 1;
+                let new_date = *dataset.get_date(new_pos).unwrap();
+
                 if dataset.has_next(new_pos) {
                     has_next = true;
-                    backtest.date = *dataset.get_date(new_pos).unwrap();
+                    backtest.date = new_date;
                 }
                 backtest.pos = new_pos;
 
-                let bbo = dataset.get_bbo(backtest.date).unwrap();
+                let bbo = dataset.get_bbo(new_date).unwrap();
                 //TODO: shouldn't clone here
-                let depth = dataset.get_quotes(&backtest.date).unwrap().clone();
+                let depth = dataset.get_quotes(&new_date).unwrap().clone();
+
                 return Some((has_next, executed_orders, inserted_orders, bbo, depth));
             }
         }
         None
     }
 
-    pub fn init(&mut self, dataset_name: String) -> Option<(BacktestId, DateBBO, DateDepth)> {
+    pub fn init(&self, dataset_name: String) -> Option<(BacktestId, DateBBO, DateDepth)> {
         if let Some(dataset) = self.datasets.get(&dataset_name) {
-            let new_id = self.last + 1;
+            let curr_id = self.last.load(std::sync::atomic::Ordering::SeqCst);
             let exchange = UistV2::new();
 
             let start_date = *dataset.get_date(0).unwrap();
             let backtest = BacktestState {
-                id: new_id,
+                id: curr_id,
                 date: start_date,
                 pos: 0,
                 exchange,
                 dataset_name,
             };
-            self.backtests.insert(new_id, backtest);
-            self.last += 1;
 
-            let bbo = dataset.get_bbo(start_date).unwrap();
-            //TODO: shouldn't clone here
-            let depth = dataset.get_quotes(&start_date).unwrap().clone();
-            return Some((new_id, bbo, depth));
+            let new_id = curr_id + 1;
+            //Attempt to increment the counter, if this is successful then we create new backtest
+            if let Ok(res) = self.last.compare_exchange(
+                curr_id,
+                new_id,
+                std::sync::atomic::Ordering::SeqCst,
+                std::sync::atomic::Ordering::SeqCst,
+            ) {
+                if res == curr_id {
+                    self.backtests.insert(curr_id, backtest);
+
+                    let bbo = dataset.get_bbo(start_date).unwrap();
+                    // Unfortunately, this clone is required if we want immutable sources that don't lock
+                    // on ticks (which would potentially mutate)
+                    let depth = dataset.get_quotes(&start_date).unwrap().clone();
+                    return Some((curr_id, bbo, depth));
+                }
+            }
         }
         None
     }
 
-    pub fn insert_orders(
-        &mut self,
-        orders: &mut Vec<Order>,
-        backtest_id: BacktestId,
-    ) -> Option<()> {
-        if let Some(backtest) = self.backtests.get_mut(&backtest_id) {
+    pub fn insert_orders(&self, orders: Vec<Order>, backtest_id: BacktestId) -> Option<()> {
+        if let TryResult::Present(mut backtest) = self.backtests.try_get_mut(&backtest_id) {
             backtest.exchange.insert_orders(orders);
             return Some(());
         }
         None
     }
 
-    pub fn new_backtest(&mut self, dataset_name: &str) -> Option<BacktestId> {
-        let new_id = self.last + 1;
-
-        // Check that dataset exists
+    pub fn new_backtest(&self, dataset_name: &str) -> Option<BacktestId> {
         if let Some(dataset) = self.datasets.get(dataset_name) {
+            let curr_id = self.last.load(std::sync::atomic::Ordering::SeqCst);
+
             let exchange = UistV2::new();
 
             let backtest = BacktestState {
-                id: new_id,
+                id: curr_id,
                 date: *dataset.get_date(0).unwrap(),
                 pos: 0,
                 exchange,
                 dataset_name: dataset_name.into(),
             };
-
-            self.backtests.insert(new_id, backtest);
-
-            self.last = new_id;
-            return Some(new_id);
+            let new_id = curr_id + 1;
+            //Attempt to increment the counter, if this is successful then we create new backtest
+            if let Ok(res) = self.last.compare_exchange(
+                curr_id,
+                new_id,
+                std::sync::atomic::Ordering::SeqCst,
+                std::sync::atomic::Ordering::SeqCst,
+            ) {
+                if res == curr_id {
+                    self.backtests.insert(new_id, backtest);
+                    return Some(res);
+                }
+            }
         }
         None
     }
@@ -218,18 +240,18 @@ impl actix_web::ResponseError for UistV2Error {
 }
 
 pub trait Client {
-    fn tick(&mut self, backtest_id: BacktestId) -> impl Future<Output = Result<TickResponse>>;
+    fn tick(&self, backtest_id: BacktestId) -> impl Future<Output = Result<TickResponse>>;
     fn insert_orders(
-        &mut self,
+        &self,
         orders: Vec<Order>,
         backtest_id: BacktestId,
     ) -> impl Future<Output = Result<()>>;
-    fn init(&mut self, dataset_name: String) -> impl Future<Output = Result<InitResponse>>;
-    fn info(&mut self, backtest_id: BacktestId) -> impl Future<Output = Result<InfoResponse>>;
-    fn now(&mut self, backtest_id: BacktestId) -> impl Future<Output = Result<NowResponse>>;
+    fn init(&self, dataset_name: String) -> impl Future<Output = Result<InitResponse>>;
+    fn info(&self, backtest_id: BacktestId) -> impl Future<Output = Result<InfoResponse>>;
+    fn now(&self, backtest_id: BacktestId) -> impl Future<Output = Result<NowResponse>>;
 }
 
-type UistState = Mutex<AppState>;
+type UistState = AppState;
 
 pub mod server {
     use actix_web::{get, post, web};
@@ -244,10 +266,9 @@ pub mod server {
         app: web::Data<UistState>,
         path: web::Path<(BacktestId,)>,
     ) -> Result<web::Json<TickResponse>, UistV2Error> {
-        let mut uist = app.lock().unwrap();
         let (backtest_id,) = path.into_inner();
 
-        if let Some(result) = uist.tick(backtest_id) {
+        if let Some(result) = app.tick(backtest_id) {
             Ok(web::Json(TickResponse {
                 depth: result.4,
                 bbo: result.3,
@@ -264,11 +285,12 @@ pub mod server {
     pub async fn insert_orders(
         app: web::Data<UistState>,
         path: web::Path<(BacktestId,)>,
-        insert_order: web::Json<InsertOrderRequest>,
+        mut insert_order: web::Json<InsertOrderRequest>,
     ) -> Result<web::Json<()>, UistV2Error> {
-        let mut uist = app.lock().unwrap();
         let (backtest_id,) = path.into_inner();
-        if let Some(()) = uist.insert_orders(&mut insert_order.orders.clone(), backtest_id) {
+        //TODO: shouldn't need clone here
+        let take_orders = std::mem::take(&mut insert_order.orders);
+        if let Some(()) = app.insert_orders(take_orders, backtest_id) {
             Ok(web::Json(()))
         } else {
             Err(UistV2Error::UnknownBacktest)
@@ -280,10 +302,9 @@ pub mod server {
         app: web::Data<UistState>,
         path: web::Path<(String,)>,
     ) -> Result<web::Json<InitResponse>, UistV2Error> {
-        let mut uist = app.lock().unwrap();
         let (dataset_name,) = path.into_inner();
 
-        if let Some((backtest_id, bbo, depth)) = uist.init(dataset_name) {
+        if let Some((backtest_id, bbo, depth)) = app.init(dataset_name) {
             Ok(web::Json(InitResponse {
                 backtest_id,
                 bbo,
@@ -299,10 +320,9 @@ pub mod server {
         app: web::Data<UistState>,
         path: web::Path<(BacktestId,)>,
     ) -> Result<web::Json<InfoResponse>, UistV2Error> {
-        let uist = app.lock().unwrap();
         let (backtest_id,) = path.into_inner();
 
-        if let Some(resp) = uist.backtests.get(&backtest_id) {
+        if let Some(resp) = app.backtests.get(&backtest_id) {
             Ok(web::Json(InfoResponse {
                 version: "v1".to_string(),
                 dataset: resp.dataset_name.clone(),
@@ -317,12 +337,11 @@ pub mod server {
         app: web::Data<UistState>,
         path: web::Path<(BacktestId,)>,
     ) -> Result<web::Json<NowResponse>, UistV2Error> {
-        let uist = app.lock().unwrap();
         let (backtest_id,) = path.into_inner();
 
-        if let Some(backtest) = uist.backtests.get(&backtest_id) {
+        if let Some(backtest) = app.backtests.get(&backtest_id) {
             let now = backtest.date;
-            if let Some(dataset) = uist.datasets.get(&backtest.dataset_name) {
+            if let Some(dataset) = app.datasets.get(&backtest.dataset_name) {
                 let mut has_next = false;
                 if dataset.has_next(backtest.pos) {
                     has_next = true;
@@ -345,17 +364,15 @@ mod tests {
     use rotala::input::athena::Athena;
 
     use super::server::*;
-    use super::{AppState, InitResponse, InsertOrderRequest, TickResponse};
-    use std::sync::Mutex;
+    use super::{AppState, InsertOrderRequest, TickResponse};
 
     #[actix_web::test]
     async fn test_single_trade_loop() {
         let uist = Athena::random(100, vec!["ABC", "BCD"]);
         let dataset_name = "fake";
+        //This sets up the backtest and dataset so don't need to call init
         let state = AppState::single(dataset_name, uist);
-
-        let app_state = Mutex::new(state);
-        let uist_state = web::Data::new(app_state);
+        let uist_state = web::Data::new(state);
 
         let app = test::init_service(
             App::new()
@@ -368,12 +385,7 @@ mod tests {
         )
         .await;
 
-        let req = test::TestRequest::get()
-            .uri(format!("/init/{dataset_name}").as_str())
-            .to_request();
-        let resp: InitResponse = test::call_and_read_body_json(&app, req).await;
-
-        let backtest_id = resp.backtest_id;
+        let backtest_id = 0;
 
         let req2 = test::TestRequest::get()
             .uri(format!("/backtest/{backtest_id}/tick").as_str())
@@ -398,8 +410,7 @@ mod tests {
             .to_request();
         let resp5: TickResponse = test::call_and_read_body_json(&app, req5).await;
 
-        println!("{:?}", resp5.executed_orders);
         assert!(resp5.executed_orders.len() == 1);
-        assert!(resp5.executed_orders.first().unwrap().symbol == "ABC")
+        assert!(resp5.executed_orders.first().unwrap().symbol == "ABC");
     }
 }
