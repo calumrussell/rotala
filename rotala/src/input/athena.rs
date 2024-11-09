@@ -136,7 +136,6 @@ impl Athena {
         Some(res)
     }
 
-
     pub fn sort_dates(&mut self) {
         self.dates.sort()
     }
