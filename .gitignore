@@ -2,3 +2,7 @@
 *.csv
 /.vscode
 Cargo.lock
+data/venv/
+rotala-python/venv/
+test_data/
+*__pycache__*
