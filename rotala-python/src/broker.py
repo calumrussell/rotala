@@ -192,13 +192,13 @@ class Broker:
 
         curr_position = self.holdings[position]
         new_position = curr_position + chg
-        logger.info(
+        logger.debug(
             f"{self.backtest_id}-{self.ts} POSITION CHG: {position} {curr_position} -> {new_position}"
         )
         self.holdings[position] = new_position
 
     def _process_order_result(self, result: OrderResult):
-        logger.info(f"{self.backtest_id}-{self.ts} EXECUTED: {result}")
+        logger.debug(f"{self.backtest_id}-{self.ts} EXECUTED: {result}")
 
         if result.typ == OrderResultType.Buy or result.typ == OrderResultType.Sell:
             before_trade = self.cash
@@ -208,7 +208,7 @@ class Broker:
                 else self.cash + result.value
             )
 
-            logger.info(
+            logger.debug(
                 f"{self.backtest_id}-{self.ts} CASH: {before_trade} -> {after_trade}"
             )
             self.cash = after_trade
@@ -266,7 +266,7 @@ class Broker:
         logger.info(f"{self.backtest_id}-{self.ts} TICK")
 
         # Flush pending orders
-        logger.info(
+        logger.debug(
             f"{self.backtest_id}-{self.ts} INSERTING {len(self.pending_orders)} ORDER"
         )
         self.http.insert_orders(self.pending_orders)
@@ -294,5 +294,5 @@ class Broker:
                 self.ts = list(self.latest_quotes.values())[0]["date"]
 
         curr_value = self.get_current_value()
-        logger.info(f"{self.backtest_id}-{self.ts} TOTAL VALUE: {curr_value}")
+        logger.debug(f"{self.backtest_id}-{self.ts} TOTAL VALUE: {curr_value}")
         self.portfolio_values.append(curr_value)

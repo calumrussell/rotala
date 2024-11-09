@@ -51,7 +51,7 @@ def create_orders(bid_grid, ask_grid):
 
 
 if __name__ == "__main__":
-    logging.basicConfig(level=logging.INFO)
+    logging.basicConfig(level=logging.CRITICAL)
 
     builder = BrokerBuilder()
     builder.init_dataset_name("Test")
