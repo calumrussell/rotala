@@ -168,6 +168,10 @@ impl UistV1 {
         }
     }
 
+    pub fn executed_trade_count(&self) -> usize {
+        self.trade_log.len()
+    }
+
     fn sort_order_buffer(&mut self) {
         self.order_buffer.sort_by(|a, _b| match a.get_order_type() {
             OrderType::LimitSell | OrderType::StopSell | OrderType::MarketSell => {
@@ -372,8 +376,7 @@ mod tests {
         exchange.tick(source.get_quotes_unchecked(&100));
         exchange.tick(source.get_quotes_unchecked(&101));
 
-        //TODO: no abstraction!
-        assert_eq!(exchange.trade_log.len(), 1);
+        assert_eq!(exchange.executed_trade_count(), 1);
     }
 
     #[test]
@@ -387,7 +390,7 @@ mod tests {
 
         exchange.tick(source.get_quotes_unchecked(&100));
         exchange.tick(source.get_quotes_unchecked(&101));
-        assert_eq!(exchange.trade_log.len(), 4);
+        assert_eq!(exchange.executed_trade_count(), 4);
     }
 
     #[test]
@@ -402,7 +405,7 @@ mod tests {
         exchange.tick(source.get_quotes_unchecked(&101));
         exchange.tick(source.get_quotes_unchecked(&102));
 
-        assert_eq!(exchange.trade_log.len(), 4);
+        assert_eq!(exchange.executed_trade_count(), 4);
     }
 
     #[test]
@@ -414,7 +417,7 @@ mod tests {
         exchange.tick(source.get_quotes_unchecked(&100));
         exchange.tick(source.get_quotes_unchecked(&101));
 
-        assert_eq!(exchange.trade_log.len(), 1);
+        assert_eq!(exchange.executed_trade_count(), 1);
         let trade = exchange.trade_log.remove(0);
         //Trade executes at 101 so trade price should be 103
         assert_eq!(trade.value / trade.quantity, 103.00);
@@ -430,7 +433,7 @@ mod tests {
         exchange.tick(source.get_quotes_unchecked(&100));
         exchange.tick(source.get_quotes_unchecked(&101));
 
-        assert_eq!(exchange.trade_log.len(), 1);
+        assert_eq!(exchange.executed_trade_count(), 1);
         let trade = exchange.trade_log.remove(0);
         //Trade executes at 101 so trade price should be 103
         assert_eq!(trade.value / trade.quantity, 102.00);
@@ -444,7 +447,7 @@ mod tests {
         exchange.insert_order(Order::market_buy("XYZ", 100.0));
         exchange.tick(source.get_quotes_unchecked(&100));
 
-        assert_eq!(exchange.trade_log.len(), 0);
+        assert_eq!(exchange.executed_trade_count(), 0);
     }
 
     #[test]
@@ -468,11 +471,11 @@ mod tests {
         exchange.insert_order(Order::market_buy("ABC", 100.0));
         exchange.tick(source.get_quotes_unchecked(&100));
         //Orderbook should have one order and trade log has no executed trades
-        assert_eq!(exchange.trade_log.len(), 0);
+        assert_eq!(exchange.executed_trade_count(), 0);
 
         exchange.tick(source.get_quotes_unchecked(&102));
         //Order should execute now
-        assert_eq!(exchange.trade_log.len(), 1);
+        assert_eq!(exchange.executed_trade_count(), 1);
     }
 
     #[test]

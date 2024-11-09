@@ -85,7 +85,7 @@ impl AppState {
                 backtest.pos = new_pos;
 
                 let bbo = dataset.get_bbo(new_date).unwrap();
-                //TODO: shouldn't clone here
+                //Have to clone here because we can't mutate immutable dataset
                 let depth = dataset.get_quotes(&new_date).unwrap().clone();
 
                 return Some((has_next, executed_orders, inserted_orders, bbo, depth));
@@ -288,7 +288,6 @@ pub mod server {
         mut insert_order: web::Json<InsertOrderRequest>,
     ) -> Result<web::Json<()>, UistV2Error> {
         let (backtest_id,) = path.into_inner();
-        //TODO: shouldn't need clone here
         let take_orders = std::mem::take(&mut insert_order.orders);
         if let Some(()) = app.insert_orders(take_orders, backtest_id) {
             Ok(web::Json(()))

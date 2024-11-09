@@ -94,8 +94,6 @@ pub type DateBBO = HashMap<String, BBO>;
 
 pub struct Athena {
     dates: Vec<i64>,
-    //TODO: this is not great, added because the dates weren't being added at all, not sure if this
-    //is really ideal path
     dates_seen: HashSet<i64>,
     inner: HashMap<i64, DateDepth>,
 }
