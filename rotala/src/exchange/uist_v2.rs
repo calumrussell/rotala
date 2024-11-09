@@ -354,7 +354,7 @@ impl OrderBook {
                     date: now,
                     typ: OrderResultType::Cancel,
                     order_id: cancel_order.order_id,
-                    order_id_ref: Some(order_to_cancel_id.clone()),
+                    order_id_ref: Some(*order_to_cancel_id),
                 };
                 res.push(order_result);
             }
