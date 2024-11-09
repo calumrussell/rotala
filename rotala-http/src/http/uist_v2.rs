@@ -71,8 +71,9 @@ impl AppState {
 
                 if let Some(quotes) = dataset.get_quotes(&curr_date) {
                     let mut res = backtest.exchange.tick(quotes, curr_date);
-                    executed_orders.append(&mut res.0);
-                    inserted_orders.append(&mut res.1);
+
+                    executed_orders = std::mem::take(&mut res.0);
+                    inserted_orders = std::mem::take(&mut res.1);
                 }
 
                 let new_pos = backtest.pos + 1;
