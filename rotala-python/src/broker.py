@@ -122,6 +122,7 @@ class OrderResult:
         date: int,
         typ: OrderResultType,
         order_id: int,
+        order_id_ref: int | None,
     ):
         self.symbol = symbol
         self.value = value
@@ -129,6 +130,7 @@ class OrderResult:
         self.date = date
         self.typ = typ
         self.order_id = order_id
+        self.order_id_ref = order_id_ref
 
     def __str__(self):
         return (
@@ -145,6 +147,7 @@ class OrderResult:
             from_dict["date"],
             trade_type,
             from_dict["order_id"],
+            from_dict["order_id_ref"],
         )
 
     @staticmethod
@@ -157,6 +160,7 @@ class OrderResult:
             to_dict["date"],
             to_dict["typ"],
             to_dict["order_id"],
+            to_dict["order_id_ref"],
         )
 
 
@@ -228,6 +232,7 @@ class Broker:
         else:
             if result.typ == OrderResultType.Cancel:
                 del self.unexecuted_orders[result.order_id]
+                del self.unexecuted_orders[result.order_id_ref]
             else:
                 logger.critical("Unsupported order modification type")
                 exit(1)

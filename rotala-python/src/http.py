@@ -1,14 +1,27 @@
 import requests
+from urllib3.util import Retry
+from requests import Session
+from requests.adapters import HTTPAdapter
 
 
 class HttpClient:
     def __init__(self, base_url):
         self.base_url = base_url
         self.backtest_id = None
+
+        s = Session()
+        retries = Retry(
+            total=3,
+            backoff_factor=0.1,
+            status_forcelist=[502, 503, 504],
+            allowed_methods={"POST"},
+        )
+        s.mount("https://", HTTPAdapter(max_retries=retries))
+        self.s = s
         return
 
     def init(self, dataset_name):
-        r = requests.get(f"{self.base_url}/init/{dataset_name}")
+        r = self.s.get(f"{self.base_url}/init/{dataset_name}")
         json_response = r.json()
         self.backtest_id = int(json_response["backtest_id"])
         return json_response
@@ -17,7 +30,7 @@ class HttpClient:
         if self.backtest_id is None:
             raise ValueError("Called before init")
 
-        r = requests.get(f"{self.base_url}/backtest/{self.backtest_id}/tick")
+        r = self.s.get(f"{self.base_url}/backtest/{self.backtest_id}/tick")
         return r.json()
 
     def insert_orders(self, orders):
@@ -26,7 +39,7 @@ class HttpClient:
 
         serialized_orders_str = ",".join([o.serialize() for o in orders])
         val = f'{{"orders": [{serialized_orders_str}]}}'
-        r = requests.post(
+        r = self.s.post(
             f"{self.base_url}/backtest/{self.backtest_id}/insert_orders",
             data=val,
             headers={"Content-type": "application/json"},
@@ -37,12 +50,12 @@ class HttpClient:
         if self.backtest_id is None:
             raise ValueError("Called before init")
 
-        r = requests.get(f"{self.base_url}/backtest/{self.backtest_id}/info")
+        r = self.s.get(f"{self.base_url}/backtest/{self.backtest_id}/info")
         return r.json()
 
     def now(self, backtest_id):
         if self.backtest_id is None:
             raise ValueError("Called before init")
 
-        r = requests.get(f"{self.base_url}/backtest/{self.backtest_id}/now")
+        r = self.s.get(f"{self.base_url}/backtest/{self.backtest_id}/now")
         return r.json()
