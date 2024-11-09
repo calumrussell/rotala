@@ -515,41 +515,40 @@ impl OrderBook {
             }
         }
 
-        //TODO: really bad should be able to take somewhere?
         let mut unexecuted_orders = BTreeMap::new();
-        for (order_id, order) in orders.iter() {
+        while let Some((order_id, order)) = orders.pop_first() {
             let security_id = &order.symbol;
 
-            if !self.latency.cmp_order(now, order) {
-                unexecuted_orders.insert(*order_id, order.clone());
+            if !self.latency.cmp_order(now, &order) {
+                unexecuted_orders.insert(order_id, order);
                 continue;
             }
 
             if let Some(depth) = quotes.get(security_id) {
                 let mut trades = match order.order_type {
                     OrderType::MarketBuy => {
-                        Self::fill_order(depth, order, true, f64::MAX, &mut filled)
+                        Self::fill_order(depth, &order, true, f64::MAX, &mut filled)
                     }
                     OrderType::MarketSell => {
-                        Self::fill_order(depth, order, false, f64::MIN, &mut filled)
+                        Self::fill_order(depth, &order, false, f64::MIN, &mut filled)
                     }
                     OrderType::LimitBuy => {
-                        Self::fill_order(depth, order, true, order.price.unwrap(), &mut filled)
+                        Self::fill_order(depth, &order, true, order.price.unwrap(), &mut filled)
                     }
                     OrderType::LimitSell => {
-                        Self::fill_order(depth, order, false, order.price.unwrap(), &mut filled)
+                        Self::fill_order(depth, &order, false, order.price.unwrap(), &mut filled)
                     }
                     // There shouldn't be any cancel or modifies by this point
                     _ => vec![],
                 };
 
                 if trades.is_empty() {
-                    unexecuted_orders.insert(*order_id, order.clone());
+                    unexecuted_orders.insert(order_id, order);
                 }
 
                 trade_results.append(&mut trades)
             } else {
-                unexecuted_orders.insert(*order_id, order.clone());
+                unexecuted_orders.insert(order_id, order);
             }
         }
         self.inner = unexecuted_orders;
