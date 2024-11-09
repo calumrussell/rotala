@@ -71,24 +71,31 @@ impl AppState {
 
                 if let Some(quotes) = dataset.get_quotes(&curr_date) {
                     let mut res = backtest.exchange.tick(quotes, curr_date);
-                    executed_orders.append(&mut res.0);
-                    inserted_orders.append(&mut res.1);
+
+                    executed_orders = std::mem::take(&mut res.0);
+                    inserted_orders = std::mem::take(&mut res.1);
                 }
 
                 let new_pos = backtest.pos + 1;
-                let new_date = *dataset.get_date(new_pos).unwrap();
-
-                if dataset.has_next(new_pos) {
-                    has_next = true;
-                    backtest.date = new_date;
+                if let Some(new_date) = (*dataset).get_date(new_pos) {
+                    if dataset.has_next(new_pos) {
+                        has_next = true;
+                        backtest.date = *new_date;
+                    }
+                    backtest.pos = new_pos;
+                    let bbo = dataset.get_bbo(new_date).unwrap();
+                    //Have to clone here because we can't mutate immutable dataset
+                    let depth = dataset.get_quotes(new_date).unwrap().clone();
+                    return Some((has_next, executed_orders, inserted_orders, bbo, depth));
+                } else {
+                    return Some((
+                        false,
+                        Vec::new(),
+                        Vec::new(),
+                        HashMap::new(),
+                        HashMap::new(),
+                    ));
                 }
-                backtest.pos = new_pos;
-
-                let bbo = dataset.get_bbo(new_date).unwrap();
-                //TODO: shouldn't clone here
-                let depth = dataset.get_quotes(&new_date).unwrap().clone();
-
-                return Some((has_next, executed_orders, inserted_orders, bbo, depth));
             }
         }
         None
@@ -288,7 +295,6 @@ pub mod server {
         mut insert_order: web::Json<InsertOrderRequest>,
     ) -> Result<web::Json<()>, UistV2Error> {
         let (backtest_id,) = path.into_inner();
-        //TODO: shouldn't need clone here
         let take_orders = std::mem::take(&mut insert_order.orders);
         if let Some(()) = app.insert_orders(take_orders, backtest_id) {
             Ok(web::Json(()))

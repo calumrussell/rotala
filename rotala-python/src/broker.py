@@ -122,6 +122,7 @@ class OrderResult:
         date: int,
         typ: OrderResultType,
         order_id: int,
+        order_id_ref: int | None,
     ):
         self.symbol = symbol
         self.value = value
@@ -129,6 +130,7 @@ class OrderResult:
         self.date = date
         self.typ = typ
         self.order_id = order_id
+        self.order_id_ref = order_id_ref
 
     def __str__(self):
         return (
@@ -145,6 +147,7 @@ class OrderResult:
             from_dict["date"],
             trade_type,
             from_dict["order_id"],
+            from_dict["order_id_ref"],
         )
 
     @staticmethod
@@ -157,6 +160,7 @@ class OrderResult:
             to_dict["date"],
             to_dict["typ"],
             to_dict["order_id"],
+            to_dict["order_id_ref"],
         )
 
 
@@ -188,13 +192,13 @@ class Broker:
 
         curr_position = self.holdings[position]
         new_position = curr_position + chg
-        logger.info(
+        logger.debug(
             f"{self.backtest_id}-{self.ts} POSITION CHG: {position} {curr_position} -> {new_position}"
         )
         self.holdings[position] = new_position
 
     def _process_order_result(self, result: OrderResult):
-        logger.info(f"{self.backtest_id}-{self.ts} EXECUTED: {result}")
+        logger.debug(f"{self.backtest_id}-{self.ts} EXECUTED: {result}")
 
         if result.typ == OrderResultType.Buy or result.typ == OrderResultType.Sell:
             before_trade = self.cash
@@ -204,7 +208,7 @@ class Broker:
                 else self.cash + result.value
             )
 
-            logger.info(
+            logger.debug(
                 f"{self.backtest_id}-{self.ts} CASH: {before_trade} -> {after_trade}"
             )
             self.cash = after_trade
@@ -228,6 +232,7 @@ class Broker:
         else:
             if result.typ == OrderResultType.Cancel:
                 del self.unexecuted_orders[result.order_id]
+                del self.unexecuted_orders[result.order_id_ref]
             else:
                 logger.critical("Unsupported order modification type")
                 exit(1)
@@ -261,7 +266,7 @@ class Broker:
         logger.info(f"{self.backtest_id}-{self.ts} TICK")
 
         # Flush pending orders
-        logger.info(
+        logger.debug(
             f"{self.backtest_id}-{self.ts} INSERTING {len(self.pending_orders)} ORDER"
         )
         self.http.insert_orders(self.pending_orders)
@@ -289,5 +294,5 @@ class Broker:
                 self.ts = list(self.latest_quotes.values())[0]["date"]
 
         curr_value = self.get_current_value()
-        logger.info(f"{self.backtest_id}-{self.ts} TOTAL VALUE: {curr_value}")
+        logger.debug(f"{self.backtest_id}-{self.ts} TOTAL VALUE: {curr_value}")
         self.portfolio_values.append(curr_value)

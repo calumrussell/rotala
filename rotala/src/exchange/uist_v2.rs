@@ -126,6 +126,7 @@ pub struct OrderResult {
     pub date: i64,
     pub typ: OrderResultType,
     pub order_id: OrderId,
+    pub order_id_ref: Option<OrderId>,
 }
 
 #[derive(Debug)]
@@ -339,20 +340,21 @@ impl OrderBook {
     // Only returns a single `OrderResult` but we return a `Vec` for empty condition
     fn cancel_order(
         now: i64,
-        order_to_cancel: &InnerOrder,
+        cancel_order: &InnerOrder,
         orderbook: &mut BTreeMap<OrderId, InnerOrder>,
     ) -> Vec<OrderResult> {
         let mut res = Vec::new();
         //Fails silently if you send garbage in
-        if let Some(order_id) = &order_to_cancel.order_id_ref {
-            if orderbook.remove(order_id).is_some() {
+        if let Some(order_to_cancel_id) = &cancel_order.order_id_ref {
+            if orderbook.remove(order_to_cancel_id).is_some() {
                 let order_result = OrderResult {
-                    symbol: order_to_cancel.symbol.clone(),
+                    symbol: cancel_order.symbol.clone(),
                     value: 0.0,
                     quantity: 0.0,
                     date: now,
                     typ: OrderResultType::Cancel,
-                    order_id: order_to_cancel.order_id,
+                    order_id: cancel_order.order_id,
+                    order_id_ref: Some(*order_to_cancel_id),
                 };
                 res.push(order_result);
             }
@@ -364,34 +366,35 @@ impl OrderBook {
     // Only returns a single `OrderResult` but we return a `Vec` for empty condition
     fn modify_order(
         now: i64,
-        order_to_modify: &InnerOrder,
+        modify_order: &InnerOrder,
         orderbook: &mut BTreeMap<OrderId, InnerOrder>,
     ) -> Vec<OrderResult> {
         let mut res = Vec::new();
 
-        if let Some(order) = orderbook.get_mut(&order_to_modify.order_id_ref.unwrap()) {
-            let qty_change = order_to_modify.qty;
+        if let Some(order_to_modify) = orderbook.get_mut(&modify_order.order_id_ref.unwrap()) {
+            let qty_change = modify_order.qty;
 
             if qty_change > 0.0 {
-                order.qty += qty_change;
+                order_to_modify.qty += qty_change;
             } else {
-                let qty_left = order.qty + qty_change;
+                let qty_left = order_to_modify.qty + qty_change;
                 if qty_left > 0.0 {
-                    order.qty += qty_change;
+                    order_to_modify.qty += qty_change;
                 } else {
                     // we are trying to remove more than the total number of shares
                     // left on the order so will assume user wants to cancel
-                    orderbook.remove(&order_to_modify.order_id);
+                    orderbook.remove(&modify_order.order_id);
                 }
             }
 
             let order_result = OrderResult {
-                symbol: order_to_modify.symbol.clone(),
+                symbol: modify_order.symbol.clone(),
                 value: 0.0,
                 quantity: 0.0,
                 date: now,
                 typ: OrderResultType::Modify,
-                order_id: order_to_modify.order_id,
+                order_id: modify_order.order_id,
+                order_id_ref: Some(modify_order.order_id_ref.unwrap()),
             };
             res.push(order_result);
         }
@@ -429,6 +432,7 @@ impl OrderBook {
                     date: depth.date,
                     typ: OrderResultType::Buy,
                     order_id: order.order_id,
+                    order_id_ref: None,
                 };
                 trades.push(trade);
                 filled.insert_fill(&order.symbol, ask, qty);
@@ -458,6 +462,7 @@ impl OrderBook {
                     date: depth.date,
                     typ: OrderResultType::Sell,
                     order_id: order.order_id,
+                    order_id_ref: None,
                 };
                 trades.push(trade);
                 filled.insert_fill(&order.symbol, bid, qty);
@@ -515,41 +520,40 @@ impl OrderBook {
             }
         }
 
-        //TODO: really bad should be able to take somewhere?
         let mut unexecuted_orders = BTreeMap::new();
-        for (order_id, order) in orders.iter() {
+        while let Some((order_id, order)) = orders.pop_first() {
             let security_id = &order.symbol;
 
-            if !self.latency.cmp_order(now, order) {
-                unexecuted_orders.insert(*order_id, order.clone());
+            if !self.latency.cmp_order(now, &order) {
+                unexecuted_orders.insert(order_id, order);
                 continue;
             }
 
             if let Some(depth) = quotes.get(security_id) {
                 let mut trades = match order.order_type {
                     OrderType::MarketBuy => {
-                        Self::fill_order(depth, order, true, f64::MAX, &mut filled)
+                        Self::fill_order(depth, &order, true, f64::MAX, &mut filled)
                     }
                     OrderType::MarketSell => {
-                        Self::fill_order(depth, order, false, f64::MIN, &mut filled)
+                        Self::fill_order(depth, &order, false, f64::MIN, &mut filled)
                     }
                     OrderType::LimitBuy => {
-                        Self::fill_order(depth, order, true, order.price.unwrap(), &mut filled)
+                        Self::fill_order(depth, &order, true, order.price.unwrap(), &mut filled)
                     }
                     OrderType::LimitSell => {
-                        Self::fill_order(depth, order, false, order.price.unwrap(), &mut filled)
+                        Self::fill_order(depth, &order, false, order.price.unwrap(), &mut filled)
                     }
                     // There shouldn't be any cancel or modifies by this point
                     _ => vec![],
                 };
 
                 if trades.is_empty() {
-                    unexecuted_orders.insert(*order_id, order.clone());
+                    unexecuted_orders.insert(order_id, order);
                 }
 
                 trade_results.append(&mut trades)
             } else {
-                unexecuted_orders.insert(*order_id, order.clone());
+                unexecuted_orders.insert(order_id, order);
             }
         }
         self.inner = unexecuted_orders;

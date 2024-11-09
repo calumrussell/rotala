@@ -51,7 +51,7 @@ def create_orders(bid_grid, ask_grid):
 
 
 if __name__ == "__main__":
-    logging.basicConfig(level=logging.INFO)
+    logging.basicConfig(level=logging.CRITICAL)
 
     builder = BrokerBuilder()
     builder.init_dataset_name("Test")
@@ -61,6 +61,8 @@ if __name__ == "__main__":
 
     last_mid = -1
     while True:
+        brkr.tick()
+
         depth = brkr.latest_depth
         bid_grid, ask_grid = create_grid(depth)
 
@@ -68,12 +70,14 @@ if __name__ == "__main__":
         if last_mid == -1:
             last_mid = mid_price
 
+        mid_change = round(abs(last_mid - mid_price), 2)
+        last_mid = mid_price
+
         risk = risk_management(brkr.unexecuted_orders, brkr.get_current_value())
         if len(brkr.unexecuted_orders) == 0:
             [brkr.insert_order(order) for order in create_orders(bid_grid, ask_grid)]
         else:
-            mid_change = round(abs(last_mid - mid_price), 2)
-            if mid_change > 0.4:
+            if mid_change > 0.1:
                 # In practice, we want to look for overlapping levels so we don't need
                 # to clear whole book
                 for order_id in brkr.unexecuted_orders:
@@ -87,5 +91,3 @@ if __name__ == "__main__":
                     brkr.insert_order(order)
                     for order in create_orders(bid_grid, ask_grid)
                 ]
-
-        brkr.tick()
