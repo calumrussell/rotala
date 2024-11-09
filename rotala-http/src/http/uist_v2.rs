@@ -76,19 +76,25 @@ impl AppState {
                 }
 
                 let new_pos = backtest.pos + 1;
-                let new_date = *dataset.get_date(new_pos).unwrap();
-
-                if dataset.has_next(new_pos) {
-                    has_next = true;
-                    backtest.date = new_date;
+                if let Some(new_date) = (*dataset).get_date(new_pos) {
+                    if dataset.has_next(new_pos) {
+                        has_next = true;
+                        backtest.date = *new_date;
+                    }
+                    backtest.pos = new_pos;
+                    let bbo = dataset.get_bbo(new_date).unwrap();
+                    //Have to clone here because we can't mutate immutable dataset
+                    let depth = dataset.get_quotes(new_date).unwrap().clone();
+                    return Some((has_next, executed_orders, inserted_orders, bbo, depth));
+                } else {
+                    return Some((
+                        false,
+                        Vec::new(),
+                        Vec::new(),
+                        HashMap::new(),
+                        HashMap::new(),
+                    ));
                 }
-                backtest.pos = new_pos;
-
-                let bbo = dataset.get_bbo(new_date).unwrap();
-                //Have to clone here because we can't mutate immutable dataset
-                let depth = dataset.get_quotes(&new_date).unwrap().clone();
-
-                return Some((has_next, executed_orders, inserted_orders, bbo, depth));
             }
         }
         None
