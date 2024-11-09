@@ -126,6 +126,7 @@ pub struct OrderResult {
     pub date: i64,
     pub typ: OrderResultType,
     pub order_id: OrderId,
+    pub order_id_ref: Option<OrderId>,
 }
 
 #[derive(Debug)]
@@ -339,20 +340,21 @@ impl OrderBook {
     // Only returns a single `OrderResult` but we return a `Vec` for empty condition
     fn cancel_order(
         now: i64,
-        order_to_cancel: &InnerOrder,
+        cancel_order: &InnerOrder,
         orderbook: &mut BTreeMap<OrderId, InnerOrder>,
     ) -> Vec<OrderResult> {
         let mut res = Vec::new();
         //Fails silently if you send garbage in
-        if let Some(order_id) = &order_to_cancel.order_id_ref {
-            if orderbook.remove(order_id).is_some() {
+        if let Some(order_to_cancel_id) = &cancel_order.order_id_ref {
+            if orderbook.remove(order_to_cancel_id).is_some() {
                 let order_result = OrderResult {
-                    symbol: order_to_cancel.symbol.clone(),
+                    symbol: cancel_order.symbol.clone(),
                     value: 0.0,
                     quantity: 0.0,
                     date: now,
                     typ: OrderResultType::Cancel,
-                    order_id: order_to_cancel.order_id,
+                    order_id: cancel_order.order_id,
+                    order_id_ref: Some(order_to_cancel_id.clone()),
                 };
                 res.push(order_result);
             }
