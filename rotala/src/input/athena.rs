@@ -136,6 +136,11 @@ impl Athena {
         Some(res)
     }
 
+
+    pub fn sort_dates(&mut self) {
+        self.dates.sort()
+    }
+
     pub fn add_depth(&mut self, depth: Depth) {
         let date = depth.date;
         let symbol = depth.symbol.clone();
@@ -222,6 +227,7 @@ impl Athena {
             let into_depth: Depth = value.into();
             athena.add_depth(into_depth);
         }
+        athena.sort_dates();
         athena
     }
 
