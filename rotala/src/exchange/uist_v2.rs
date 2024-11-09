@@ -431,6 +431,7 @@ impl OrderBook {
                     date: depth.date,
                     typ: OrderResultType::Buy,
                     order_id: order.order_id,
+                    order_id_ref: None,
                 };
                 trades.push(trade);
                 filled.insert_fill(&order.symbol, ask, qty);
@@ -460,6 +461,7 @@ impl OrderBook {
                     date: depth.date,
                     typ: OrderResultType::Sell,
                     order_id: order.order_id,
+                    order_id_ref: None,
                 };
                 trades.push(trade);
                 filled.insert_fill(&order.symbol, bid, qty);
