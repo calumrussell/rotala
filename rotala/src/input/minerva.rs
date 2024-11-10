@@ -1,15 +1,16 @@
-use core::panic;
-use std::collections::BTreeMap;
+#![allow(dead_code)]
+use std::collections::{BTreeMap, HashMap};
 
 use anyhow::Result;
+use serde::{Deserialize, Serialize};
 use tokio_pg_mapper::FromTokioPostgresRow;
-use tokio_postgres::{Client, NoTls, Row};
+use tokio_postgres::{Client, NoTls};
 
 pub struct Minerva {
     db: Client,
 }
 
-#[derive(tokio_pg_mapper::PostgresMapper, Debug)]
+#[derive(tokio_pg_mapper::PostgresMapper, Clone, Debug)]
 #[pg_mapper(table = "l2Book")]
 pub struct L2Book {
     coin: String,
@@ -19,7 +20,7 @@ pub struct L2Book {
     time: i64,
 }
 
-#[derive(tokio_pg_mapper::PostgresMapper, Debug)]
+#[derive(tokio_pg_mapper::PostgresMapper, Clone, Debug)]
 #[pg_mapper(table = "trade")]
 pub struct Trade {
     coin: String,
@@ -29,6 +30,56 @@ pub struct Trade {
     hash: String,
     time: i64,
     tid: i64,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub enum Side {
+    Bid,
+    Ask,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct Level {
+    pub price: f64,
+    pub size: f64,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct Depth {
+    pub bids: Vec<Level>,
+    pub asks: Vec<Level>,
+    pub date: i64,
+    pub symbol: String,
+}
+
+impl From<Vec<L2Book>> for Depth {
+    fn from(values: Vec<L2Book>) -> Self {
+        let mut bids = Vec::with_capacity(5);
+        let mut asks = Vec::with_capacity(5);
+
+        let date = values.first().unwrap().time;
+        let symbol = values.first().unwrap().coin.clone();
+
+        for row in values {
+            match row.side {
+                true => bids.push(Level {
+                    price: str::parse::<f64>(&row.px).unwrap(),
+                    size: str::parse::<f64>(&row.sz).unwrap(),
+                }),
+                false => asks.push(Level {
+                    price: str::parse::<f64>(&row.px).unwrap(),
+                    size: str::parse::<f64>(&row.sz).unwrap(),
+                }),
+            }
+        }
+
+        Depth {
+            bids,
+            asks,
+            date,
+            symbol,
+        }
+    }
 }
 
 impl Minerva {
@@ -81,7 +132,7 @@ impl Minerva {
         start_date: &i64,
         end_date: &i64,
         coin: &str,
-    ) -> BTreeMap<i64, L2Book> {
+    ) -> BTreeMap<i64, Depth> {
         let query_result = self
             .db
             .query(
@@ -90,14 +141,26 @@ impl Minerva {
             )
             .await;
 
-        let mut res = BTreeMap::new();
+        let mut sort_into_dates = HashMap::new();
         if let Ok(rows) = query_result {
             for row in rows {
                 if let Ok(book) = L2Book::from_row(row) {
-                    res.insert(book.time, book);
+                    sort_into_dates.entry(book.time).or_insert_with(Vec::new);
+                    sort_into_dates
+                        .get_mut(&book.time)
+                        .unwrap()
+                        .push(book.clone());
                 }
             }
         }
-        res
+
+        let mut depth_result = BTreeMap::new();
+        for (date, rows) in sort_into_dates.iter_mut() {
+            //TODO: this should be take
+            let depth: Depth = rows.clone().into();
+            depth_result.insert(*date, depth);
+        }
+
+        depth_result
     }
 }
