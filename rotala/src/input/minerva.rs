@@ -51,7 +51,6 @@ pub struct MinervaTrade {
 
 impl From<Trade> for MinervaTrade {
     fn from(value: Trade) -> Self {
-
         let side = if value.side == "B" {
             Side::Bid
         } else {
@@ -75,7 +74,6 @@ pub struct Level {
     pub price: f64,
     pub size: f64,
 }
-
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct Depth {
@@ -135,12 +133,7 @@ impl Minerva {
         Ok(client)
     }
 
-    pub async fn get_trades(
-        &self,
-        start_date: &i64,
-        end_date: &i64,
-        coin: &str,
-    ) -> TradeByDate {
+    pub async fn get_trades(&self, start_date: &i64, end_date: &i64, coin: &str) -> TradeByDate {
         let query_result = self
             .db
             .query(
@@ -161,12 +154,7 @@ impl Minerva {
         res
     }
 
-    pub async fn get_depth(
-        &self,
-        start_date: &i64,
-        end_date: &i64,
-        coin: &str,
-    ) -> DepthByDate {
+    pub async fn get_depth(&self, start_date: &i64, end_date: &i64, coin: &str) -> DepthByDate {
         let query_result = self
             .db
             .query(
