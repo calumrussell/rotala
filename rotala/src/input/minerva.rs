@@ -156,8 +156,7 @@ impl Minerva {
 
         let mut depth_result = BTreeMap::new();
         for (date, rows) in sort_into_dates.iter_mut() {
-            //TODO: this should be take
-            let depth: Depth = rows.clone().into();
+            let depth: Depth = std::mem::take(rows).into();
             depth_result.insert(*date, depth);
         }
 
