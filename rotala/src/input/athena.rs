@@ -1,10 +1,9 @@
 #![allow(dead_code)]
 
-use std::collections::btree_map::{Range, RangeMut};
+use std::collections::btree_map::Range;
 use std::collections::{BTreeMap, HashMap};
 use std::ops::RangeBounds;
 use std::path::Path;
-use std::{borrow::Borrow, collections::HashSet};
 
 use rand::thread_rng;
 use rand_distr::{Distribution, Uniform};

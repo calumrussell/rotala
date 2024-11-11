@@ -15,8 +15,9 @@ pub type TickResponseType = (bool, Vec<OrderResult>, Vec<InnerOrder>, DateBBO, D
 
 pub struct BacktestState {
     pub id: BacktestId,
-    pub date: i64,
-    pub pos: usize,
+    pub start_date: i64,
+    pub curr_date: i64,
+    pub frequency: u64,
     pub exchange: UistV2,
     pub dataset_name: String,
 }
@@ -36,13 +37,14 @@ impl AppState {
         }
     }
 
-    pub fn single(name: &str, data: Athena) -> Self {
+    pub fn single(name: &str, start_date: i64, frequency: u64, data: Athena) -> Self {
         let exchange = UistV2::new();
 
         let backtest = BacktestState {
             id: 0,
-            date: *data.get_date(0).unwrap(),
-            pos: 0,
+            start_date,
+            curr_date: start_date,
+            frequency,
             exchange,
             dataset_name: name.into(),
         };
@@ -63,31 +65,22 @@ impl AppState {
     pub fn tick(&self, backtest_id: BacktestId) -> Option<TickResponseType> {
         if let TryResult::Present(mut backtest) = self.backtests.try_get_mut(&backtest_id) {
             if let Some(dataset) = self.datasets.get(&backtest.dataset_name) {
-                let mut has_next = false;
-
                 let mut executed_orders = Vec::new();
                 let mut inserted_orders = Vec::new();
-                let curr_date = backtest.date;
 
-                if let Some(quotes) = dataset.get_quotes(&curr_date) {
-                    let mut res = backtest.exchange.tick(quotes, curr_date);
+                let curr_date = backtest.curr_date;
+
+                if let Some(quotes) = dataset.get_quotes_between(backtest.curr_date-backtest.frequency as i64..backtest.curr_date).last() {
+                    let mut res = backtest.exchange.tick(quotes.1, curr_date);
 
                     executed_orders = std::mem::take(&mut res.0);
                     inserted_orders = std::mem::take(&mut res.1);
                 }
 
-                let new_pos = backtest.pos + 1;
-                if let Some(new_date) = (*dataset).get_date(new_pos) {
-                    if dataset.has_next(new_pos) {
-                        has_next = true;
-                        backtest.date = *new_date;
-                    }
-                    backtest.pos = new_pos;
-                    let bbo = dataset.get_bbo(new_date).unwrap();
-                    //Have to clone here because we can't mutate immutable dataset
-                    let depth = dataset.get_quotes(new_date).unwrap().clone();
-                    return Some((has_next, executed_orders, inserted_orders, bbo, depth));
-                } else {
+                let new_date = backtest.curr_date + backtest.frequency as i64;
+                let end_date = self.datasets.get(&backtest.dataset_name).unwrap().get_date_bounds().unwrap().1;
+
+                if new_date > end_date {
                     return Some((
                         false,
                         Vec::new(),
@@ -95,22 +88,26 @@ impl AppState {
                         HashMap::new(),
                         HashMap::new(),
                     ));
+                } else {
+                    let bbo = dataset.get_bbo(backtest.curr_date..new_date).unwrap();
+                    let depth = dataset.get_quotes_between(backtest.curr_date..new_date).last().unwrap().1.clone();
+                    return Some((true, executed_orders, inserted_orders, bbo, depth));
                 }
             }
         }
         None
     }
 
-    pub fn init(&self, dataset_name: String) -> Option<(BacktestId, DateBBO, DateDepth)> {
+    pub fn init(&self, dataset_name: String, start_date: i64, frequency: u64) -> Option<(BacktestId, DateBBO, DateDepth)> {
         if let Some(dataset) = self.datasets.get(&dataset_name) {
             let curr_id = self.last.load(std::sync::atomic::Ordering::SeqCst);
             let exchange = UistV2::new();
 
-            let start_date = *dataset.get_date(0).unwrap();
             let backtest = BacktestState {
                 id: curr_id,
-                date: start_date,
-                pos: 0,
+                start_date,
+                curr_date: start_date,
+                frequency,
                 exchange,
                 dataset_name,
             };
@@ -126,10 +123,10 @@ impl AppState {
                 if res == curr_id {
                     self.backtests.insert(curr_id, backtest);
 
-                    let bbo = dataset.get_bbo(start_date).unwrap();
+                    let bbo = dataset.get_bbo(start_date-frequency as i64..start_date).unwrap();
                     // Unfortunately, this clone is required if we want immutable sources that don't lock
                     // on ticks (which would potentially mutate)
-                    let depth = dataset.get_quotes(&start_date).unwrap().clone();
+                    let depth = dataset.get_quotes_between(start_date-frequency as i64..start_date).last().unwrap().1.clone();
                     return Some((curr_id, bbo, depth));
                 }
             }
@@ -152,16 +149,17 @@ impl AppState {
         None
     }
 
-    pub fn new_backtest(&self, dataset_name: &str) -> Option<BacktestId> {
-        if let Some(dataset) = self.datasets.get(dataset_name) {
+    pub fn new_backtest(&self, dataset_name: &str, start_date: i64, frequency: u64) -> Option<BacktestId> {
+        if let Some(_dataset) = self.datasets.get(dataset_name) {
             let curr_id = self.last.load(std::sync::atomic::Ordering::SeqCst);
 
             let exchange = UistV2::new();
 
             let backtest = BacktestState {
                 id: curr_id,
-                date: *dataset.get_date(0).unwrap(),
-                pos: 0,
+                start_date, 
+                curr_date: start_date,
+                frequency,
                 exchange,
                 dataset_name: dataset_name.into(),
             };
@@ -195,6 +193,13 @@ pub struct TickResponse {
 #[derive(Debug, Deserialize, Serialize)]
 pub struct InsertOrderRequest {
     pub orders: Vec<Order>,
+}
+
+
+#[derive(Debug, Deserialize, Serialize)]
+pub struct InitRequest{
+    pub start_date: i64,
+    pub frequency: u64,
 }
 
 #[derive(Debug, Deserialize, Serialize)]
@@ -278,7 +283,7 @@ pub mod server {
     use actix_web::{get, post, web};
 
     use super::{
-        BacktestId, DatasetInfoResponse, InfoResponse, InitResponse, InsertOrderRequest, NowResponse, TickResponse, UistState, UistV2Error
+        BacktestId, DatasetInfoResponse, InfoResponse, InitResponse, InsertOrderRequest, NowResponse, TickResponse, UistState, UistV2Error, InitRequest
     };
 
     #[get("/backtest/{backtest_id}/tick")]
@@ -316,14 +321,15 @@ pub mod server {
         }
     }
 
-    #[get("/init/{dataset_name}")]
+    #[post("/init/{dataset_name}")]
     pub async fn init(
         app: web::Data<UistState>,
         path: web::Path<(String,)>,
+        init: web::Json<InitRequest>,
     ) -> Result<web::Json<InitResponse>, UistV2Error> {
         let (dataset_name,) = path.into_inner();
 
-        if let Some((backtest_id, bbo, depth)) = app.init(dataset_name) {
+        if let Some((backtest_id, bbo, depth)) = app.init(dataset_name, init.start_date, init.frequency) {
             Ok(web::Json(InitResponse {
                 backtest_id,
                 bbo,
@@ -376,12 +382,9 @@ pub mod server {
         let (backtest_id,) = path.into_inner();
 
         if let Some(backtest) = app.backtests.get(&backtest_id) {
-            let now = backtest.date;
             if let Some(dataset) = app.datasets.get(&backtest.dataset_name) {
-                let mut has_next = false;
-                if dataset.has_next(backtest.pos) {
-                    has_next = true;
-                }
+                let now = backtest.curr_date;
+                let has_next = dataset.get_date_bounds().unwrap().1 > now;
                 Ok(web::Json(NowResponse { now, has_next }))
             } else {
                 Err(UistV2Error::UnknownDataset)
@@ -407,7 +410,7 @@ mod tests {
         let uist = Athena::random(100, vec!["ABC", "BCD"]);
         let dataset_name = "fake";
         //This sets up the backtest and dataset so don't need to call init
-        let state = AppState::single(dataset_name, uist);
+        let state = AppState::single(dataset_name, 100, 1, uist);
         let uist_state = web::Data::new(state);
 
         let app = test::init_service(
