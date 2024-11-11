@@ -145,6 +145,13 @@ impl AppState {
         None
     }
 
+    pub fn dataset_info(&self, dataset_name: &str) -> Option<(i64, i64)>{
+        if let Some(dataset) = self.datasets.get(dataset_name) {
+            return Some(dataset.get_date_bounds()?);
+        }
+        None
+    }
+
     pub fn new_backtest(&self, dataset_name: &str) -> Option<BacktestId> {
         if let Some(dataset) = self.datasets.get(dataset_name) {
             let curr_id = self.last.load(std::sync::atomic::Ordering::SeqCst);
@@ -209,6 +216,12 @@ pub struct InitResponse {
 }
 
 #[derive(Debug, Deserialize, Serialize)]
+pub struct DatasetInfoResponse {
+    pub start_date: i64,
+    pub end_date: i64,
+}
+
+#[derive(Debug, Deserialize, Serialize)]
 pub struct InfoResponse {
     pub version: String,
     pub dataset: String,
@@ -255,6 +268,7 @@ pub trait Client {
     ) -> impl Future<Output = Result<()>>;
     fn init(&self, dataset_name: String) -> impl Future<Output = Result<InitResponse>>;
     fn info(&self, backtest_id: BacktestId) -> impl Future<Output = Result<InfoResponse>>;
+    fn dataset_info(&self, dataset_name: String) -> impl Future<Output = Result<DatasetInfoResponse>>;
     fn now(&self, backtest_id: BacktestId) -> impl Future<Output = Result<NowResponse>>;
 }
 
@@ -264,8 +278,7 @@ pub mod server {
     use actix_web::{get, post, web};
 
     use super::{
-        BacktestId, InfoResponse, InitResponse, InsertOrderRequest, NowResponse, TickResponse,
-        UistState, UistV2Error,
+        BacktestId, DatasetInfoResponse, InfoResponse, InitResponse, InsertOrderRequest, NowResponse, TickResponse, UistState, UistV2Error
     };
 
     #[get("/backtest/{backtest_id}/tick")]
@@ -338,6 +351,23 @@ pub mod server {
         }
     }
 
+    #[get("/dataset/{dataset_name}/info")]
+    pub async fn dataset_info(
+        app: web::Data<UistState>,
+        path: web::Path<(String,)>,
+    ) -> Result<web::Json<DatasetInfoResponse>, UistV2Error> {
+        let (dataset_name,) = path.into_inner();
+
+        if let Some(resp) = app.dataset_info(&dataset_name) {
+            Ok(web::Json(DatasetInfoResponse {
+                start_date: resp.0,
+                end_date: resp.1,
+            }))
+        } else {
+            Err(UistV2Error::UnknownDataset)
+        }
+    }
+
     #[get("/backtest/{backtest_id}/now")]
     pub async fn now(
         app: web::Data<UistState>,
@@ -387,6 +417,7 @@ mod tests {
                 .service(init)
                 .service(tick)
                 .service(insert_orders)
+                .service(dataset_info)
                 .service(now),
         )
         .await;

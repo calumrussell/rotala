@@ -99,6 +99,11 @@ pub struct Athena {
 }
 
 impl Athena {
+
+    pub fn get_date_bounds(&self) -> Option<(i64, i64)> {
+        Some((*self.dates.first().unwrap(), *self.dates.last().unwrap()))
+    }
+
     pub fn get_quotes(&self, date: &i64) -> Option<&DateDepth> {
         self.inner.get(date)
     }
