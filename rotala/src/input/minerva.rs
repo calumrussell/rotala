@@ -32,6 +32,8 @@ pub struct Trade {
     tid: i64,
 }
 
+pub type TradeByDate = BTreeMap<i64, MinervaTrade>;
+
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub enum Side {
     Bid,
@@ -39,10 +41,41 @@ pub enum Side {
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct MinervaTrade {
+    coin: String,
+    side: Side,
+    px: f64,
+    sz: f64,
+    time: i64,
+}
+
+impl From<Trade> for MinervaTrade {
+    fn from(value: Trade) -> Self {
+
+        let side = if value.side == "B" {
+            Side::Bid
+        } else {
+            Side::Ask
+        };
+
+        Self {
+            coin: value.coin,
+            side,
+            px: str::parse::<f64>(&value.px).unwrap(),
+            sz: str::parse::<f64>(&value.sz).unwrap(),
+            time: value.time,
+        }
+    }
+}
+
+pub type DepthByDate = BTreeMap<i64, Depth>;
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct Level {
     pub price: f64,
     pub size: f64,
 }
+
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct Depth {
@@ -107,7 +140,7 @@ impl Minerva {
         start_date: &i64,
         end_date: &i64,
         coin: &str,
-    ) -> BTreeMap<i64, Trade> {
+    ) -> TradeByDate {
         let query_result = self
             .db
             .query(
@@ -120,7 +153,8 @@ impl Minerva {
         if let Ok(rows) = query_result {
             for row in rows {
                 if let Ok(trade) = Trade::from_row(row) {
-                    res.insert(trade.time, trade);
+                    let minerva_trade: MinervaTrade = trade.into();
+                    res.insert(minerva_trade.time, minerva_trade);
                 }
             }
         }
@@ -132,7 +166,7 @@ impl Minerva {
         start_date: &i64,
         end_date: &i64,
         coin: &str,
-    ) -> BTreeMap<i64, Depth> {
+    ) -> DepthByDate {
         let query_result = self
             .db
             .query(
