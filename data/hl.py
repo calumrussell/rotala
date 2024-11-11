@@ -6,33 +6,38 @@ from botocore.config import Config
 import lz4framed
 import datetime
 
+
 def path_builder(date, hour, coin):
     return f"market_data/{date}/{hour}/l2Book/{coin}.lz4"
 
+
 def parse_date(string):
     return (string[0:4], string[4:6])
+
 
 def zero_padding(number):
     if number < 10:
         return "0" + str(number)
     return str(number)
 
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(
-        prog='HL Data Fetcher',
-        description='Downloads data from HL, unzips and places into directory')
+        prog="HL Data Fetcher",
+        description="Downloads data from HL, unzips and places into directory",
+    )
 
-    parser.add_argument('-o', '--outdir')
-    parser.add_argument('-c', '--coin')
-    parser.add_argument('-s', '--start')
+    parser.add_argument("-o", "--outdir")
+    parser.add_argument("-c", "--coin")
+    parser.add_argument("-s", "--start")
 
     args = parser.parse_args()
 
     max_year = 2024
     hours = list(range(0, 24))
-    days = list(range(1,32))
+    days = list(range(1, 32))
     months = list(range(1, 13))
-    client = boto3.client('s3', config=Config(signature_version=UNSIGNED))
+    client = boto3.client("s3", config=Config(signature_version=UNSIGNED))
     bucket_name = "hyperliquid-archive"
     now = datetime.datetime.now()
 
@@ -52,7 +57,7 @@ if __name__ == "__main__":
                 try:
                     then = datetime.datetime(year, month, day)
                 except ValueError:
-                    #Occurs if date isn't valid
+                    # Occurs if date isn't valid
                     continue
 
                 if then > now:
@@ -72,7 +77,7 @@ if __name__ == "__main__":
                             Bucket=bucket_name,
                             Key=key,
                         )
-                        contents = response['Body'].read()
+                        contents = response["Body"].read()
                     except Exception:
                         print(f"Didn't find - {key}")
                         continue
@@ -85,4 +90,3 @@ if __name__ == "__main__":
             with open(f"{file_path}", "w") as f:
                 for chunk in chunks:
                     f.write(chunk)
-
