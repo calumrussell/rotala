@@ -138,7 +138,7 @@ impl Athena {
                 res.insert(symbol.clone(), depth.get_bbo()?);
             }
         }
-        None
+        Some(res)
     }
 
     pub fn add_depth(&mut self, depth: Depth) {
@@ -267,7 +267,7 @@ mod tests {
         athena.add_price_level(100, "ABC", bid1, Side::Bid);
         athena.add_price_level(100, "ABC", ask1, Side::Ask);
 
-        assert_eq!(athena.get_best_bid(99..100, "ABC").unwrap().price, 101.0);
-        assert_eq!(athena.get_best_ask(99..100, "ABC").unwrap().price, 102.0);
+        assert_eq!(athena.get_best_bid(100..101, "ABC").unwrap().price, 101.0);
+        assert_eq!(athena.get_best_ask(100..101, "ABC").unwrap().price, 102.0);
     }
 }

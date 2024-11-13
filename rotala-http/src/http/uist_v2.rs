@@ -441,7 +441,7 @@ mod tests {
         let uist = Athena::random(100, vec!["ABC", "BCD"]);
         let dataset_name = "fake";
         //This sets up the backtest and dataset so don't need to call init
-        let state = AppState::single(dataset_name, 100, 1, uist);
+        let state = AppState::single(dataset_name, 100, 200, 1, uist);
         let uist_state = web::Data::new(state);
 
         let app = test::init_service(
