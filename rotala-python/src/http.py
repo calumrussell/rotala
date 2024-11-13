@@ -1,4 +1,3 @@
-import requests
 from urllib3.util import Retry
 from requests import Session
 from requests.adapters import HTTPAdapter
@@ -20,8 +19,13 @@ class HttpClient:
         self.s = s
         return
 
-    def init(self, dataset_name):
-        r = self.s.get(f"{self.base_url}/init/{dataset_name}")
+    def init(self, dataset_name, start_date, end_date, frequency):
+        val = f'{{"start_date": {start_date}, "end_date": {end_date}, "frequency": {frequency}}}'
+        r = self.s.post(
+            f"{self.base_url}/init/{dataset_name}",
+            data=val,
+            headers={"Content-type": "application/json"},
+        )
         json_response = r.json()
         self.backtest_id = int(json_response["backtest_id"])
         return json_response
@@ -53,9 +57,13 @@ class HttpClient:
         r = self.s.get(f"{self.base_url}/backtest/{self.backtest_id}/info")
         return r.json()
 
-    def now(self, backtest_id):
+    def now(self):
         if self.backtest_id is None:
             raise ValueError("Called before init")
 
         r = self.s.get(f"{self.base_url}/backtest/{self.backtest_id}/now")
+        return r.json()
+
+    def dataset_info(self, dataset):
+        r = self.s.get(f"{self.base_url}/dataset/{dataset}/info")
         return r.json()
