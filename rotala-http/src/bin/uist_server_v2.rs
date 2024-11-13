@@ -16,7 +16,7 @@ async fn main() -> std::io::Result<()> {
     let file_path = Path::new(&args[3]);
 
     let source = Athena::from_file(file_path);
-    let app_state = AppState::single("Test", 100, 1000, 1, source);
+    let app_state = AppState::single("Test", source);
 
     let uist_state = web::Data::new(app_state);
 
@@ -27,6 +27,7 @@ async fn main() -> std::io::Result<()> {
             .service(init)
             .service(tick)
             .service(insert_orders)
+            .service(dataset_info)
     })
     .bind((address, port))?
     .run()

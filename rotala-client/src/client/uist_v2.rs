@@ -177,9 +177,9 @@ impl Client for TestClient {
 }
 
 impl TestClient {
-    pub fn single(name: &str, start_date: i64, end_date:i64, frequency: u64, data: Athena) -> Self {
+    pub fn single(name: &str, data: Athena) -> Self {
         Self {
-            state: AppState::single(name, start_date, end_date, frequency, data),
+            state: AppState::single(name, data),
         }
     }
 }

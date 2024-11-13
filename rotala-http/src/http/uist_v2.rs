@@ -38,34 +38,12 @@ impl AppState {
         }
     }
 
-    pub fn single(name: &str, start_date: i64, end_date:i64, frequency: u64, data: Athena) -> Self {
-        let exchange = UistV2::new();
-
-        let dataset_end_date = data.get_date_bounds().unwrap();
-        let end_date_backtest = if dataset_end_date.1 > end_date {
-            end_date
-        } else {
-            dataset_end_date.1
-        };
-
-        let backtest = BacktestState {
-            id: 0,
-            start_date,
-            curr_date: start_date,
-            end_date: end_date_backtest,
-            frequency,
-            exchange,
-            dataset_name: name.into(),
-        };
-
+    pub fn single(name: &str, data: Athena) -> Self {
         let mut datasets = HashMap::new();
         datasets.insert(name.into(), data);
 
-        let backtests = DashMap::new();
-        backtests.insert(0, backtest);
-
         Self {
-            backtests,
+            backtests: DashMap::new(),
             last: AtomicU64::new(1),
             datasets,
         }
@@ -145,10 +123,14 @@ impl AppState {
                 if res == curr_id {
                     self.backtests.insert(curr_id, backtest);
 
-                    let bbo = dataset.get_bbo(start_date-frequency as i64..start_date).unwrap();
+                    let bbo = dataset.get_bbo(start_date-frequency as i64..start_date).unwrap_or_default();
                     // Unfortunately, this clone is required if we want immutable sources that don't lock
                     // on ticks (which would potentially mutate)
-                    let depth = dataset.get_quotes_between(start_date-frequency as i64..start_date).last().unwrap().1.clone();
+                    let depth = if let Some(quotes) = dataset.get_quotes_between(start_date-frequency as i64..start_date).last() {
+                        quotes.1.clone()
+                    } else {
+                        HashMap::default()
+                    };
                     return Some((curr_id, bbo, depth));
                 }
             }
@@ -167,45 +149,6 @@ impl AppState {
     pub fn dataset_info(&self, dataset_name: &str) -> Option<(i64, i64)>{
         if let Some(dataset) = self.datasets.get(dataset_name) {
             return Some(dataset.get_date_bounds()?);
-        }
-        None
-    }
-
-    pub fn new_backtest(&self, dataset_name: &str, start_date: i64, end_date:i64, frequency: u64) -> Option<BacktestId> {
-        if let Some(dataset) = self.datasets.get(dataset_name) {
-            let curr_id = self.last.load(std::sync::atomic::Ordering::SeqCst);
-
-            let exchange = UistV2::new();
-
-            let dataset_date_bounds = dataset.get_date_bounds().unwrap();
-            let end_date_backtest = if dataset_date_bounds.1 > end_date {
-                end_date
-            } else {
-                dataset_date_bounds.1
-            };
-
-            let backtest = BacktestState {
-                id: curr_id,
-                start_date, 
-                curr_date: start_date,
-                end_date: end_date_backtest,
-                frequency,
-                exchange,
-                dataset_name: dataset_name.into(),
-            };
-            let new_id = curr_id + 1;
-            //Attempt to increment the counter, if this is successful then we create new backtest
-            if let Ok(res) = self.last.compare_exchange(
-                curr_id,
-                new_id,
-                std::sync::atomic::Ordering::SeqCst,
-                std::sync::atomic::Ordering::SeqCst,
-            ) {
-                if res == curr_id {
-                    self.backtests.insert(new_id, backtest);
-                    return Some(res);
-                }
-            }
         }
         None
     }
@@ -434,14 +377,14 @@ mod tests {
     use rotala::input::athena::Athena;
 
     use super::server::*;
-    use super::{AppState, InsertOrderRequest, TickResponse};
+    use super::{AppState, InitRequest, InsertOrderRequest, TickResponse, InitResponse};
 
     #[actix_web::test]
     async fn test_single_trade_loop() {
         let uist = Athena::random(100, vec!["ABC", "BCD"]);
         let dataset_name = "fake";
         //This sets up the backtest and dataset so don't need to call init
-        let state = AppState::single(dataset_name, 100, 200, 1, uist);
+        let state = AppState::single(dataset_name, uist);
         let uist_state = web::Data::new(state);
 
         let app = test::init_service(
@@ -456,7 +399,16 @@ mod tests {
         )
         .await;
 
-        let backtest_id = 0;
+        let req1 = test::TestRequest::post()
+            .set_json(InitRequest {
+                start_date: 100,
+                end_date: 200,
+                frequency: 1,
+            })
+            .uri(format!("/init/{dataset_name}").as_str())
+            .to_request();
+        let resp1: InitResponse = test::call_and_read_body_json(&app, req1).await;
+        let backtest_id = resp1.backtest_id;
 
         let req2 = test::TestRequest::get()
             .uri(format!("/backtest/{backtest_id}/tick").as_str())
