@@ -18,6 +18,7 @@ pub struct BacktestState {
     pub start_date: i64,
     pub curr_date: i64,
     pub frequency: u64,
+    pub end_date: i64,
     pub exchange: UistV2,
     pub dataset_name: String,
 }
@@ -37,13 +38,21 @@ impl AppState {
         }
     }
 
-    pub fn single(name: &str, start_date: i64, frequency: u64, data: Athena) -> Self {
+    pub fn single(name: &str, start_date: i64, end_date:i64, frequency: u64, data: Athena) -> Self {
         let exchange = UistV2::new();
+
+        let dataset_end_date = data.get_date_bounds().unwrap();
+        let end_date_backtest = if dataset_end_date.1 > end_date {
+            end_date
+        } else {
+            dataset_end_date.1
+        };
 
         let backtest = BacktestState {
             id: 0,
             start_date,
             curr_date: start_date,
+            end_date: end_date_backtest,
             frequency,
             exchange,
             dataset_name: name.into(),
@@ -78,9 +87,7 @@ impl AppState {
                 }
 
                 let new_date = backtest.curr_date + backtest.frequency as i64;
-                let end_date = self.datasets.get(&backtest.dataset_name).unwrap().get_date_bounds().unwrap().1;
-
-                if new_date > end_date {
+                if new_date >= backtest.end_date {
                     return Some((
                         false,
                         Vec::new(),
@@ -89,8 +96,15 @@ impl AppState {
                         HashMap::new(),
                     ));
                 } else {
-                    let bbo = dataset.get_bbo(backtest.curr_date..new_date).unwrap();
-                    let depth = dataset.get_quotes_between(backtest.curr_date..new_date).last().unwrap().1.clone();
+                    let bbo = dataset.get_bbo(backtest.curr_date..new_date).unwrap_or_default();
+
+                    let depth = if let Some(quotes) = dataset.get_quotes_between(backtest.curr_date..new_date).last() {
+                        quotes.1.clone()
+                    } else {
+                        HashMap::default()
+                    };
+
+                    backtest.curr_date = new_date;
                     return Some((true, executed_orders, inserted_orders, bbo, depth));
                 }
             }
@@ -98,15 +112,23 @@ impl AppState {
         None
     }
 
-    pub fn init(&self, dataset_name: String, start_date: i64, frequency: u64) -> Option<(BacktestId, DateBBO, DateDepth)> {
+    pub fn init(&self, dataset_name: String, start_date: i64, end_date:i64, frequency: u64) -> Option<(BacktestId, DateBBO, DateDepth)> {
         if let Some(dataset) = self.datasets.get(&dataset_name) {
             let curr_id = self.last.load(std::sync::atomic::Ordering::SeqCst);
             let exchange = UistV2::new();
+
+            let dataset_date_bounds = dataset.get_date_bounds().unwrap();
+            let end_date_backtest = if dataset_date_bounds.1 > end_date {
+                end_date
+            } else {
+                dataset_date_bounds.1
+            };
 
             let backtest = BacktestState {
                 id: curr_id,
                 start_date,
                 curr_date: start_date,
+                end_date: end_date_backtest,
                 frequency,
                 exchange,
                 dataset_name,
@@ -149,16 +171,24 @@ impl AppState {
         None
     }
 
-    pub fn new_backtest(&self, dataset_name: &str, start_date: i64, frequency: u64) -> Option<BacktestId> {
-        if let Some(_dataset) = self.datasets.get(dataset_name) {
+    pub fn new_backtest(&self, dataset_name: &str, start_date: i64, end_date:i64, frequency: u64) -> Option<BacktestId> {
+        if let Some(dataset) = self.datasets.get(dataset_name) {
             let curr_id = self.last.load(std::sync::atomic::Ordering::SeqCst);
 
             let exchange = UistV2::new();
+
+            let dataset_date_bounds = dataset.get_date_bounds().unwrap();
+            let end_date_backtest = if dataset_date_bounds.1 > end_date {
+                end_date
+            } else {
+                dataset_date_bounds.1
+            };
 
             let backtest = BacktestState {
                 id: curr_id,
                 start_date, 
                 curr_date: start_date,
+                end_date: end_date_backtest,
                 frequency,
                 exchange,
                 dataset_name: dataset_name.into(),
@@ -199,6 +229,7 @@ pub struct InsertOrderRequest {
 #[derive(Debug, Deserialize, Serialize)]
 pub struct InitRequest{
     pub start_date: i64,
+    pub end_date: i64,
     pub frequency: u64,
 }
 
@@ -271,7 +302,7 @@ pub trait Client {
         orders: Vec<Order>,
         backtest_id: BacktestId,
     ) -> impl Future<Output = Result<()>>;
-    fn init(&self, dataset_name: String) -> impl Future<Output = Result<InitResponse>>;
+    fn init(&self, dataset_name: String, start_date: i64, end_date: i64, frequency: u64) -> impl Future<Output = Result<InitResponse>>;
     fn info(&self, backtest_id: BacktestId) -> impl Future<Output = Result<InfoResponse>>;
     fn dataset_info(&self, dataset_name: String) -> impl Future<Output = Result<DatasetInfoResponse>>;
     fn now(&self, backtest_id: BacktestId) -> impl Future<Output = Result<NowResponse>>;
@@ -329,7 +360,7 @@ pub mod server {
     ) -> Result<web::Json<InitResponse>, UistV2Error> {
         let (dataset_name,) = path.into_inner();
 
-        if let Some((backtest_id, bbo, depth)) = app.init(dataset_name, init.start_date, init.frequency) {
+        if let Some((backtest_id, bbo, depth)) = app.init(dataset_name, init.start_date, init.end_date, init.frequency) {
             Ok(web::Json(InitResponse {
                 backtest_id,
                 bbo,
