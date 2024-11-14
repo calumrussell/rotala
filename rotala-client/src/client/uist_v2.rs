@@ -3,8 +3,8 @@ use reqwest;
 use rotala::exchange::uist_v2::Order;
 use rotala::input::athena::Athena;
 use rotala_http::http::uist_v2::{
-    AppState, BacktestId, Client, InfoResponse, InitResponse, InsertOrderRequest, NowResponse,
-    TickResponse, UistV2Error,
+    AppState, BacktestId, Client, DatasetInfoResponse, InfoResponse, InitRequest, InitResponse,
+    InsertOrderRequest, NowResponse, TickResponse, UistV2Error,
 };
 use std::{
     future::{self, Future},
@@ -40,10 +40,22 @@ impl Client for HttpClient {
             .await?)
     }
 
-    async fn init(&self, dataset_name: String) -> Result<InitResponse> {
+    async fn init(
+        &self,
+        dataset_name: String,
+        start_date: i64,
+        end_date: i64,
+        frequency: u64,
+    ) -> Result<InitResponse> {
+        let req = InitRequest {
+            start_date,
+            end_date,
+            frequency,
+        };
         Ok(self
             .client
-            .get(self.path.clone() + format!("/init/{dataset_name}").as_str())
+            .post(self.path.clone() + format!("/init/{dataset_name}").as_str())
+            .json(&req)
             .send()
             .await?
             .json::<InitResponse>()
@@ -57,6 +69,16 @@ impl Client for HttpClient {
             .send()
             .await?
             .json::<InfoResponse>()
+            .await?)
+    }
+
+    async fn dataset_info(&self, dataset_name: String) -> Result<DatasetInfoResponse> {
+        Ok(self
+            .client
+            .get(self.path.clone() + format!("/dataset/{dataset_name}/info").as_str())
+            .send()
+            .await?
+            .json::<DatasetInfoResponse>()
             .await?)
     }
 
@@ -85,8 +107,17 @@ pub struct TestClient {
 }
 
 impl Client for TestClient {
-    fn init(&self, dataset_name: String) -> impl Future<Output = Result<InitResponse>> {
-        if let Some((backtest_id, bbo, depth)) = self.state.init(dataset_name) {
+    fn init(
+        &self,
+        dataset_name: String,
+        start_date: i64,
+        end_date: i64,
+        frequency: u64,
+    ) -> impl Future<Output = Result<InitResponse>> {
+        if let Some((backtest_id, bbo, depth)) =
+            self.state
+                .init(dataset_name, start_date, end_date, frequency)
+        {
             future::ready(Ok(InitResponse {
                 backtest_id,
                 bbo,
@@ -135,14 +166,25 @@ impl Client for TestClient {
         }
     }
 
+    fn dataset_info(
+        &self,
+        dataset_name: String,
+    ) -> impl Future<Output = Result<DatasetInfoResponse>> {
+        if let Some(dataset) = self.state.dataset_info(&dataset_name) {
+            future::ready(Ok(DatasetInfoResponse {
+                start_date: dataset.0,
+                end_date: dataset.1,
+            }))
+        } else {
+            future::ready(Err(Error::new(UistV2Error::UnknownDataset)))
+        }
+    }
+
     fn now(&self, backtest_id: BacktestId) -> impl Future<Output = Result<NowResponse>> {
         if let Some(backtest) = self.state.backtests.get(&backtest_id) {
-            if let Some(dataset) = self.state.datasets.get(&backtest.dataset_name) {
-                let now = backtest.date;
-                let mut has_next = false;
-                if dataset.has_next(backtest.pos) {
-                    has_next = true;
-                }
+            if let Some(_dataset) = self.state.datasets.get(&backtest.dataset_name) {
+                let now = backtest.curr_date;
+                let has_next = now < backtest.end_date;
                 future::ready(Ok(NowResponse { now, has_next }))
             } else {
                 future::ready(Err(Error::new(UistV2Error::UnknownDataset)))

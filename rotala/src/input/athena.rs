@@ -1,8 +1,9 @@
 #![allow(dead_code)]
 
-use std::collections::HashMap;
+use std::collections::btree_map::Range;
+use std::collections::{BTreeMap, HashMap};
+use std::ops::RangeBounds;
 use std::path::Path;
-use std::{borrow::Borrow, collections::HashSet};
 
 use rand::thread_rng;
 use rand_distr::{Distribution, Uniform};
@@ -93,51 +94,50 @@ pub type DateDepth = HashMap<String, Depth>;
 pub type DateBBO = HashMap<String, BBO>;
 
 pub struct Athena {
-    dates: Vec<i64>,
-    dates_seen: HashSet<i64>,
-    inner: HashMap<i64, DateDepth>,
+    inner: BTreeMap<i64, DateDepth>,
 }
 
 impl Athena {
-    pub fn get_quotes(&self, date: &i64) -> Option<&DateDepth> {
-        self.inner.get(date)
+    pub fn get_date_bounds(&self) -> Option<(i64, i64)> {
+        let first_date = *self.inner.first_key_value().unwrap().0;
+        let last_date = *self.inner.last_key_value().unwrap().0;
+        Some((first_date, last_date))
     }
 
-    fn get_quotes_unchecked(&self, date: &i64) -> &DateDepth {
-        self.get_quotes(date).unwrap()
+    pub fn get_quotes_between(&self, dates: impl RangeBounds<i64>) -> Range<i64, DateDepth> {
+        self.inner.range(dates)
     }
 
-    pub fn get_date(&self, pos: usize) -> Option<&i64> {
-        self.dates.get(pos)
+    pub fn get_best_bid(&self, dates: impl RangeBounds<i64>, symbol: &str) -> Option<&Level> {
+        let depth_between = self.get_quotes_between(dates);
+        if let Some(last_depth) = depth_between.last() {
+            if let Some(coin_depth) = last_depth.1.get(symbol) {
+                return coin_depth.get_best_bid();
+            }
+        }
+        None
     }
 
-    pub fn has_next(&self, pos: usize) -> bool {
-        self.dates.len() > pos
+    pub fn get_best_ask(&self, dates: impl RangeBounds<i64>, symbol: &str) -> Option<&Level> {
+        let depth_between = self.get_quotes_between(dates);
+        if let Some(last_depth) = depth_between.last() {
+            if let Some(coin_depth) = last_depth.1.get(symbol) {
+                return coin_depth.get_best_ask();
+            }
+        }
+        None
     }
 
-    pub fn get_best_bid(&self, date: impl Borrow<i64>, symbol: &str) -> Option<&Level> {
-        let date_levels = self.inner.get(date.borrow())?;
-        let depth = date_levels.get(symbol)?;
-        depth.get_best_bid()
-    }
-
-    pub fn get_best_ask(&self, date: impl Borrow<i64>, symbol: &str) -> Option<&Level> {
-        let date_levels = self.inner.get(date.borrow())?;
-        let depth = date_levels.get(symbol)?;
-        depth.get_best_ask()
-    }
-
-    pub fn get_bbo(&self, date: impl Borrow<i64>) -> Option<DateBBO> {
+    pub fn get_bbo(&self, dates: impl RangeBounds<i64>) -> Option<DateBBO> {
         let mut res = HashMap::new();
-        let date_levels = self.inner.get(date.borrow())?;
-        for (symbol, depth) in date_levels {
-            res.insert(symbol.clone(), depth.get_bbo()?);
+
+        let depth_between = self.get_quotes_between(dates);
+        if let Some(last_depth) = depth_between.last() {
+            for (symbol, depth) in last_depth.1 {
+                res.insert(symbol.clone(), depth.get_bbo()?);
+            }
         }
         Some(res)
-    }
-
-    pub fn sort_dates(&mut self) {
-        self.dates.sort()
     }
 
     pub fn add_depth(&mut self, depth: Depth) {
@@ -148,11 +148,6 @@ impl Athena {
 
         let date_levels = self.inner.get_mut(&date).unwrap();
         date_levels.insert(symbol, depth);
-
-        if !self.dates_seen.contains(&date) {
-            self.dates.push(date);
-            self.dates_seen.insert(date);
-        }
     }
 
     pub fn add_price_level(&mut self, date: i64, symbol: &str, level: Level, side: Side) {
@@ -181,11 +176,6 @@ impl Athena {
             };
 
             date_levels.insert(symbol_string, depth);
-        }
-
-        if !self.dates_seen.contains(&date) {
-            self.dates.push(date);
-            self.dates_seen.insert(date);
         }
     }
 
@@ -226,15 +216,12 @@ impl Athena {
             let into_depth: Depth = value.into();
             athena.add_depth(into_depth);
         }
-        athena.sort_dates();
         athena
     }
 
     pub fn new() -> Self {
         Self {
-            dates: Vec::new(),
-            inner: HashMap::new(),
-            dates_seen: HashSet::new(),
+            inner: BTreeMap::new(),
         }
     }
 }
@@ -279,7 +266,7 @@ mod tests {
         athena.add_price_level(100, "ABC", bid1, Side::Bid);
         athena.add_price_level(100, "ABC", ask1, Side::Ask);
 
-        assert_eq!(athena.get_best_bid(100, "ABC").unwrap().price, 101.0);
-        assert_eq!(athena.get_best_ask(100, "ABC").unwrap().price, 102.0);
+        assert_eq!(athena.get_best_bid(100..101, "ABC").unwrap().price, 101.0);
+        assert_eq!(athena.get_best_ask(100..101, "ABC").unwrap().price, 102.0);
     }
 }

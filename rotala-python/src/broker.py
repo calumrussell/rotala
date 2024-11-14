@@ -12,6 +12,9 @@ class BrokerBuilder:
         self.initial_cash = None
         self.http = None
         self.dataset_name = None
+        self.start_date = None
+        self.end_date = None
+        self.frequency = None
 
     def init_cash(self, value: int):
         self.initial_cash = value
@@ -21,6 +24,13 @@ class BrokerBuilder:
 
     def init_dataset_name(self, name: str):
         self.dataset_name = name
+
+    def init_dates(self, start_date: int, end_date: int):
+        self.start_date = start_date
+        self.end_date = end_date
+
+    def init_frequency(self, frequency: int):
+        self.frequency = frequency
 
     def build(self):
         if not self.initial_cash:
@@ -180,10 +190,11 @@ class Broker:
         self.ts = None
 
         # Initializes backtest_id, can ignore result
-        init_response = self.http.init(self.dataset_name)
+        init_response = self.http.init(self.dataset_name, builder.start_date, builder.end_date, builder.frequency)
         self.backtest_id = init_response["backtest_id"]
         self.latest_quotes = init_response["bbo"]
         self.latest_depth = init_response["depth"]
+        self.cached_quotes = {}
         self.ts = list(self.latest_quotes.values())[0]["date"]
 
     def _update_holdings(self, position: str, chg: float):
@@ -252,14 +263,19 @@ class Broker:
 
     def get_current_value(self) -> float:
         value = self.cash
-        # This will fail if there is a missing quote for the date
-        # Fix is to cache values in self.latest_quotes
         for symbol in self.holdings:
-            quote = self.latest_quotes[symbol]
-            if quote:
-                qty = self.holdings[symbol]
+            quote = self.latest_quotes.get(symbol)
+            symbol_bid = -1
+            if not quote:
+                quote = self.cached_quotes.get(symbol)
                 symbol_bid = quote["bid"]
-                value += qty * symbol_bid
+                if not symbol_bid:
+                    raise ValueError("No cached values and no quotes so likely an application error somewhere")
+            else:
+                symbol_bid = quote["bid"]
+
+            qty = self.holdings[symbol]
+            value += qty * symbol_bid
         return value
 
     def tick(self):
@@ -289,6 +305,8 @@ class Broker:
             exit(0)
         else:
             self.latest_quotes = tick_response["bbo"]
+            if self.latest_quotes:
+                self.cached_quotes = self.latest_quotes
             self.latest_depth = tick_response["depth"]
             if self.latest_quotes:
                 self.ts = list(self.latest_quotes.values())[0]["date"]

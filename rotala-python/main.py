@@ -53,10 +53,18 @@ def create_orders(bid_grid, ask_grid):
 if __name__ == "__main__":
     logging.basicConfig(level=logging.CRITICAL)
 
+    dataset_name = "Test"
+    frequency = 250
+    http_client = HttpClient("http://127.0.0.1:3000")
+    dataset_info = http_client.dataset_info(dataset_name)
+
     builder = BrokerBuilder()
-    builder.init_dataset_name("Test")
+    builder.init_dataset_name(dataset_name)
     builder.init_cash(100000)
-    builder.init_http(HttpClient("http://127.0.0.1:3000"))
+    builder.init_http(http_client)
+    #Clear the first date so we have quotes always
+    builder.init_dates(dataset_info["start_date"]+250, dataset_info["end_date"])
+    builder.init_frequency(250)
     brkr = builder.build()
 
     last_mid = -1
@@ -64,6 +72,9 @@ if __name__ == "__main__":
         brkr.tick()
 
         depth = brkr.latest_depth
+        if not depth:
+            continue
+
         bid_grid, ask_grid = create_grid(depth)
 
         best_bid, best_ask, mid_price = get_best_and_mid(depth)
