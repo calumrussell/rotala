@@ -3,7 +3,8 @@ use reqwest;
 use rotala::exchange::uist_v2::Order;
 use rotala::input::athena::Athena;
 use rotala_http::http::uist_v2::{
-    AppState, BacktestId, Client, DatasetInfoResponse, InfoResponse, InitRequest, InitResponse, InsertOrderRequest, NowResponse, TickResponse, UistV2Error
+    AppState, BacktestId, Client, DatasetInfoResponse, InfoResponse, InitRequest, InitResponse,
+    InsertOrderRequest, NowResponse, TickResponse, UistV2Error,
 };
 use std::{
     future::{self, Future},
@@ -39,8 +40,18 @@ impl Client for HttpClient {
             .await?)
     }
 
-    async fn init(&self, dataset_name: String, start_date: i64, end_date: i64, frequency: u64) -> Result<InitResponse> {
-        let req = InitRequest {start_date, end_date, frequency};
+    async fn init(
+        &self,
+        dataset_name: String,
+        start_date: i64,
+        end_date: i64,
+        frequency: u64,
+    ) -> Result<InitResponse> {
+        let req = InitRequest {
+            start_date,
+            end_date,
+            frequency,
+        };
         Ok(self
             .client
             .post(self.path.clone() + format!("/init/{dataset_name}").as_str())
@@ -96,8 +107,17 @@ pub struct TestClient {
 }
 
 impl Client for TestClient {
-    fn init(&self, dataset_name: String, start_date: i64, end_date: i64, frequency: u64) -> impl Future<Output = Result<InitResponse>> {
-        if let Some((backtest_id, bbo, depth)) = self.state.init(dataset_name, start_date, end_date, frequency) {
+    fn init(
+        &self,
+        dataset_name: String,
+        start_date: i64,
+        end_date: i64,
+        frequency: u64,
+    ) -> impl Future<Output = Result<InitResponse>> {
+        if let Some((backtest_id, bbo, depth)) =
+            self.state
+                .init(dataset_name, start_date, end_date, frequency)
+        {
             future::ready(Ok(InitResponse {
                 backtest_id,
                 bbo,
@@ -146,7 +166,10 @@ impl Client for TestClient {
         }
     }
 
-    fn dataset_info(&self, dataset_name: String) -> impl Future<Output = Result<DatasetInfoResponse>> {
+    fn dataset_info(
+        &self,
+        dataset_name: String,
+    ) -> impl Future<Output = Result<DatasetInfoResponse>> {
         if let Some(dataset) = self.state.dataset_info(&dataset_name) {
             future::ready(Ok(DatasetInfoResponse {
                 start_date: dataset.0,

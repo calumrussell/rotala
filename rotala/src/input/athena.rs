@@ -98,9 +98,8 @@ pub struct Athena {
 }
 
 impl Athena {
-
     pub fn get_date_bounds(&self) -> Option<(i64, i64)> {
-        let first_date= *self.inner.first_key_value().unwrap().0;
+        let first_date = *self.inner.first_key_value().unwrap().0;
         let last_date = *self.inner.last_key_value().unwrap().0;
         Some((first_date, last_date))
     }
@@ -112,7 +111,7 @@ impl Athena {
     pub fn get_best_bid(&self, dates: impl RangeBounds<i64>, symbol: &str) -> Option<&Level> {
         let depth_between = self.get_quotes_between(dates);
         if let Some(last_depth) = depth_between.last() {
-            if let Some(coin_depth)  = last_depth.1.get(symbol) {
+            if let Some(coin_depth) = last_depth.1.get(symbol) {
                 return Some(coin_depth.get_best_bid()?);
             }
         }
@@ -122,7 +121,7 @@ impl Athena {
     pub fn get_best_ask(&self, dates: impl RangeBounds<i64>, symbol: &str) -> Option<&Level> {
         let depth_between = self.get_quotes_between(dates);
         if let Some(last_depth) = depth_between.last() {
-            if let Some(coin_depth)  = last_depth.1.get(symbol) {
+            if let Some(coin_depth) = last_depth.1.get(symbol) {
                 return Some(coin_depth.get_best_ask()?);
             }
         }

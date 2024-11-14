@@ -57,7 +57,12 @@ impl AppState {
 
                 let curr_date = backtest.curr_date;
 
-                if let Some(quotes) = dataset.get_quotes_between(backtest.curr_date-backtest.frequency as i64..backtest.curr_date).last() {
+                if let Some(quotes) = dataset
+                    .get_quotes_between(
+                        backtest.curr_date - backtest.frequency as i64..backtest.curr_date,
+                    )
+                    .last()
+                {
                     let mut res = backtest.exchange.tick(quotes.1, curr_date);
 
                     executed_orders = std::mem::take(&mut res.0);
@@ -74,9 +79,14 @@ impl AppState {
                         HashMap::new(),
                     ));
                 } else {
-                    let bbo = dataset.get_bbo(backtest.curr_date..new_date).unwrap_or_default();
+                    let bbo = dataset
+                        .get_bbo(backtest.curr_date..new_date)
+                        .unwrap_or_default();
 
-                    let depth = if let Some(quotes) = dataset.get_quotes_between(backtest.curr_date..new_date).last() {
+                    let depth = if let Some(quotes) = dataset
+                        .get_quotes_between(backtest.curr_date..new_date)
+                        .last()
+                    {
                         quotes.1.clone()
                     } else {
                         HashMap::default()
@@ -90,7 +100,13 @@ impl AppState {
         None
     }
 
-    pub fn init(&self, dataset_name: String, start_date: i64, end_date:i64, frequency: u64) -> Option<(BacktestId, DateBBO, DateDepth)> {
+    pub fn init(
+        &self,
+        dataset_name: String,
+        start_date: i64,
+        end_date: i64,
+        frequency: u64,
+    ) -> Option<(BacktestId, DateBBO, DateDepth)> {
         if let Some(dataset) = self.datasets.get(&dataset_name) {
             let curr_id = self.last.load(std::sync::atomic::Ordering::SeqCst);
             let exchange = UistV2::new();
@@ -123,10 +139,15 @@ impl AppState {
                 if res == curr_id {
                     self.backtests.insert(curr_id, backtest);
 
-                    let bbo = dataset.get_bbo(start_date-frequency as i64..start_date).unwrap_or_default();
+                    let bbo = dataset
+                        .get_bbo(start_date - frequency as i64..start_date)
+                        .unwrap_or_default();
                     // Unfortunately, this clone is required if we want immutable sources that don't lock
                     // on ticks (which would potentially mutate)
-                    let depth = if let Some(quotes) = dataset.get_quotes_between(start_date-frequency as i64..start_date).last() {
+                    let depth = if let Some(quotes) = dataset
+                        .get_quotes_between(start_date - frequency as i64..start_date)
+                        .last()
+                    {
                         quotes.1.clone()
                     } else {
                         HashMap::default()
@@ -146,7 +167,7 @@ impl AppState {
         None
     }
 
-    pub fn dataset_info(&self, dataset_name: &str) -> Option<(i64, i64)>{
+    pub fn dataset_info(&self, dataset_name: &str) -> Option<(i64, i64)> {
         if let Some(dataset) = self.datasets.get(dataset_name) {
             return Some(dataset.get_date_bounds()?);
         }
@@ -168,9 +189,8 @@ pub struct InsertOrderRequest {
     pub orders: Vec<Order>,
 }
 
-
 #[derive(Debug, Deserialize, Serialize)]
-pub struct InitRequest{
+pub struct InitRequest {
     pub start_date: i64,
     pub end_date: i64,
     pub frequency: u64,
@@ -245,9 +265,18 @@ pub trait Client {
         orders: Vec<Order>,
         backtest_id: BacktestId,
     ) -> impl Future<Output = Result<()>>;
-    fn init(&self, dataset_name: String, start_date: i64, end_date: i64, frequency: u64) -> impl Future<Output = Result<InitResponse>>;
+    fn init(
+        &self,
+        dataset_name: String,
+        start_date: i64,
+        end_date: i64,
+        frequency: u64,
+    ) -> impl Future<Output = Result<InitResponse>>;
     fn info(&self, backtest_id: BacktestId) -> impl Future<Output = Result<InfoResponse>>;
-    fn dataset_info(&self, dataset_name: String) -> impl Future<Output = Result<DatasetInfoResponse>>;
+    fn dataset_info(
+        &self,
+        dataset_name: String,
+    ) -> impl Future<Output = Result<DatasetInfoResponse>>;
     fn now(&self, backtest_id: BacktestId) -> impl Future<Output = Result<NowResponse>>;
 }
 
@@ -257,7 +286,8 @@ pub mod server {
     use actix_web::{get, post, web};
 
     use super::{
-        BacktestId, DatasetInfoResponse, InfoResponse, InitResponse, InsertOrderRequest, NowResponse, TickResponse, UistState, UistV2Error, InitRequest
+        BacktestId, DatasetInfoResponse, InfoResponse, InitRequest, InitResponse,
+        InsertOrderRequest, NowResponse, TickResponse, UistState, UistV2Error,
     };
 
     #[get("/backtest/{backtest_id}/tick")]
@@ -303,7 +333,9 @@ pub mod server {
     ) -> Result<web::Json<InitResponse>, UistV2Error> {
         let (dataset_name,) = path.into_inner();
 
-        if let Some((backtest_id, bbo, depth)) = app.init(dataset_name, init.start_date, init.end_date, init.frequency) {
+        if let Some((backtest_id, bbo, depth)) =
+            app.init(dataset_name, init.start_date, init.end_date, init.frequency)
+        {
             Ok(web::Json(InitResponse {
                 backtest_id,
                 bbo,
@@ -377,7 +409,7 @@ mod tests {
     use rotala::input::athena::Athena;
 
     use super::server::*;
-    use super::{AppState, InitRequest, InsertOrderRequest, TickResponse, InitResponse};
+    use super::{AppState, InitRequest, InitResponse, InsertOrderRequest, TickResponse};
 
     #[actix_web::test]
     async fn test_single_trade_loop() {
