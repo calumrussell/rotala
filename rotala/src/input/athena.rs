@@ -112,7 +112,7 @@ impl Athena {
         let depth_between = self.get_quotes_between(dates);
         if let Some(last_depth) = depth_between.last() {
             if let Some(coin_depth) = last_depth.1.get(symbol) {
-                return Some(coin_depth.get_best_bid()?);
+                return coin_depth.get_best_bid();
             }
         }
         None
@@ -122,7 +122,7 @@ impl Athena {
         let depth_between = self.get_quotes_between(dates);
         if let Some(last_depth) = depth_between.last() {
             if let Some(coin_depth) = last_depth.1.get(symbol) {
-                return Some(coin_depth.get_best_ask()?);
+                return coin_depth.get_best_ask();
             }
         }
         None

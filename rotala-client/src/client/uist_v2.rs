@@ -184,11 +184,7 @@ impl Client for TestClient {
         if let Some(backtest) = self.state.backtests.get(&backtest_id) {
             if let Some(_dataset) = self.state.datasets.get(&backtest.dataset_name) {
                 let now = backtest.curr_date;
-                let has_next = if now >= backtest.end_date {
-                    false
-                } else {
-                    true
-                };
+                let has_next = now < backtest.end_date;
                 future::ready(Ok(NowResponse { now, has_next }))
             } else {
                 future::ready(Err(Error::new(UistV2Error::UnknownDataset)))

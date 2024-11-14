@@ -169,7 +169,7 @@ impl AppState {
 
     pub fn dataset_info(&self, dataset_name: &str) -> Option<(i64, i64)> {
         if let Some(dataset) = self.datasets.get(dataset_name) {
-            return Some(dataset.get_date_bounds()?);
+            return dataset.get_date_bounds();
         }
         None
     }
