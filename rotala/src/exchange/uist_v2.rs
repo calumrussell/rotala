@@ -563,7 +563,7 @@ impl OrderBook {
 
 #[cfg(test)]
 mod tests {
-    use std::collections::{BTreeMap, HashMap};
+    use std::collections::BTreeMap;
 
     use crate::{
         exchange::uist_v2::{Order, OrderBook}, source::hyperliquid::{DateDepth, Depth, Level, Side},
@@ -761,7 +761,7 @@ mod tests {
         depth.add_level(ask_level_1, Side::Ask);
         depth.add_level(ask_level_2, Side::Ask);
 
-        let mut quotes: DateDepth = HashMap::new();
+        let mut quotes: DateDepth = BTreeMap::new();
         quotes.insert("ABC".to_string(), depth);
 
         let mut orderbook = OrderBook::new();
@@ -808,7 +808,7 @@ mod tests {
         depth.add_level(bid_level_2, Side::Bid);
         depth.add_level(ask_level, Side::Ask);
 
-        let mut quotes: DateDepth = HashMap::new();
+        let mut quotes: DateDepth = BTreeMap::new();
         quotes.insert("ABC".to_string(), depth);
 
         let mut orderbook = OrderBook::new();
@@ -865,7 +865,7 @@ mod tests {
         depth_102.add_level(bid_level, Side::Bid);
         depth_102.add_level(ask_level, Side::Ask);
 
-        let mut quotes: DateDepth = HashMap::new();
+        let mut quotes: DateDepth = BTreeMap::new();
         quotes.insert("ABC".to_string(), depth);
         quotes.insert("ABC".to_string(), depth_101);
         quotes.insert("ABC".to_string(), depth_102);
