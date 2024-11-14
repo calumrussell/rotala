@@ -126,6 +126,7 @@ impl Client for TestClient {
                 inserted_orders: resp.2,
                 executed_orders: resp.1,
                 has_next: resp.0,
+                now: resp.5,
             }))
         } else {
             future::ready(Err(Error::new(UistV2Error::UnknownBacktest)))

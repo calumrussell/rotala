@@ -11,7 +11,14 @@ use rotala::exchange::uist_v2::{InnerOrder, Order, OrderId, OrderResult, UistV2}
 use rotala::input::athena::{Athena, DateBBO, DateDepth};
 
 pub type BacktestId = u64;
-pub type TickResponseType = (bool, Vec<OrderResult>, Vec<InnerOrder>, DateBBO, DateDepth);
+pub type TickResponseType = (
+    bool,
+    Vec<OrderResult>,
+    Vec<InnerOrder>,
+    DateBBO,
+    DateDepth,
+    i64,
+);
 
 pub struct BacktestState {
     pub id: BacktestId,
@@ -77,6 +84,7 @@ impl AppState {
                         Vec::new(),
                         HashMap::new(),
                         HashMap::new(),
+                        new_date,
                     ));
                 } else {
                     let bbo = dataset
@@ -93,7 +101,7 @@ impl AppState {
                     };
 
                     backtest.curr_date = new_date;
-                    return Some((true, executed_orders, inserted_orders, bbo, depth));
+                    return Some((true, executed_orders, inserted_orders, bbo, depth, new_date));
                 }
             }
         }
@@ -182,6 +190,7 @@ pub struct TickResponse {
     pub inserted_orders: Vec<InnerOrder>,
     pub bbo: DateBBO,
     pub depth: DateDepth,
+    pub now: i64,
 }
 
 #[derive(Debug, Deserialize, Serialize)]
@@ -297,6 +306,7 @@ pub mod server {
                 inserted_orders: result.2,
                 executed_orders: result.1,
                 has_next: result.0,
+                now: result.5,
             }))
         } else {
             Err(UistV2Error::UnknownBacktest)
