@@ -226,12 +226,6 @@ pub struct InfoResponse {
     pub dataset: String,
 }
 
-#[derive(Debug, Deserialize, Serialize)]
-pub struct NowResponse {
-    pub now: i64,
-    pub has_next: bool,
-}
-
 #[derive(Debug)]
 pub enum UistV2Error {
     UnknownBacktest,
@@ -277,7 +271,6 @@ pub trait Client {
         &self,
         dataset_name: String,
     ) -> impl Future<Output = Result<DatasetInfoResponse>>;
-    fn now(&self, backtest_id: BacktestId) -> impl Future<Output = Result<NowResponse>>;
 }
 
 type UistState = AppState;
@@ -287,7 +280,7 @@ pub mod server {
 
     use super::{
         BacktestId, DatasetInfoResponse, InfoResponse, InitRequest, InitResponse,
-        InsertOrderRequest, NowResponse, TickResponse, UistState, UistV2Error,
+        InsertOrderRequest, TickResponse, UistState, UistV2Error,
     };
 
     #[get("/backtest/{backtest_id}/tick")]
@@ -379,26 +372,6 @@ pub mod server {
             Err(UistV2Error::UnknownDataset)
         }
     }
-
-    #[get("/backtest/{backtest_id}/now")]
-    pub async fn now(
-        app: web::Data<UistState>,
-        path: web::Path<(BacktestId,)>,
-    ) -> Result<web::Json<NowResponse>, UistV2Error> {
-        let (backtest_id,) = path.into_inner();
-
-        if let Some(backtest) = app.backtests.get(&backtest_id) {
-            if let Some(dataset) = app.datasets.get(&backtest.dataset_name) {
-                let now = backtest.curr_date;
-                let has_next = dataset.get_date_bounds().unwrap().1 > now;
-                Ok(web::Json(NowResponse { now, has_next }))
-            } else {
-                Err(UistV2Error::UnknownDataset)
-            }
-        } else {
-            Err(UistV2Error::UnknownBacktest)
-        }
-    }
 }
 
 #[cfg(test)]
@@ -426,8 +399,7 @@ mod tests {
                 .service(init)
                 .service(tick)
                 .service(insert_orders)
-                .service(dataset_info)
-                .service(now),
+                .service(dataset_info),
         )
         .await;
 

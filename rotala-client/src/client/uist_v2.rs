@@ -4,7 +4,7 @@ use rotala::exchange::uist_v2::Order;
 use rotala::input::athena::Athena;
 use rotala_http::http::uist_v2::{
     AppState, BacktestId, Client, DatasetInfoResponse, InfoResponse, InitRequest, InitResponse,
-    InsertOrderRequest, NowResponse, TickResponse, UistV2Error,
+    InsertOrderRequest, TickResponse, UistV2Error,
 };
 use std::{
     future::{self, Future},
@@ -79,16 +79,6 @@ impl Client for HttpClient {
             .send()
             .await?
             .json::<DatasetInfoResponse>()
-            .await?)
-    }
-
-    async fn now(&self, backtest_id: BacktestId) -> Result<NowResponse> {
-        Ok(self
-            .client
-            .get(self.path.clone() + format!("/backtest/{backtest_id}/now").as_str())
-            .send()
-            .await?
-            .json::<NowResponse>()
             .await?)
     }
 }
@@ -177,20 +167,6 @@ impl Client for TestClient {
             }))
         } else {
             future::ready(Err(Error::new(UistV2Error::UnknownDataset)))
-        }
-    }
-
-    fn now(&self, backtest_id: BacktestId) -> impl Future<Output = Result<NowResponse>> {
-        if let Some(backtest) = self.state.backtests.get(&backtest_id) {
-            if let Some(_dataset) = self.state.datasets.get(&backtest.dataset_name) {
-                let now = backtest.curr_date;
-                let has_next = now < backtest.end_date;
-                future::ready(Ok(NowResponse { now, has_next }))
-            } else {
-                future::ready(Err(Error::new(UistV2Error::UnknownDataset)))
-            }
-        } else {
-            future::ready(Err(Error::new(UistV2Error::UnknownBacktest)))
         }
     }
 }
