@@ -1,10 +1,9 @@
+use std::collections::BTreeMap;
 use std::path::Path;
 use std::{collections::HashMap, fs::read_to_string};
 
 use serde::{Deserialize, Serialize};
 use serde_json::from_str;
-
-use crate::input::athena::{Depth, Level};
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct HyperLiquidLevel {
@@ -95,3 +94,94 @@ pub fn get_hyperliquid_l2(path: &Path) -> HashMap<u64, L2Book> {
     }
     result
 }
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub enum Side {
+    Bid,
+    Ask,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct Level {
+    pub price: f64,
+    pub size: f64,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct Depth {
+    pub bids: Vec<Level>,
+    pub asks: Vec<Level>,
+    pub date: i64,
+    pub symbol: String,
+}
+
+impl Depth {
+    pub fn add_level(&mut self, level: Level, side: Side) {
+        match side {
+            Side::Bid => {
+                self.bids.push(level);
+                self.bids
+                    .sort_by(|x, y| x.price.partial_cmp(&y.price).unwrap().reverse());
+            }
+            Side::Ask => {
+                self.asks.push(level);
+                self.asks
+                    .sort_by(|x, y| x.price.partial_cmp(&y.price).unwrap());
+            }
+        }
+    }
+
+    pub fn get_best_bid(&self) -> Option<&Level> {
+        self.bids.first()
+    }
+
+    pub fn get_best_ask(&self) -> Option<&Level> {
+        self.asks.first()
+    }
+
+    pub fn get_bbo(&self) -> Option<BBO> {
+        let best_bid = self.get_best_bid()?;
+        let best_ask = self.get_best_ask()?;
+
+        Some(BBO {
+            bid: best_bid.price,
+            bid_volume: best_bid.size,
+            ask: best_ask.price,
+            ask_volume: best_ask.size,
+            symbol: self.symbol.clone(),
+            date: self.date,
+        })
+    }
+
+    pub fn new(date: i64, symbol: impl Into<String>) -> Self {
+        Self {
+            bids: vec![],
+            asks: vec![],
+            date,
+            symbol: symbol.into(),
+        }
+    }
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct BBO {
+    pub bid: f64,
+    pub bid_volume: f64,
+    pub ask: f64,
+    pub ask_volume: f64,
+    pub symbol: String,
+    pub date: i64,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct Trade {
+    pub coin: String,
+    pub side: Side,
+    pub px: f64,
+    pub sz: f64,
+    pub time: i64,
+}
+
+pub type DateDepth = BTreeMap<String, Depth>;
+pub type DateBBO = BTreeMap<String, BBO>;
+pub type DateTrade = BTreeMap<i64, Trade>;

@@ -1,97 +1,14 @@
 #![allow(dead_code)]
 
 use std::collections::btree_map::Range;
-use std::collections::{BTreeMap, HashMap};
+use std::collections::BTreeMap;
 use std::ops::RangeBounds;
 use std::path::Path;
 
 use rand::thread_rng;
 use rand_distr::{Distribution, Uniform};
-use serde::{Deserialize, Serialize};
 
-use crate::source::hyperliquid::get_hyperliquid_l2;
-
-#[derive(Clone, Debug, Deserialize, Serialize)]
-pub enum Side {
-    Bid,
-    Ask,
-}
-
-#[derive(Clone, Debug, Deserialize, Serialize)]
-pub struct Level {
-    pub price: f64,
-    pub size: f64,
-}
-
-#[derive(Clone, Debug, Deserialize, Serialize)]
-pub struct Depth {
-    pub bids: Vec<Level>,
-    pub asks: Vec<Level>,
-    pub date: i64,
-    pub symbol: String,
-}
-
-impl Depth {
-    pub fn add_level(&mut self, level: Level, side: Side) {
-        match side {
-            Side::Bid => {
-                self.bids.push(level);
-                self.bids
-                    .sort_by(|x, y| x.price.partial_cmp(&y.price).unwrap().reverse());
-            }
-            Side::Ask => {
-                self.asks.push(level);
-                self.asks
-                    .sort_by(|x, y| x.price.partial_cmp(&y.price).unwrap());
-            }
-        }
-    }
-
-    pub fn get_best_bid(&self) -> Option<&Level> {
-        self.bids.first()
-    }
-
-    pub fn get_best_ask(&self) -> Option<&Level> {
-        self.asks.first()
-    }
-
-    pub fn get_bbo(&self) -> Option<BBO> {
-        let best_bid = self.get_best_bid()?;
-        let best_ask = self.get_best_ask()?;
-
-        Some(BBO {
-            bid: best_bid.price,
-            bid_volume: best_bid.size,
-            ask: best_ask.price,
-            ask_volume: best_ask.size,
-            symbol: self.symbol.clone(),
-            date: self.date,
-        })
-    }
-
-    pub fn new(date: i64, symbol: impl Into<String>) -> Self {
-        Self {
-            bids: vec![],
-            asks: vec![],
-            date,
-            symbol: symbol.into(),
-        }
-    }
-}
-
-#[derive(Clone, Debug, Deserialize, Serialize)]
-pub struct BBO {
-    pub bid: f64,
-    pub bid_volume: f64,
-    pub ask: f64,
-    pub ask_volume: f64,
-    pub symbol: String,
-    pub date: i64,
-}
-
-pub type DateDepth = HashMap<String, Depth>;
-
-pub type DateBBO = HashMap<String, BBO>;
+use crate::source::hyperliquid::{get_hyperliquid_l2, DateBBO, DateDepth, Depth, Level, Side};
 
 pub struct Athena {
     inner: BTreeMap<i64, DateDepth>,
@@ -129,7 +46,7 @@ impl Athena {
     }
 
     pub fn get_bbo(&self, dates: impl RangeBounds<i64>) -> Option<DateBBO> {
-        let mut res = HashMap::new();
+        let mut res = BTreeMap::new();
 
         let depth_between = self.get_quotes_between(dates);
         if let Some(last_depth) = depth_between.last() {
@@ -234,7 +151,9 @@ impl Default for Athena {
 
 #[cfg(test)]
 mod tests {
-    use super::{Athena, Level, Side};
+    use crate::source::hyperliquid::{Level, Side};
+
+    use super::Athena;
 
     #[test]
     fn test_that_insertions_are_sorted() {
