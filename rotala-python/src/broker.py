@@ -308,8 +308,8 @@ class Broker:
             if self.latest_quotes:
                 self.cached_quotes = self.latest_quotes
             self.latest_depth = tick_response["depth"]
-            if self.latest_quotes:
-                self.ts = list(self.latest_quotes.values())[0]["date"]
+
+        self.ts = tick_response["now"]
 
         curr_value = self.get_current_value()
         logger.debug(f"{self.backtest_id}-{self.ts} TOTAL VALUE: {curr_value}")

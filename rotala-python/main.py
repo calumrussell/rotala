@@ -55,16 +55,18 @@ if __name__ == "__main__":
 
     dataset_name = "Test"
     frequency = 250
+    sim_length = frequency * 10000
     http_client = HttpClient("http://127.0.0.1:3000")
     dataset_info = http_client.dataset_info(dataset_name)
+    start_date = dataset_info["start_date"]
 
     builder = BrokerBuilder()
     builder.init_dataset_name(dataset_name)
     builder.init_cash(100000)
     builder.init_http(http_client)
     #Clear the first date so we have quotes always
-    builder.init_dates(dataset_info["start_date"]+250, dataset_info["end_date"])
-    builder.init_frequency(250)
+    builder.init_dates(start_date+frequency, start_date+frequency+sim_length)
+    builder.init_frequency(frequency)
     brkr = builder.build()
 
     last_mid = -1
