@@ -11,7 +11,14 @@ use rotala::exchange::uist_v2::{InnerOrder, Order, OrderId, OrderResult, UistV2}
 use rotala::input::athena::{Athena, DateBBO, DateDepth};
 
 pub type BacktestId = u64;
-pub type TickResponseType = (bool, Vec<OrderResult>, Vec<InnerOrder>, DateBBO, DateDepth);
+pub type TickResponseType = (
+    bool,
+    Vec<OrderResult>,
+    Vec<InnerOrder>,
+    DateBBO,
+    DateDepth,
+    i64,
+);
 
 pub struct BacktestState {
     pub id: BacktestId,
@@ -77,6 +84,7 @@ impl AppState {
                         Vec::new(),
                         HashMap::new(),
                         HashMap::new(),
+                        new_date,
                     ));
                 } else {
                     let bbo = dataset
@@ -93,7 +101,7 @@ impl AppState {
                     };
 
                     backtest.curr_date = new_date;
-                    return Some((true, executed_orders, inserted_orders, bbo, depth));
+                    return Some((true, executed_orders, inserted_orders, bbo, depth, new_date));
                 }
             }
         }
@@ -182,6 +190,7 @@ pub struct TickResponse {
     pub inserted_orders: Vec<InnerOrder>,
     pub bbo: DateBBO,
     pub depth: DateDepth,
+    pub now: i64,
 }
 
 #[derive(Debug, Deserialize, Serialize)]
@@ -224,12 +233,6 @@ pub struct DatasetInfoResponse {
 pub struct InfoResponse {
     pub version: String,
     pub dataset: String,
-}
-
-#[derive(Debug, Deserialize, Serialize)]
-pub struct NowResponse {
-    pub now: i64,
-    pub has_next: bool,
 }
 
 #[derive(Debug)]
@@ -277,7 +280,6 @@ pub trait Client {
         &self,
         dataset_name: String,
     ) -> impl Future<Output = Result<DatasetInfoResponse>>;
-    fn now(&self, backtest_id: BacktestId) -> impl Future<Output = Result<NowResponse>>;
 }
 
 type UistState = AppState;
@@ -287,7 +289,7 @@ pub mod server {
 
     use super::{
         BacktestId, DatasetInfoResponse, InfoResponse, InitRequest, InitResponse,
-        InsertOrderRequest, NowResponse, TickResponse, UistState, UistV2Error,
+        InsertOrderRequest, TickResponse, UistState, UistV2Error,
     };
 
     #[get("/backtest/{backtest_id}/tick")]
@@ -304,6 +306,7 @@ pub mod server {
                 inserted_orders: result.2,
                 executed_orders: result.1,
                 has_next: result.0,
+                now: result.5,
             }))
         } else {
             Err(UistV2Error::UnknownBacktest)
@@ -379,26 +382,6 @@ pub mod server {
             Err(UistV2Error::UnknownDataset)
         }
     }
-
-    #[get("/backtest/{backtest_id}/now")]
-    pub async fn now(
-        app: web::Data<UistState>,
-        path: web::Path<(BacktestId,)>,
-    ) -> Result<web::Json<NowResponse>, UistV2Error> {
-        let (backtest_id,) = path.into_inner();
-
-        if let Some(backtest) = app.backtests.get(&backtest_id) {
-            if let Some(dataset) = app.datasets.get(&backtest.dataset_name) {
-                let now = backtest.curr_date;
-                let has_next = dataset.get_date_bounds().unwrap().1 > now;
-                Ok(web::Json(NowResponse { now, has_next }))
-            } else {
-                Err(UistV2Error::UnknownDataset)
-            }
-        } else {
-            Err(UistV2Error::UnknownBacktest)
-        }
-    }
 }
 
 #[cfg(test)]
@@ -426,8 +409,7 @@ mod tests {
                 .service(init)
                 .service(tick)
                 .service(insert_orders)
-                .service(dataset_info)
-                .service(now),
+                .service(dataset_info),
         )
         .await;
 

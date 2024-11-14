@@ -57,13 +57,6 @@ class HttpClient:
         r = self.s.get(f"{self.base_url}/backtest/{self.backtest_id}/info")
         return r.json()
 
-    def now(self):
-        if self.backtest_id is None:
-            raise ValueError("Called before init")
-
-        r = self.s.get(f"{self.base_url}/backtest/{self.backtest_id}/now")
-        return r.json()
-
     def dataset_info(self, dataset):
         r = self.s.get(f"{self.base_url}/dataset/{dataset}/info")
         return r.json()
