@@ -2,9 +2,10 @@
 use std::collections::{BTreeMap, HashMap};
 
 use anyhow::Result;
-use serde::{Deserialize, Serialize};
 use tokio_pg_mapper::FromTokioPostgresRow;
 use tokio_postgres::{Client, NoTls};
+
+use crate::source::hyperliquid::{DateDepth, DateTrade, Depth, Level, Side};
 
 pub struct Minerva {
     db: Client,
@@ -23,33 +24,16 @@ pub struct L2Book {
 #[derive(tokio_pg_mapper::PostgresMapper, Clone, Debug)]
 #[pg_mapper(table = "trade")]
 pub struct Trade {
-    coin: String,
-    side: String,
-    px: String,
-    sz: String,
-    hash: String,
-    time: i64,
-    tid: i64,
+    pub coin: String,
+    pub side: String,
+    pub px: String,
+    pub sz: String,
+    pub hash: String,
+    pub time: i64,
+    pub tid: i64,
 }
 
-pub type TradeByDate = BTreeMap<i64, MinervaTrade>;
-
-#[derive(Clone, Debug, Deserialize, Serialize)]
-pub enum Side {
-    Bid,
-    Ask,
-}
-
-#[derive(Clone, Debug, Deserialize, Serialize)]
-pub struct MinervaTrade {
-    coin: String,
-    side: Side,
-    px: f64,
-    sz: f64,
-    time: i64,
-}
-
-impl From<Trade> for MinervaTrade {
+impl From<Trade> for crate::source::hyperliquid::Trade {
     fn from(value: Trade) -> Self {
         let side = if value.side == "B" {
             Side::Bid
@@ -65,22 +49,6 @@ impl From<Trade> for MinervaTrade {
             time: value.time,
         }
     }
-}
-
-pub type DepthByDate = BTreeMap<i64, Depth>;
-
-#[derive(Clone, Debug, Deserialize, Serialize)]
-pub struct Level {
-    pub price: f64,
-    pub size: f64,
-}
-
-#[derive(Clone, Debug, Deserialize, Serialize)]
-pub struct Depth {
-    pub bids: Vec<Level>,
-    pub asks: Vec<Level>,
-    pub date: i64,
-    pub symbol: String,
 }
 
 impl From<Vec<L2Book>> for Depth {
@@ -133,7 +101,16 @@ impl Minerva {
         Ok(client)
     }
 
-    pub async fn get_trades(&self, start_date: &i64, end_date: &i64, coin: &str) -> TradeByDate {
+    pub async fn get_date_bounds(&self) -> Option<(i64, i64)> {
+        //TODO: should cache result because this is potentially crippling
+        let _query_result = self
+            .db
+            .query("select min(time), max(time) from trade", &[])
+            .await;
+        unimplemented!()
+    }
+
+    pub async fn get_trades(&self, start_date: &i64, end_date: &i64, coin: &str) -> DateTrade {
         let query_result = self
             .db
             .query(
@@ -146,20 +123,25 @@ impl Minerva {
         if let Ok(rows) = query_result {
             for row in rows {
                 if let Ok(trade) = Trade::from_row(row) {
-                    let minerva_trade: MinervaTrade = trade.into();
-                    res.insert(minerva_trade.time, minerva_trade);
+                    let hl_trade: crate::source::hyperliquid::Trade = trade.into();
+                    res.insert(hl_trade.time, hl_trade);
                 }
             }
         }
         res
     }
 
-    pub async fn get_depth(&self, start_date: &i64, end_date: &i64, coin: &str) -> DepthByDate {
+    pub async fn get_depth_between(&self, dates: std::ops::Range<i64>) -> BTreeMap<i64, DateDepth> {
+        //Looks weird right now but we need this to work with BTreeMap because we will want to
+        //cache values rather than send every request to DB
+        let start_date = dates.start;
+        let end_date = dates.end;
+
         let query_result = self
             .db
             .query(
-                "select * from l2Book where coin=$1::TEXT and time between $2 and $3",
-                &[&coin, &start_date, &end_date],
+                "select * from l2Book where time between $2 and $3",
+                &[&start_date, &end_date],
             )
             .await;
 
@@ -179,7 +161,12 @@ impl Minerva {
         let mut depth_result = BTreeMap::new();
         for (date, rows) in sort_into_dates.iter_mut() {
             let depth: Depth = std::mem::take(rows).into();
-            depth_result.insert(*date, depth);
+
+            depth_result.entry(*date).or_insert_with(BTreeMap::new);
+            depth_result
+                .get_mut(date)
+                .unwrap()
+                .insert(depth.symbol.clone(), depth);
         }
 
         depth_result

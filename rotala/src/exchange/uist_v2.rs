@@ -6,7 +6,7 @@ use std::{
 
 use serde::{Deserialize, Serialize};
 
-use crate::input::athena::{DateDepth, Depth, Level};
+use crate::source::hyperliquid::{DateDepth, Depth, Level, BBO};
 
 pub type OrderId = u64;
 
@@ -20,8 +20,8 @@ pub struct Quote {
     pub symbol: String,
 }
 
-impl From<crate::input::athena::BBO> for Quote {
-    fn from(value: crate::input::athena::BBO) -> Self {
+impl From<BBO> for Quote {
+    fn from(value: BBO) -> Self {
         Self {
             bid: value.bid,
             bid_volume: value.bid_volume,
@@ -475,11 +475,7 @@ impl OrderBook {
         trades
     }
 
-    pub fn execute_orders(
-        &mut self,
-        quotes: &crate::input::athena::DateDepth,
-        now: i64,
-    ) -> Vec<OrderResult> {
+    pub fn execute_orders(&mut self, quotes: &DateDepth, now: i64) -> Vec<OrderResult> {
         //Tracks liquidity that has been used at each level
         let mut filled: FillTracker = FillTracker::new();
 
@@ -563,11 +559,11 @@ impl OrderBook {
 
 #[cfg(test)]
 mod tests {
-    use std::collections::HashMap;
+    use std::collections::BTreeMap;
 
     use crate::{
         exchange::uist_v2::{Order, OrderBook},
-        input::athena::{DateDepth, Depth, Level},
+        source::hyperliquid::{DateDepth, Depth, Level, Side},
     };
 
     fn quotes() -> DateDepth {
@@ -582,10 +578,10 @@ mod tests {
         };
 
         let mut depth = Depth::new(100, "ABC");
-        depth.add_level(bid_level, crate::input::athena::Side::Bid);
-        depth.add_level(ask_level, crate::input::athena::Side::Ask);
+        depth.add_level(bid_level, Side::Bid);
+        depth.add_level(ask_level, Side::Ask);
 
-        let mut quotes: DateDepth = HashMap::new();
+        let mut quotes: DateDepth = BTreeMap::new();
         quotes.insert("ABC".to_string(), depth);
         quotes
     }
@@ -602,10 +598,10 @@ mod tests {
         };
 
         let mut depth = Depth::new(100, "ABC");
-        depth.add_level(bid_level, crate::input::athena::Side::Bid);
-        depth.add_level(ask_level, crate::input::athena::Side::Ask);
+        depth.add_level(bid_level, Side::Bid);
+        depth.add_level(ask_level, Side::Ask);
 
-        let mut quotes: DateDepth = HashMap::new();
+        let mut quotes: DateDepth = BTreeMap::new();
         quotes.insert("ABC".to_string(), depth);
         quotes
     }
@@ -712,11 +708,11 @@ mod tests {
         };
 
         let mut depth = Depth::new(100, "ABC");
-        depth.add_level(bid_level, crate::input::athena::Side::Bid);
-        depth.add_level(ask_level, crate::input::athena::Side::Ask);
-        depth.add_level(ask_level_1, crate::input::athena::Side::Ask);
+        depth.add_level(bid_level, Side::Bid);
+        depth.add_level(ask_level, Side::Ask);
+        depth.add_level(ask_level_1, Side::Ask);
 
-        let mut quotes: DateDepth = HashMap::new();
+        let mut quotes: DateDepth = BTreeMap::new();
         quotes.insert("ABC".to_string(), depth);
 
         let mut orderbook = OrderBook::new();
@@ -757,12 +753,12 @@ mod tests {
         };
 
         let mut depth = Depth::new(100, "ABC");
-        depth.add_level(bid_level, crate::input::athena::Side::Bid);
-        depth.add_level(ask_level, crate::input::athena::Side::Ask);
-        depth.add_level(ask_level_1, crate::input::athena::Side::Ask);
-        depth.add_level(ask_level_2, crate::input::athena::Side::Ask);
+        depth.add_level(bid_level, Side::Bid);
+        depth.add_level(ask_level, Side::Ask);
+        depth.add_level(ask_level_1, Side::Ask);
+        depth.add_level(ask_level_2, Side::Ask);
 
-        let mut quotes: DateDepth = HashMap::new();
+        let mut quotes: DateDepth = BTreeMap::new();
         quotes.insert("ABC".to_string(), depth);
 
         let mut orderbook = OrderBook::new();
@@ -804,12 +800,12 @@ mod tests {
         };
 
         let mut depth = Depth::new(100, "ABC");
-        depth.add_level(bid_level_0, crate::input::athena::Side::Bid);
-        depth.add_level(bid_level_1, crate::input::athena::Side::Bid);
-        depth.add_level(bid_level_2, crate::input::athena::Side::Bid);
-        depth.add_level(ask_level, crate::input::athena::Side::Ask);
+        depth.add_level(bid_level_0, Side::Bid);
+        depth.add_level(bid_level_1, Side::Bid);
+        depth.add_level(bid_level_2, Side::Bid);
+        depth.add_level(ask_level, Side::Ask);
 
-        let mut quotes: DateDepth = HashMap::new();
+        let mut quotes: DateDepth = BTreeMap::new();
         quotes.insert("ABC".to_string(), depth);
 
         let mut orderbook = OrderBook::new();
@@ -855,18 +851,18 @@ mod tests {
         };
 
         let mut depth = Depth::new(100, "ABC");
-        depth.add_level(bid_level.clone(), crate::input::athena::Side::Bid);
-        depth.add_level(ask_level.clone(), crate::input::athena::Side::Ask);
+        depth.add_level(bid_level.clone(), Side::Bid);
+        depth.add_level(ask_level.clone(), Side::Ask);
 
         let mut depth_101 = Depth::new(101, "ABC");
-        depth_101.add_level(bid_level.clone(), crate::input::athena::Side::Bid);
-        depth_101.add_level(ask_level.clone(), crate::input::athena::Side::Ask);
+        depth_101.add_level(bid_level.clone(), Side::Bid);
+        depth_101.add_level(ask_level.clone(), Side::Ask);
 
         let mut depth_102 = Depth::new(102, "ABC");
-        depth_102.add_level(bid_level, crate::input::athena::Side::Bid);
-        depth_102.add_level(ask_level, crate::input::athena::Side::Ask);
+        depth_102.add_level(bid_level, Side::Bid);
+        depth_102.add_level(ask_level, Side::Ask);
 
-        let mut quotes: DateDepth = HashMap::new();
+        let mut quotes: DateDepth = BTreeMap::new();
         quotes.insert("ABC".to_string(), depth);
         quotes.insert("ABC".to_string(), depth_101);
         quotes.insert("ABC".to_string(), depth_102);
@@ -913,18 +909,18 @@ mod tests {
         };
 
         let mut depth = Depth::new(100, "ABC");
-        depth.add_level(bid_level.clone(), crate::input::athena::Side::Bid);
-        depth.add_level(ask_level.clone(), crate::input::athena::Side::Ask);
+        depth.add_level(bid_level.clone(), Side::Bid);
+        depth.add_level(ask_level.clone(), Side::Ask);
 
         let mut depth_101 = Depth::new(101, "ABC");
-        depth_101.add_level(bid_level.clone(), crate::input::athena::Side::Bid);
-        depth_101.add_level(ask_level.clone(), crate::input::athena::Side::Ask);
+        depth_101.add_level(bid_level.clone(), Side::Bid);
+        depth_101.add_level(ask_level.clone(), Side::Ask);
 
         let mut depth_102 = Depth::new(102, "ABC");
-        depth_102.add_level(bid_level, crate::input::athena::Side::Bid);
-        depth_102.add_level(ask_level, crate::input::athena::Side::Ask);
+        depth_102.add_level(bid_level, Side::Bid);
+        depth_102.add_level(ask_level, Side::Ask);
 
-        let mut quotes: DateDepth = HashMap::new();
+        let mut quotes: DateDepth = BTreeMap::new();
         quotes.insert("ABC".to_string(), depth);
         quotes.insert("ABC".to_string(), depth_101);
         quotes.insert("ABC".to_string(), depth_102);

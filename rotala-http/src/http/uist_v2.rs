@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 use std::future::Future;
 use std::sync::atomic::AtomicU64;
 
@@ -8,7 +8,8 @@ use dashmap::DashMap;
 use serde::{Deserialize, Serialize};
 
 use rotala::exchange::uist_v2::{InnerOrder, Order, OrderId, OrderResult, UistV2};
-use rotala::input::athena::{Athena, DateBBO, DateDepth};
+use rotala::input::athena::Athena;
+use rotala::source::hyperliquid::{DateBBO, DateDepth};
 
 pub type BacktestId = u64;
 pub type TickResponseType = (
@@ -82,8 +83,8 @@ impl AppState {
                         false,
                         Vec::new(),
                         Vec::new(),
-                        HashMap::new(),
-                        HashMap::new(),
+                        BTreeMap::new(),
+                        BTreeMap::new(),
                         new_date,
                     ));
                 } else {
@@ -97,7 +98,7 @@ impl AppState {
                     {
                         quotes.1.clone()
                     } else {
-                        HashMap::default()
+                        BTreeMap::default()
                     };
 
                     backtest.curr_date = new_date;
@@ -158,7 +159,7 @@ impl AppState {
                     {
                         quotes.1.clone()
                     } else {
-                        HashMap::default()
+                        BTreeMap::default()
                     };
                     return Some((curr_id, bbo, depth));
                 }
