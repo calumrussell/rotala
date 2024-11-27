@@ -475,11 +475,7 @@ impl OrderBook {
         trades
     }
 
-    pub fn execute_orders(
-        &mut self,
-        quotes: &DateDepth,
-        now: i64,
-    ) -> Vec<OrderResult> {
+    pub fn execute_orders(&mut self, quotes: &DateDepth, now: i64) -> Vec<OrderResult> {
         //Tracks liquidity that has been used at each level
         let mut filled: FillTracker = FillTracker::new();
 
@@ -566,7 +562,8 @@ mod tests {
     use std::collections::BTreeMap;
 
     use crate::{
-        exchange::uist_v2::{Order, OrderBook}, source::hyperliquid::{DateDepth, Depth, Level, Side},
+        exchange::uist_v2::{Order, OrderBook},
+        source::hyperliquid::{DateDepth, Depth, Level, Side},
     };
 
     fn quotes() -> DateDepth {
