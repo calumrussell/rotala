@@ -1,4 +1,5 @@
 #![allow(dead_code)]
+use std::collections::btree_map::Range;
 use std::collections::{BTreeMap, HashMap};
 
 use anyhow::Result;
@@ -134,12 +135,17 @@ impl Minerva {
         res
     }
 
-    pub async fn get_depth(&self, start_date: &i64, end_date: &i64, coin: &str) -> DateDepth {
+    pub async fn get_depth_between(&self, dates: std::ops::Range<i64>) -> Range<i64, DateDepth> {
+        //Looks weird right now but we need this to work with BTreeMap because we will want to
+        //cache values rather than send every request to DB
+        let start_date= dates.start;
+        let end_date= dates.end;
+
         let query_result = self
             .db
             .query(
-                "select * from l2Book where coin=$1::TEXT and time between $2 and $3",
-                &[&coin, &start_date, &end_date],
+                "select * from l2Book where time between $2 and $3",
+                &[&start_date, &end_date],
             )
             .await;
 
@@ -159,9 +165,13 @@ impl Minerva {
         let mut depth_result = BTreeMap::new();
         for (date, rows) in sort_into_dates.iter_mut() {
             let depth: Depth = std::mem::take(rows).into();
-            depth_result.insert(*date, depth);
+
+            depth_result.entry(*date).or_insert_with(BTreeMap::new);
+            depth_result.get_mut(date)
+                .unwrap()
+                .insert(depth.symbol.clone(), depth);
         }
 
-        depth_result
+        depth_result.range(dates)
     }
 }

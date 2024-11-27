@@ -2,7 +2,6 @@
 
 use std::collections::btree_map::Range;
 use std::collections::BTreeMap;
-use std::ops::RangeBounds;
 use std::path::Path;
 
 use rand::thread_rng;
@@ -21,11 +20,11 @@ impl Athena {
         Some((first_date, last_date))
     }
 
-    pub fn get_quotes_between(&self, dates: impl RangeBounds<i64>) -> Range<i64, DateDepth> {
+    pub fn get_quotes_between(&self, dates: std::ops::Range<i64>) -> Range<i64, DateDepth> {
         self.inner.range(dates)
     }
 
-    pub fn get_best_bid(&self, dates: impl RangeBounds<i64>, symbol: &str) -> Option<&Level> {
+    pub fn get_best_bid(&self, dates: std::ops::Range<i64>, symbol: &str) -> Option<&Level> {
         let depth_between = self.get_quotes_between(dates);
         if let Some(last_depth) = depth_between.last() {
             if let Some(coin_depth) = last_depth.1.get(symbol) {
@@ -35,7 +34,7 @@ impl Athena {
         None
     }
 
-    pub fn get_best_ask(&self, dates: impl RangeBounds<i64>, symbol: &str) -> Option<&Level> {
+    pub fn get_best_ask(&self, dates: std::ops::Range<i64>, symbol: &str) -> Option<&Level> {
         let depth_between = self.get_quotes_between(dates);
         if let Some(last_depth) = depth_between.last() {
             if let Some(coin_depth) = last_depth.1.get(symbol) {
@@ -45,7 +44,7 @@ impl Athena {
         None
     }
 
-    pub fn get_bbo(&self, dates: impl RangeBounds<i64>) -> Option<DateBBO> {
+    pub fn get_bbo(&self, dates: std::ops::Range<i64>) -> Option<DateBBO> {
         let mut res = BTreeMap::new();
 
         let depth_between = self.get_quotes_between(dates);
