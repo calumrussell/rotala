@@ -6,7 +6,7 @@ use std::{
 
 use serde::{Deserialize, Serialize};
 
-use crate::source::hyperliquid::{DateDepth, Depth, Level, BBO};
+use crate::source::hyperliquid::{DateDepth, DateTrade, Depth, Level, BBO};
 
 pub type OrderId = u64;
 
@@ -169,7 +169,9 @@ impl UistV2 {
     pub fn tick(&mut self, quotes: &DateDepth, now: i64) -> (Vec<OrderResult>, Vec<InnerOrder>) {
         //To eliminate lookahead bias, we only insert new orders after we have executed any orders
         //that were on the stack first
-        let executed_trades = self.orderbook.execute_orders(quotes, now);
+        //TODO: stub with empty value for now
+        let trades = BTreeMap::new();
+        let executed_trades = self.orderbook.execute_orders(quotes, &trades, now);
         for executed_trade in &executed_trades {
             self.order_result_log.push(executed_trade.clone());
         }
@@ -475,7 +477,7 @@ impl OrderBook {
         trades
     }
 
-    pub fn execute_orders(&mut self, quotes: &DateDepth, now: i64) -> Vec<OrderResult> {
+    pub fn execute_orders(&mut self, quotes: &DateDepth, trades: &DateTrade, now: i64) -> Vec<OrderResult> {
         //Tracks liquidity that has been used at each level
         let mut filled: FillTracker = FillTracker::new();
 
@@ -526,7 +528,7 @@ impl OrderBook {
             }
 
             if let Some(depth) = quotes.get(security_id) {
-                let mut trades = match order.order_type {
+                let mut completed_trades = match order.order_type {
                     OrderType::MarketBuy => {
                         Self::fill_order(depth, &order, true, f64::MAX, &mut filled)
                     }
@@ -543,11 +545,11 @@ impl OrderBook {
                     _ => vec![],
                 };
 
-                if trades.is_empty() {
+                if completed_trades.is_empty() {
                     unexecuted_orders.insert(order_id, order);
                 }
 
-                trade_results.append(&mut trades)
+                trade_results.append(&mut completed_trades)
             } else {
                 unexecuted_orders.insert(order_id, order);
             }
@@ -563,8 +565,30 @@ mod tests {
 
     use crate::{
         exchange::uist_v2::{Order, OrderBook},
-        source::hyperliquid::{DateDepth, Depth, Level, Side},
+        source::hyperliquid::{DateDepth, DateTrade, Depth, Level, Side, Trade},
     };
+
+    fn trades() -> DateTrade {
+        let bid_trade = Trade {
+            coin: "ABC".to_string(),
+            side: Side::Bid,
+            px: 100.0,
+            sz: 100.0,
+            time: 100,
+        };
+        let ask_trade = Trade {
+            coin: "ABC".to_string(),
+            side: Side::Ask,
+            px: 102.0,
+            sz: 100.0,
+            time: 100,
+        };
+
+        let mut trades: DateTrade = BTreeMap::new();
+        trades.insert(100, vec![bid_trade, ask_trade]);
+
+        trades
+    }
 
     fn quotes() -> DateDepth {
         let bid_level = Level {
@@ -586,6 +610,28 @@ mod tests {
         quotes
     }
 
+    fn trades1() -> DateTrade {
+        let bid_trade = Trade {
+            coin: "ABC".to_string(),
+            side: Side::Bid,
+            px: 98.0,
+            sz: 20.0,
+            time: 100,
+        };
+        let ask_trade = Trade {
+            coin: "ABC".to_string(),
+            side: Side::Ask,
+            px: 102.0,
+            sz: 20.0,
+            time: 100,
+        };
+
+        let mut trades: DateTrade = BTreeMap::new();
+        trades.insert(100, vec![bid_trade, ask_trade]);
+
+        trades
+    }
+
     fn quotes1() -> DateDepth {
         let bid_level = Level {
             price: 98.0,
@@ -603,30 +649,34 @@ mod tests {
 
         let mut quotes: DateDepth = BTreeMap::new();
         quotes.insert("ABC".to_string(), depth);
+
         quotes
     }
 
     #[test]
     fn test_that_nonexistent_buy_order_cancel_produces_empty_result() {
         let quotes = quotes();
+        let trades = trades();
         let mut orderbook = OrderBook::new();
         orderbook.insert_order(Order::cancel_order("ABC", 10), 100);
-        let res = orderbook.execute_orders(&quotes, 100);
+        let res = orderbook.execute_orders(&quotes,&trades, 100);
         assert!(res.is_empty())
     }
 
     #[test]
     fn test_that_nonexistent_buy_order_modify_throws_error() {
         let quotes = quotes();
+        let trades = trades();
         let mut orderbook = OrderBook::new();
         orderbook.insert_order(Order::modify_order("ABC", 10, 100.0), 100);
-        let res = orderbook.execute_orders(&quotes, 100);
+        let res = orderbook.execute_orders(&quotes,&trades, 100);
         assert!(res.is_empty())
     }
 
     #[test]
     fn test_that_buy_order_can_be_cancelled_and_modified() {
         let quotes = quotes();
+        let trades = trades();
 
         let mut orderbook = OrderBook::new();
         let oid = orderbook
@@ -634,7 +684,7 @@ mod tests {
             .order_id;
 
         orderbook.insert_order(Order::cancel_order("ABC", oid), 100);
-        let res = orderbook.execute_orders(&quotes, 100);
+        let res = orderbook.execute_orders(&quotes,&trades, 100);
         println!("{:?}", res);
         assert!(res.len() == 1);
 
@@ -642,19 +692,20 @@ mod tests {
             .insert_order(Order::limit_buy("ABC", 200.0, 1.0), 100)
             .order_id;
         orderbook.insert_order(Order::modify_order("ABC", oid1, 100.0), 100);
-        let res = orderbook.execute_orders(&quotes, 100);
+        let res = orderbook.execute_orders(&quotes,&trades, 100);
         assert!(res.len() == 1);
     }
 
     #[test]
     fn test_that_buy_order_will_lift_all_volume_when_order_is_equal_to_depth_size() {
         let quotes = quotes();
+        let trades = trades();
 
         let mut orderbook = OrderBook::new();
         let order = Order::market_buy("ABC", 100.0);
         orderbook.insert_order(order, 100);
 
-        let res = orderbook.execute_orders(&quotes, 100);
+        let res = orderbook.execute_orders(&quotes,&trades, 100);
         assert!(res.len() == 1);
         let trade = res.first().unwrap();
         assert!(trade.quantity == 100.00);
@@ -664,12 +715,13 @@ mod tests {
     #[test]
     fn test_that_sell_order_will_lift_all_volume_when_order_is_equal_to_depth_size() {
         let quotes = quotes();
+        let trades = trades();
 
         let mut orderbook = OrderBook::new();
         let order = Order::market_sell("ABC", 100.0);
         orderbook.insert_order(order, 100);
 
-        let res = orderbook.execute_orders(&quotes, 100);
+        let res = orderbook.execute_orders(&quotes,&trades, 100);
         assert!(res.len() == 1);
         let trade = res.first().unwrap();
         assert!(trade.quantity == 100.00);
@@ -679,11 +731,12 @@ mod tests {
     #[test]
     fn test_that_order_will_lift_order_qty_when_order_is_less_than_depth_size() {
         let quotes = quotes();
+        let trades = trades();
         let mut orderbook = OrderBook::new();
         let order = Order::market_buy("ABC", 50.0);
         orderbook.insert_order(order, 100);
 
-        let res = orderbook.execute_orders(&quotes, 100);
+        let res = orderbook.execute_orders(&quotes,&trades, 100);
         assert!(res.len() == 1);
         let trade = res.first().unwrap();
         assert!(trade.quantity == 50.00);
@@ -715,11 +768,29 @@ mod tests {
         let mut quotes: DateDepth = BTreeMap::new();
         quotes.insert("ABC".to_string(), depth);
 
+        let bid_trade = Trade {
+            coin: "ABC".to_string(),
+            side: Side::Bid,
+            px: 100.0,
+            sz: 100.0,
+            time: 100,
+        };
+        let ask_trade = Trade {
+            coin: "ABC".to_string(),
+            side: Side::Ask,
+            px: 102.0,
+            sz: 80.0,
+            time: 100,
+        };
+
+        let mut trades: DateTrade = BTreeMap::new();
+        trades.insert(100, vec![bid_trade, ask_trade]);
+
         let mut orderbook = OrderBook::new();
         let order = Order::market_buy("ABC", 100.0);
         orderbook.insert_order(order, 100);
 
-        let res = orderbook.execute_orders(&quotes, 100);
+        let res = orderbook.execute_orders(&quotes,&trades, 100);
         assert!(res.len() == 2);
         let first_trade = res.first().unwrap();
         let second_trade = res.get(1).unwrap();
@@ -761,11 +832,29 @@ mod tests {
         let mut quotes: DateDepth = BTreeMap::new();
         quotes.insert("ABC".to_string(), depth);
 
+        let bid_trade = Trade {
+            coin: "ABC".to_string(),
+            side: Side::Bid,
+            px: 100.0,
+            sz: 100.0,
+            time: 100,
+        };
+        let ask_trade = Trade {
+            coin: "ABC".to_string(),
+            side: Side::Ask,
+            px: 102.0,
+            sz: 80.0,
+            time: 100,
+        };
+
+        let mut trades: DateTrade = BTreeMap::new();
+        trades.insert(100, vec![bid_trade, ask_trade]);
+
         let mut orderbook = OrderBook::new();
         let order = Order::limit_buy("ABC", 120.0, 103.00);
         orderbook.insert_order(order, 100);
 
-        let res = orderbook.execute_orders(&quotes, 100);
+        let res = orderbook.execute_orders(&quotes,&trades, 100);
         println!("{:?}", res);
         assert!(res.len() == 2);
         let first_trade = res.first().unwrap();
@@ -808,11 +897,29 @@ mod tests {
         let mut quotes: DateDepth = BTreeMap::new();
         quotes.insert("ABC".to_string(), depth);
 
+        let bid_trade = Trade {
+            coin: "ABC".to_string(),
+            side: Side::Bid,
+            px: 100.0,
+            sz: 80.0,
+            time: 100,
+        };
+        let ask_trade = Trade {
+            coin: "ABC".to_string(),
+            side: Side::Ask,
+            px: 102.0,
+            sz: 80.0,
+            time: 100,
+        };
+
+        let mut trades: DateTrade = BTreeMap::new();
+        trades.insert(100, vec![bid_trade, ask_trade]);
+
         let mut orderbook = OrderBook::new();
         let order = Order::limit_sell("ABC", 120.0, 99.00);
         orderbook.insert_order(order, 100);
 
-        let res = orderbook.execute_orders(&quotes, 100);
+        let res = orderbook.execute_orders(&quotes,&trades, 100);
         println!("{:?}", res);
         assert!(res.len() == 2);
         let first_trade = res.first().unwrap();
@@ -827,13 +934,14 @@ mod tests {
     #[test]
     fn test_that_repeated_orders_do_not_use_same_liquidty() {
         let quotes = quotes1();
+        let trades = trades1();
         let mut orderbook = OrderBook::new();
         let first_order = Order::limit_buy("ABC", 20.0, 103.00);
         orderbook.insert_order(first_order, 100);
         let second_order = Order::limit_buy("ABC", 20.0, 103.00);
         orderbook.insert_order(second_order, 100);
 
-        let res = orderbook.execute_orders(&quotes, 100);
+        let res = orderbook.execute_orders(&quotes,&trades, 100);
         println!("{:?}", res);
         assert!(res.len() == 1);
     }
@@ -867,13 +975,31 @@ mod tests {
         quotes.insert("ABC".to_string(), depth_101);
         quotes.insert("ABC".to_string(), depth_102);
 
+        let bid_trade = Trade {
+            coin: "ABC".to_string(),
+            side: Side::Bid,
+            px: 98.0,
+            sz: 20.0,
+            time: 100,
+        };
+        let ask_trade = Trade {
+            coin: "ABC".to_string(),
+            side: Side::Ask,
+            px: 102.0,
+            sz: 20.0,
+            time: 100,
+        };
+
+        let mut trades: DateTrade = BTreeMap::new();
+        trades.insert(100, vec![bid_trade, ask_trade]);
+
         let mut orderbook = OrderBook::with_latency(1);
         let order = Order::limit_buy("ABC", 20.0, 103.00);
         orderbook.insert_order(order, 100);
 
-        let trades_100 = orderbook.execute_orders(&quotes, 100);
-        let trades_101 = orderbook.execute_orders(&quotes, 101);
-        let trades_102 = orderbook.execute_orders(&quotes, 102);
+        let trades_100 = orderbook.execute_orders(&quotes,&trades, 100);
+        let trades_101 = orderbook.execute_orders(&quotes,&trades, 101);
+        let trades_102 = orderbook.execute_orders(&quotes,&trades, 102);
 
         println!("{:?}", trades_101);
 
@@ -885,15 +1011,16 @@ mod tests {
     #[test]
     fn test_that_orderbook_clears_after_execution() {
         let quotes = quotes1();
+        let trades = trades1();
         let mut orderbook = OrderBook::new();
         let order = Order::market_buy("ABC", 20.0);
         orderbook.insert_order(order, 100);
-        let trades = orderbook.execute_orders(&quotes, 100);
 
-        let trades1 = orderbook.execute_orders(&quotes, 101);
+        let completed_trades = orderbook.execute_orders(&quotes,&trades, 100);
+        let completed_trades1 = orderbook.execute_orders(&quotes,&trades, 101);
 
-        assert!(trades.len() == 1);
-        assert!(trades1.is_empty());
+        assert!(completed_trades.len() == 1);
+        assert!(completed_trades1.is_empty());
     }
 
     #[test]
@@ -925,6 +1052,24 @@ mod tests {
         quotes.insert("ABC".to_string(), depth_101);
         quotes.insert("ABC".to_string(), depth_102);
 
+        let bid_trade = Trade {
+            coin: "ABC".to_string(),
+            side: Side::Bid,
+            px: 98.0,
+            sz: 20.0,
+            time: 100,
+        };
+        let ask_trade = Trade {
+            coin: "ABC".to_string(),
+            side: Side::Ask,
+            px: 102.0,
+            sz: 20.0,
+            time: 100,
+        };
+
+        let mut trades: DateTrade = BTreeMap::new();
+        trades.insert(100, vec![bid_trade, ask_trade]);
+
         let mut orderbook = OrderBook::new();
         let order = Order::limit_buy("ABC", 20.0, 103.00);
         let order1 = Order::limit_buy("ABC", 20.0, 103.00);
@@ -932,10 +1077,10 @@ mod tests {
 
         let res = orderbook.insert_order(order, 100);
         let res1 = orderbook.insert_order(order1, 100);
-        let _ = orderbook.execute_orders(&quotes, 100);
+        let _ = orderbook.execute_orders(&quotes,&trades, 100);
 
         let res2 = orderbook.insert_order(order2, 101);
-        let _ = orderbook.execute_orders(&quotes, 101);
+        let _ = orderbook.execute_orders(&quotes,&trades, 101);
 
         assert!(res.order_id == 0);
         assert!(res1.order_id == 1);
