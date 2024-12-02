@@ -184,4 +184,4 @@ pub struct Trade {
 
 pub type DateDepth = BTreeMap<String, Depth>;
 pub type DateBBO = BTreeMap<String, BBO>;
-pub type DateTrade = BTreeMap<i64, Trade>;
+pub type DateTrade = BTreeMap<i64, Vec<Trade>>;

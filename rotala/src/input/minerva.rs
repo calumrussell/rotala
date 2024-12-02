@@ -110,12 +110,15 @@ impl Minerva {
         unimplemented!()
     }
 
-    pub async fn get_trades(&self, start_date: &i64, end_date: &i64, coin: &str) -> DateTrade {
+    pub async fn get_trades(&self, dates: std::ops::Range<i64>) -> DateTrade {
+        let start_date = dates.start;
+        let end_date = dates.end;
+
         let query_result = self
             .db
             .query(
-                "select * from trade where coin=$1::TEXT and time between $2 and $3",
-                &[&coin, &start_date, &end_date],
+                "select * from trade where time between $1 and $2",
+                &[&start_date, &end_date],
             )
             .await;
 
@@ -124,7 +127,12 @@ impl Minerva {
             for row in rows {
                 if let Ok(trade) = Trade::from_row(row) {
                     let hl_trade: crate::source::hyperliquid::Trade = trade.into();
-                    res.insert(hl_trade.time, hl_trade);
+
+                    res.entry(hl_trade.time).or_insert_with(Vec::new);
+
+                    let date_trades = res.get_mut(&hl_trade.time)
+                        .unwrap();
+                    date_trades.push(hl_trade);
                 }
             }
         }
@@ -140,7 +148,7 @@ impl Minerva {
         let query_result = self
             .db
             .query(
-                "select * from l2Book where time between $2 and $3",
+                "select * from l2Book where time between $1 and $2",
                 &[&start_date, &end_date],
             )
             .await;
