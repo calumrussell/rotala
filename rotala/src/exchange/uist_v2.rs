@@ -429,14 +429,14 @@ impl OrderBook {
         let is_buy = match order.order_type {
             OrderType::MarketBuy | OrderType::LimitBuy => true,
             OrderType::LimitSell | OrderType::MarketSell => false,
-            _ => panic!("Can't fill cancel or modify")
+            _ => panic!("Can't fill cancel or modify"),
         };
 
         let price_check = match order.order_type {
             OrderType::LimitBuy | OrderType::LimitSell => order.price.unwrap(),
             OrderType::MarketBuy => f64::MAX,
             OrderType::MarketSell => f64::MIN,
-            _ => panic!("Can't fill cancel or modify")
+            _ => panic!("Can't fill cancel or modify"),
         };
 
         for bid in &depth.bids {
@@ -475,7 +475,6 @@ impl OrderBook {
                 if size == 0.0 {
                     break;
                 }
-
 
                 let qty = if size >= to_fill { to_fill } else { size };
                 to_fill -= qty;
@@ -628,11 +627,11 @@ impl OrderBook {
             if let Some(depth) = quotes.get(security_id) {
                 let mut completed_trades = match order.order_type {
                     OrderType::MarketBuy => Self::fill_order(
-                        depth, 
-                        &order, 
-                        &mut filled, 
-                        &taker_trades, 
-                        &self.priority_setting
+                        depth,
+                        &order,
+                        &mut filled,
+                        &taker_trades,
+                        &self.priority_setting,
                     ),
                     OrderType::MarketSell => Self::fill_order(
                         depth,
@@ -954,7 +953,7 @@ mod tests {
             time: 100,
         };
         let ask_trade = Trade {
-           coin: "ABC".to_string(),
+            coin: "ABC".to_string(),
             side: Side::Ask,
             px: 102.0,
             sz: 80.0,
