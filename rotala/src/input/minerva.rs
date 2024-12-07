@@ -130,8 +130,7 @@ impl Minerva {
 
                     res.entry(hl_trade.time).or_insert_with(Vec::new);
 
-                    let date_trades = res.get_mut(&hl_trade.time)
-                        .unwrap();
+                    let date_trades = res.get_mut(&hl_trade.time).unwrap();
                     date_trades.push(hl_trade);
                 }
             }

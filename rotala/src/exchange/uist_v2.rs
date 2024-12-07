@@ -420,7 +420,8 @@ impl OrderBook {
         if is_buy {
             for bid in &depth.bids {
                 if bid.price == price_check {
-                    if let Some((_buy_vol, sell_vol)) = filled_trades.get(&price_check.to_string()) {
+                    if let Some((_buy_vol, sell_vol)) = filled_trades.get(&price_check.to_string())
+                    {
                         let filled_size = filled.get_fill(&order.symbol, &bid.price);
                         let size = sell_vol - filled_size;
                         if size == 0.0 {
@@ -478,7 +479,8 @@ impl OrderBook {
         } else {
             for ask in &depth.asks {
                 if ask.price == price_check {
-                    if let Some((buy_vol, _sell_vol)) = filled_trades.get(&price_check.to_string()) {
+                    if let Some((buy_vol, _sell_vol)) = filled_trades.get(&price_check.to_string())
+                    {
                         let filled_size = filled.get_fill(&order.symbol, &ask.price);
                         let size = buy_vol - filled_size;
                         if size == 0.0 {
@@ -503,7 +505,6 @@ impl OrderBook {
                     }
                 }
             }
-
 
             for bid in &depth.bids {
                 if price_check > bid.price {
@@ -538,7 +539,12 @@ impl OrderBook {
         trades
     }
 
-    pub fn execute_orders(&mut self, quotes: &DateDepth, trades: &DateTrade, now: i64) -> Vec<OrderResult> {
+    pub fn execute_orders(
+        &mut self,
+        quotes: &DateDepth,
+        trades: &DateTrade,
+        now: i64,
+    ) -> Vec<OrderResult> {
         //Tracks liquidity that has been used at each level
         let mut filled: FillTracker = FillTracker::new();
 
@@ -548,13 +554,15 @@ impl OrderBook {
         }
 
         let mut market_trades: FilledTrades = HashMap::new();
-        for (_date, date_trades) in trades {
+        for date_trades in trades.values() {
             for trade in date_trades {
-                market_trades.entry(trade.px.to_string()).or_insert_with(|| (0.0,0.0));
+                market_trades
+                    .entry(trade.px.to_string())
+                    .or_insert_with(|| (0.0, 0.0));
                 let volume = market_trades.get_mut(&trade.px.to_string()).unwrap();
                 match trade.side {
                     crate::source::hyperliquid::Side::Bid => volume.1 += trade.sz,
-                    crate::source::hyperliquid::Side::Ask => volume.0 += trade.sz
+                    crate::source::hyperliquid::Side::Ask => volume.0 += trade.sz,
                 }
             }
         }
@@ -605,15 +613,30 @@ impl OrderBook {
                     OrderType::MarketBuy => {
                         Self::fill_order(depth, &order, true, f64::MAX, &mut filled, &market_trades)
                     }
-                    OrderType::MarketSell => {
-                        Self::fill_order(depth, &order, false, f64::MIN, &mut filled, &market_trades)
-                    }
-                    OrderType::LimitBuy => {
-                        Self::fill_order(depth, &order, true, order.price.unwrap(), &mut filled, &market_trades)
-                    }
-                    OrderType::LimitSell => {
-                        Self::fill_order(depth, &order, false, order.price.unwrap(), &mut filled, &market_trades)
-                    }
+                    OrderType::MarketSell => Self::fill_order(
+                        depth,
+                        &order,
+                        false,
+                        f64::MIN,
+                        &mut filled,
+                        &market_trades,
+                    ),
+                    OrderType::LimitBuy => Self::fill_order(
+                        depth,
+                        &order,
+                        true,
+                        order.price.unwrap(),
+                        &mut filled,
+                        &market_trades,
+                    ),
+                    OrderType::LimitSell => Self::fill_order(
+                        depth,
+                        &order,
+                        false,
+                        order.price.unwrap(),
+                        &mut filled,
+                        &market_trades,
+                    ),
                     // There shouldn't be any cancel or modifies by this point
                     _ => vec![],
                 };
@@ -732,7 +755,7 @@ mod tests {
         let trades = trades();
         let mut orderbook = OrderBook::new();
         orderbook.insert_order(Order::cancel_order("ABC", 10), 100);
-        let res = orderbook.execute_orders(&quotes,&trades, 100);
+        let res = orderbook.execute_orders(&quotes, &trades, 100);
         assert!(res.is_empty())
     }
 
@@ -742,7 +765,7 @@ mod tests {
         let trades = trades();
         let mut orderbook = OrderBook::new();
         orderbook.insert_order(Order::modify_order("ABC", 10, 100.0), 100);
-        let res = orderbook.execute_orders(&quotes,&trades, 100);
+        let res = orderbook.execute_orders(&quotes, &trades, 100);
         assert!(res.is_empty())
     }
 
@@ -757,7 +780,7 @@ mod tests {
             .order_id;
 
         orderbook.insert_order(Order::cancel_order("ABC", oid), 100);
-        let res = orderbook.execute_orders(&quotes,&trades, 100);
+        let res = orderbook.execute_orders(&quotes, &trades, 100);
         println!("{:?}", res);
         assert!(res.len() == 1);
 
@@ -765,7 +788,7 @@ mod tests {
             .insert_order(Order::limit_buy("ABC", 200.0, 1.0), 100)
             .order_id;
         orderbook.insert_order(Order::modify_order("ABC", oid1, 100.0), 100);
-        let res = orderbook.execute_orders(&quotes,&trades, 100);
+        let res = orderbook.execute_orders(&quotes, &trades, 100);
         assert!(res.len() == 1);
     }
 
@@ -778,7 +801,7 @@ mod tests {
         let order = Order::market_buy("ABC", 100.0);
         orderbook.insert_order(order, 100);
 
-        let res = orderbook.execute_orders(&quotes,&trades, 100);
+        let res = orderbook.execute_orders(&quotes, &trades, 100);
         assert!(res.len() == 1);
         let trade = res.first().unwrap();
         assert!(trade.quantity == 100.00);
@@ -794,7 +817,7 @@ mod tests {
         let order = Order::market_sell("ABC", 100.0);
         orderbook.insert_order(order, 100);
 
-        let res = orderbook.execute_orders(&quotes,&trades, 100);
+        let res = orderbook.execute_orders(&quotes, &trades, 100);
         assert!(res.len() == 1);
         let trade = res.first().unwrap();
         assert!(trade.quantity == 100.00);
@@ -809,7 +832,7 @@ mod tests {
         let order = Order::market_buy("ABC", 50.0);
         orderbook.insert_order(order, 100);
 
-        let res = orderbook.execute_orders(&quotes,&trades, 100);
+        let res = orderbook.execute_orders(&quotes, &trades, 100);
         assert!(res.len() == 1);
         let trade = res.first().unwrap();
         assert!(trade.quantity == 50.00);
@@ -863,7 +886,7 @@ mod tests {
         let order = Order::market_buy("ABC", 100.0);
         orderbook.insert_order(order, 100);
 
-        let res = orderbook.execute_orders(&quotes,&trades, 100);
+        let res = orderbook.execute_orders(&quotes, &trades, 100);
         assert!(res.len() == 2);
         let first_trade = res.first().unwrap();
         let second_trade = res.get(1).unwrap();
@@ -927,7 +950,7 @@ mod tests {
         let order = Order::limit_buy("ABC", 120.0, 103.00);
         orderbook.insert_order(order, 100);
 
-        let res = orderbook.execute_orders(&quotes,&trades, 100);
+        let res = orderbook.execute_orders(&quotes, &trades, 100);
         println!("{:?}", res);
         assert!(res.len() == 2);
         let first_trade = res.first().unwrap();
@@ -992,7 +1015,7 @@ mod tests {
         let order = Order::limit_sell("ABC", 120.0, 99.00);
         orderbook.insert_order(order, 100);
 
-        let res = orderbook.execute_orders(&quotes,&trades, 100);
+        let res = orderbook.execute_orders(&quotes, &trades, 100);
         println!("{:?}", res);
         assert!(res.len() == 2);
         let first_trade = res.first().unwrap();
@@ -1014,7 +1037,7 @@ mod tests {
         let second_order = Order::limit_buy("ABC", 20.0, 103.00);
         orderbook.insert_order(second_order, 100);
 
-        let res = orderbook.execute_orders(&quotes,&trades, 100);
+        let res = orderbook.execute_orders(&quotes, &trades, 100);
         println!("{:?}", res);
         assert!(res.len() == 1);
     }
@@ -1070,9 +1093,9 @@ mod tests {
         let order = Order::limit_buy("ABC", 20.0, 103.00);
         orderbook.insert_order(order, 100);
 
-        let trades_100 = orderbook.execute_orders(&quotes,&trades, 100);
-        let trades_101 = orderbook.execute_orders(&quotes,&trades, 101);
-        let trades_102 = orderbook.execute_orders(&quotes,&trades, 102);
+        let trades_100 = orderbook.execute_orders(&quotes, &trades, 100);
+        let trades_101 = orderbook.execute_orders(&quotes, &trades, 101);
+        let trades_102 = orderbook.execute_orders(&quotes, &trades, 102);
 
         println!("{:?}", trades_101);
 
@@ -1089,8 +1112,8 @@ mod tests {
         let order = Order::market_buy("ABC", 20.0);
         orderbook.insert_order(order, 100);
 
-        let completed_trades = orderbook.execute_orders(&quotes,&trades, 100);
-        let completed_trades1 = orderbook.execute_orders(&quotes,&trades, 101);
+        let completed_trades = orderbook.execute_orders(&quotes, &trades, 100);
+        let completed_trades1 = orderbook.execute_orders(&quotes, &trades, 101);
 
         assert!(completed_trades.len() == 1);
         assert!(completed_trades1.is_empty());
@@ -1150,10 +1173,10 @@ mod tests {
 
         let res = orderbook.insert_order(order, 100);
         let res1 = orderbook.insert_order(order1, 100);
-        let _ = orderbook.execute_orders(&quotes,&trades, 100);
+        let _ = orderbook.execute_orders(&quotes, &trades, 100);
 
         let res2 = orderbook.insert_order(order2, 101);
-        let _ = orderbook.execute_orders(&quotes,&trades, 101);
+        let _ = orderbook.execute_orders(&quotes, &trades, 101);
 
         assert!(res.order_id == 0);
         assert!(res1.order_id == 1);
