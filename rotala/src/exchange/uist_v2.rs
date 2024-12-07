@@ -6,7 +6,7 @@ use std::{
 
 use serde::{Deserialize, Serialize};
 
-use crate::source::hyperliquid::{DateDepth, DateTrade, Depth, Level, BBO};
+use crate::source::hyperliquid::{DateDepth, DateTrade, Depth, BBO};
 
 pub type OrderId = u64;
 
@@ -205,10 +205,10 @@ struct FillTracker {
 }
 
 impl FillTracker {
-    fn get_fill(&self, symbol: &str, level: &Level) -> f64 {
+    fn get_fill(&self, symbol: &str, price: &f64) -> f64 {
         //Can default to zero instead of None
         if let Some(fills) = self.inner.get(symbol) {
-            let level_string = level.price.to_string();
+            let level_string = price.to_string();
             if let Some(val) = fills.get(&level_string) {
                 return *val;
             }
@@ -216,14 +216,14 @@ impl FillTracker {
         0.0
     }
 
-    fn insert_fill(&mut self, symbol: &str, level: &Level, filled: f64) {
+    fn insert_fill(&mut self, symbol: &str, price: &f64, filled: f64) {
         if !self.inner.contains_key(symbol) {
             self.inner
                 .insert(symbol.to_string().clone(), HashMap::new());
         }
 
         let fills = self.inner.get_mut(symbol).unwrap();
-        let level_string = level.price.to_string();
+        let level_string = price.to_string();
 
         fills
             .entry(level_string)
@@ -277,6 +277,9 @@ impl Display for OrderBookError {
 }
 
 impl std::error::Error for OrderBookError {}
+
+//The key is an f64 but we use a String because f64 does not impl Hash
+type FilledTrades = HashMap<String, (f64, f64)>;
 
 #[derive(Debug)]
 pub struct OrderBook {
@@ -409,17 +412,46 @@ impl OrderBook {
         is_buy: bool,
         price_check: f64,
         filled: &mut FillTracker,
+        filled_trades: &FilledTrades,
     ) -> Vec<OrderResult> {
         let mut to_fill = order.qty;
         let mut trades = Vec::new();
 
         if is_buy {
+            for bid in &depth.bids {
+                if bid.price == price_check {
+                    if let Some((_buy_vol, sell_vol)) = filled_trades.get(&price_check.to_string()) {
+                        let filled_size = filled.get_fill(&order.symbol, &bid.price);
+                        let size = sell_vol - filled_size;
+                        if size == 0.0 {
+                            break;
+                        }
+
+                        let qty = if size >= to_fill { to_fill } else { size };
+                        to_fill -= qty;
+
+                        let trade = OrderResult {
+                            symbol: order.symbol.clone(),
+                            value: bid.price * order.qty,
+                            quantity: qty,
+                            date: depth.date,
+                            typ: OrderResultType::Sell,
+                            order_id: order.order_id,
+                            order_id_ref: None,
+                        };
+
+                        trades.push(trade);
+                        filled.insert_fill(&order.symbol, &bid.price, qty);
+                    }
+                }
+            }
+
             for ask in &depth.asks {
                 if ask.price > price_check {
                     break;
                 }
 
-                let filled_size = filled.get_fill(&order.symbol, ask);
+                let filled_size = filled.get_fill(&order.symbol, &ask.price);
                 let size = ask.size - filled_size;
                 if size == 0.0 {
                     break;
@@ -437,19 +469,48 @@ impl OrderBook {
                     order_id_ref: None,
                 };
                 trades.push(trade);
-                filled.insert_fill(&order.symbol, ask, qty);
+                filled.insert_fill(&order.symbol, &ask.price, qty);
 
                 if to_fill == 0.0 {
                     break;
                 }
             }
         } else {
+            for ask in &depth.asks {
+                if ask.price == price_check {
+                    if let Some((buy_vol, _sell_vol)) = filled_trades.get(&price_check.to_string()) {
+                        let filled_size = filled.get_fill(&order.symbol, &ask.price);
+                        let size = buy_vol - filled_size;
+                        if size == 0.0 {
+                            break;
+                        }
+
+                        let qty = if size >= to_fill { to_fill } else { size };
+                        to_fill -= qty;
+
+                        let trade = OrderResult {
+                            symbol: order.symbol.clone(),
+                            value: ask.price * order.qty,
+                            quantity: qty,
+                            date: depth.date,
+                            typ: OrderResultType::Buy,
+                            order_id: order.order_id,
+                            order_id_ref: None,
+                        };
+
+                        trades.push(trade);
+                        filled.insert_fill(&order.symbol, &ask.price, qty);
+                    }
+                }
+            }
+
+
             for bid in &depth.bids {
                 if price_check > bid.price {
                     break;
                 }
 
-                let filled_size = filled.get_fill(&order.symbol, bid);
+                let filled_size = filled.get_fill(&order.symbol, &bid.price);
                 let size = bid.size - filled_size;
                 if size == 0.0 {
                     break;
@@ -467,7 +528,7 @@ impl OrderBook {
                     order_id_ref: None,
                 };
                 trades.push(trade);
-                filled.insert_fill(&order.symbol, bid, qty);
+                filled.insert_fill(&order.symbol, &bid.price, qty);
 
                 if to_fill == 0.0 {
                     break;
@@ -484,6 +545,18 @@ impl OrderBook {
         let mut trade_results = Vec::new();
         if self.is_empty() {
             return trade_results;
+        }
+
+        let mut market_trades: FilledTrades = HashMap::new();
+        for (_date, date_trades) in trades {
+            for trade in date_trades {
+                market_trades.entry(trade.px.to_string()).or_insert_with(|| (0.0,0.0));
+                let volume = market_trades.get_mut(&trade.px.to_string()).unwrap();
+                match trade.side {
+                    crate::source::hyperliquid::Side::Bid => volume.1 += trade.sz,
+                    crate::source::hyperliquid::Side::Ask => volume.0 += trade.sz
+                }
+            }
         }
 
         // Split out cancel and modifies, and then implement on a copy of orderbook
@@ -530,16 +603,16 @@ impl OrderBook {
             if let Some(depth) = quotes.get(security_id) {
                 let mut completed_trades = match order.order_type {
                     OrderType::MarketBuy => {
-                        Self::fill_order(depth, &order, true, f64::MAX, &mut filled)
+                        Self::fill_order(depth, &order, true, f64::MAX, &mut filled, &market_trades)
                     }
                     OrderType::MarketSell => {
-                        Self::fill_order(depth, &order, false, f64::MIN, &mut filled)
+                        Self::fill_order(depth, &order, false, f64::MIN, &mut filled, &market_trades)
                     }
                     OrderType::LimitBuy => {
-                        Self::fill_order(depth, &order, true, order.price.unwrap(), &mut filled)
+                        Self::fill_order(depth, &order, true, order.price.unwrap(), &mut filled, &market_trades)
                     }
                     OrderType::LimitSell => {
-                        Self::fill_order(depth, &order, false, order.price.unwrap(), &mut filled)
+                        Self::fill_order(depth, &order, false, order.price.unwrap(), &mut filled, &market_trades)
                     }
                     // There shouldn't be any cancel or modifies by this point
                     _ => vec![],
@@ -1085,5 +1158,101 @@ mod tests {
         assert!(res.order_id == 0);
         assert!(res1.order_id == 1);
         assert!(res2.order_id == 2);
+    }
+
+    #[test]
+    fn test_that_volume_lifts_with_trades_inside() {
+        let bid_level = Level {
+            price: 98.0,
+            size: 100.0,
+        };
+
+        let ask_level = Level {
+            price: 102.0,
+            size: 100.0,
+        };
+
+        let mut depth = Depth::new(100, "ABC");
+        depth.add_level(bid_level.clone(), Side::Bid);
+        depth.add_level(ask_level.clone(), Side::Ask);
+
+        let mut quotes: DateDepth = BTreeMap::new();
+        quotes.insert("ABC".to_string(), depth);
+
+        let bid_trade = Trade {
+            coin: "ABC".to_string(),
+            side: Side::Bid,
+            px: 98.0,
+            sz: 20.0,
+            time: 100,
+        };
+        let ask_trade = Trade {
+            coin: "ABC".to_string(),
+            side: Side::Ask,
+            px: 102.0,
+            sz: 20.0,
+            time: 100,
+        };
+
+        let mut trades: DateTrade = BTreeMap::new();
+        trades.insert(100, vec![bid_trade, ask_trade]);
+
+        let mut orderbook = OrderBook::new();
+        let buy_order = Order::limit_buy("ABC", 10.0, 98.00);
+        orderbook.insert_order(buy_order, 99);
+        let sell_order = Order::limit_sell("ABC", 10.0, 102.00);
+        orderbook.insert_order(sell_order, 99);
+
+        let res = orderbook.execute_orders(&quotes, &trades, 100);
+        assert!(res.len() == 2);
+    }
+
+    #[test]
+    fn test_that_fills_only_traded_volume_on_inside() {
+        let bid_level = Level {
+            price: 98.0,
+            size: 100.0,
+        };
+
+        let ask_level = Level {
+            price: 102.0,
+            size: 100.0,
+        };
+
+        let mut depth = Depth::new(100, "ABC");
+        depth.add_level(bid_level.clone(), Side::Bid);
+        depth.add_level(ask_level.clone(), Side::Ask);
+
+        let mut quotes: DateDepth = BTreeMap::new();
+        quotes.insert("ABC".to_string(), depth);
+
+        let bid_trade = Trade {
+            coin: "ABC".to_string(),
+            side: Side::Bid,
+            px: 98.0,
+            sz: 20.0,
+            time: 100,
+        };
+        let ask_trade = Trade {
+            coin: "ABC".to_string(),
+            side: Side::Ask,
+            px: 102.0,
+            sz: 20.0,
+            time: 100,
+        };
+
+        let mut trades: DateTrade = BTreeMap::new();
+        trades.insert(100, vec![bid_trade, ask_trade]);
+
+        let mut orderbook = OrderBook::new();
+        let buy_order = Order::limit_buy("ABC", 40.0, 98.00);
+        orderbook.insert_order(buy_order, 99);
+        let sell_order = Order::limit_sell("ABC", 40.0, 102.00);
+        orderbook.insert_order(sell_order, 99);
+
+        let res = orderbook.execute_orders(&quotes, &trades, 100);
+        assert!(res.len() == 2);
+        assert!(res.first().unwrap().quantity == 20.0);
+        assert!(res.get(1).unwrap().quantity == 20.0);
     }
 }
