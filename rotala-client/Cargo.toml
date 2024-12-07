@@ -14,7 +14,7 @@ time = { version = "0.3.17", features = ["macros", "parsing"] }
 rand = "0.8.4"
 rand_distr = "0.4.1"
 log = "0.4.17"
-pyo3 = { version = "0.22.1", optional = true }
+pyo3 = { version = "0.23.2", optional = true }
 tokio = { version = "1.32.0", features = ["full"] }
 futures = "0.3.28"
 rotala = { path = "../rotala/" }
