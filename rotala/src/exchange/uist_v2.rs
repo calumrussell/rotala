@@ -420,7 +420,7 @@ impl OrderBook {
         depth: &Depth,
         order: &InnerOrder,
         filled: &mut FillTracker,
-        filled_trades: &FilledTrades,
+        taker_trades: &FilledTrades,
         priority_setting: &OrderBookOrderPriority,
     ) -> Vec<OrderResult> {
         let mut to_fill = order.qty;
@@ -444,7 +444,7 @@ impl OrderBook {
 
             if let OrderBookOrderPriority::AlwaysFirst = priority_setting {
                 if is_buy && bid.price == price_check {
-                    if let Some((_buy_vol, sell_vol)) = filled_trades.get(&price_check.to_string()) {
+                    if let Some((_buy_vol, sell_vol)) = taker_trades.get(&price_check.to_string()) {
                         let size = sell_vol - filled_size;
                         if size == 0.0 {
                             break;
@@ -502,7 +502,7 @@ impl OrderBook {
 
             if let OrderBookOrderPriority::AlwaysFirst = priority_setting {
                 if !is_buy && ask.price == price_check {
-                    if let Some((buy_vol, _sell_vol)) = filled_trades.get(&price_check.to_string()) {
+                    if let Some((buy_vol, _sell_vol)) = taker_trades.get(&price_check.to_string()) {
                         let size = buy_vol - filled_size;
                         if size == 0.0 {
                             break;
@@ -570,13 +570,13 @@ impl OrderBook {
             return trade_results;
         }
 
-        let mut market_trades: FilledTrades = HashMap::new();
+        let mut taker_trades: FilledTrades = HashMap::new();
         for date_trades in trades.values() {
             for trade in date_trades {
-                market_trades
+                taker_trades
                     .entry(trade.px.to_string())
                     .or_insert_with(|| (0.0, 0.0));
-                let volume = market_trades.get_mut(&trade.px.to_string()).unwrap();
+                let volume = taker_trades.get_mut(&trade.px.to_string()).unwrap();
                 match trade.side {
                     crate::source::hyperliquid::Side::Bid => volume.1 += trade.sz,
                     crate::source::hyperliquid::Side::Ask => volume.0 += trade.sz,
@@ -631,28 +631,28 @@ impl OrderBook {
                         depth, 
                         &order, 
                         &mut filled, 
-                        &market_trades, 
+                        &taker_trades, 
                         &self.priority_setting
                     ),
                     OrderType::MarketSell => Self::fill_order(
                         depth,
                         &order,
                         &mut filled,
-                        &market_trades,
+                        &taker_trades,
                         &self.priority_setting,
                     ),
                     OrderType::LimitBuy => Self::fill_order(
                         depth,
                         &order,
                         &mut filled,
-                        &market_trades,
+                        &taker_trades,
                         &self.priority_setting,
                     ),
                     OrderType::LimitSell => Self::fill_order(
                         depth,
                         &order,
                         &mut filled,
-                        &market_trades,
+                        &taker_trades,
                         &self.priority_setting,
                     ),
                     // There shouldn't be any cancel or modifies by this point
