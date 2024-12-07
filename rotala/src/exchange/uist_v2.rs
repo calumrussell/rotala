@@ -1,3 +1,4 @@
+use core::panic;
 use std::{
     collections::{BTreeMap, HashMap},
     fmt::Display,
@@ -409,49 +410,110 @@ impl OrderBook {
     fn fill_order(
         depth: &Depth,
         order: &InnerOrder,
-        is_buy: bool,
-        price_check: f64,
         filled: &mut FillTracker,
         filled_trades: &FilledTrades,
     ) -> Vec<OrderResult> {
         let mut to_fill = order.qty;
         let mut trades = Vec::new();
 
-        if is_buy {
-            for bid in &depth.bids {
-                if bid.price == price_check {
-                    if let Some((_buy_vol, sell_vol)) = filled_trades.get(&price_check.to_string())
-                    {
-                        let filled_size = filled.get_fill(&order.symbol, &bid.price);
-                        let size = sell_vol - filled_size;
-                        if size == 0.0 {
-                            break;
-                        }
+        let is_buy = match order.order_type {
+            OrderType::MarketBuy | OrderType::LimitBuy => true,
+            OrderType::LimitSell | OrderType::MarketSell => false,
+            _ => panic!("Can't fill cancel or modify")
+        };
 
-                        let qty = if size >= to_fill { to_fill } else { size };
-                        to_fill -= qty;
+        let price_check = match order.order_type {
+            OrderType::LimitBuy | OrderType::LimitSell => order.price.unwrap(),
+            OrderType::MarketBuy => f64::MAX,
+            OrderType::MarketSell => f64::MIN,
+            _ => panic!("Can't fill cancel or modify")
+        };
 
-                        let trade = OrderResult {
-                            symbol: order.symbol.clone(),
-                            value: bid.price * order.qty,
-                            quantity: qty,
-                            date: depth.date,
-                            typ: OrderResultType::Sell,
-                            order_id: order.order_id,
-                            order_id_ref: None,
-                        };
+        for bid in &depth.bids {
+            let filled_size = filled.get_fill(&order.symbol, &bid.price);
 
-                        trades.push(trade);
-                        filled.insert_fill(&order.symbol, &bid.price, qty);
+            if is_buy && bid.price == price_check {
+                if let Some((_buy_vol, sell_vol)) = filled_trades.get(&price_check.to_string()) {
+                    let size = sell_vol - filled_size;
+                    if size == 0.0 {
+                        break;
                     }
+
+                    let qty = if size >= to_fill { to_fill } else { size };
+                    to_fill -= qty;
+
+                    let trade = OrderResult {
+                        symbol: order.symbol.clone(),
+                        value: bid.price * order.qty,
+                        quantity: qty,
+                        date: depth.date,
+                        typ: OrderResultType::Buy,
+                        order_id: order.order_id,
+                        order_id_ref: None,
+                    };
+
+                    trades.push(trade);
+                    filled.insert_fill(&order.symbol, &bid.price, qty);
                 }
             }
 
-            for ask in &depth.asks {
-                if ask.price > price_check {
+            if !is_buy && bid.price >= price_check {
+                let size = bid.size - filled_size;
+
+                if size == 0.0 {
                     break;
                 }
 
+
+                let qty = if size >= to_fill { to_fill } else { size };
+                to_fill -= qty;
+                let trade = OrderResult {
+                    symbol: order.symbol.clone(),
+                    value: bid.price * order.qty,
+                    quantity: qty,
+                    date: depth.date,
+                    typ: OrderResultType::Sell,
+                    order_id: order.order_id,
+                    order_id_ref: None,
+                };
+                trades.push(trade);
+                filled.insert_fill(&order.symbol, &bid.price, qty);
+
+                if to_fill == 0.0 {
+                    break;
+                }
+            }
+        }
+
+        for ask in &depth.asks {
+            let filled_size = filled.get_fill(&order.symbol, &ask.price);
+
+            if !is_buy && ask.price == price_check {
+                if let Some((buy_vol, _sell_vol)) = filled_trades.get(&price_check.to_string()) {
+                    let size = buy_vol - filled_size;
+                    if size == 0.0 {
+                        break;
+                    }
+
+                    let qty = if size >= to_fill { to_fill } else { size };
+                    to_fill -= qty;
+
+                    let trade = OrderResult {
+                        symbol: order.symbol.clone(),
+                        value: ask.price * order.qty,
+                        quantity: qty,
+                        date: depth.date,
+                        typ: OrderResultType::Sell,
+                        order_id: order.order_id,
+                        order_id_ref: None,
+                    };
+
+                    trades.push(trade);
+                    filled.insert_fill(&order.symbol, &ask.price, qty);
+                }
+            }
+
+            if is_buy && ask.price <= price_check {
                 let filled_size = filled.get_fill(&order.symbol, &ask.price);
                 let size = ask.size - filled_size;
                 if size == 0.0 {
@@ -471,65 +533,6 @@ impl OrderBook {
                 };
                 trades.push(trade);
                 filled.insert_fill(&order.symbol, &ask.price, qty);
-
-                if to_fill == 0.0 {
-                    break;
-                }
-            }
-        } else {
-            for ask in &depth.asks {
-                if ask.price == price_check {
-                    if let Some((buy_vol, _sell_vol)) = filled_trades.get(&price_check.to_string())
-                    {
-                        let filled_size = filled.get_fill(&order.symbol, &ask.price);
-                        let size = buy_vol - filled_size;
-                        if size == 0.0 {
-                            break;
-                        }
-
-                        let qty = if size >= to_fill { to_fill } else { size };
-                        to_fill -= qty;
-
-                        let trade = OrderResult {
-                            symbol: order.symbol.clone(),
-                            value: ask.price * order.qty,
-                            quantity: qty,
-                            date: depth.date,
-                            typ: OrderResultType::Buy,
-                            order_id: order.order_id,
-                            order_id_ref: None,
-                        };
-
-                        trades.push(trade);
-                        filled.insert_fill(&order.symbol, &ask.price, qty);
-                    }
-                }
-            }
-
-            for bid in &depth.bids {
-                if price_check > bid.price {
-                    break;
-                }
-
-                let filled_size = filled.get_fill(&order.symbol, &bid.price);
-                let size = bid.size - filled_size;
-                if size == 0.0 {
-                    break;
-                }
-
-                let qty = if size >= to_fill { to_fill } else { size };
-                to_fill -= qty;
-                let trade = OrderResult {
-                    symbol: order.symbol.clone(),
-                    value: bid.price * order.qty,
-                    quantity: qty,
-                    date: depth.date,
-                    typ: OrderResultType::Sell,
-                    order_id: order.order_id,
-                    order_id_ref: None,
-                };
-                trades.push(trade);
-                filled.insert_fill(&order.symbol, &bid.price, qty);
 
                 if to_fill == 0.0 {
                     break;
@@ -611,29 +614,23 @@ impl OrderBook {
             if let Some(depth) = quotes.get(security_id) {
                 let mut completed_trades = match order.order_type {
                     OrderType::MarketBuy => {
-                        Self::fill_order(depth, &order, true, f64::MAX, &mut filled, &market_trades)
+                        Self::fill_order(depth, &order, &mut filled, &market_trades)
                     }
                     OrderType::MarketSell => Self::fill_order(
                         depth,
                         &order,
-                        false,
-                        f64::MIN,
                         &mut filled,
                         &market_trades,
                     ),
                     OrderType::LimitBuy => Self::fill_order(
                         depth,
                         &order,
-                        true,
-                        order.price.unwrap(),
                         &mut filled,
                         &market_trades,
                     ),
                     OrderType::LimitSell => Self::fill_order(
                         depth,
                         &order,
-                        false,
-                        order.price.unwrap(),
                         &mut filled,
                         &market_trades,
                     ),
