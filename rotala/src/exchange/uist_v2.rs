@@ -267,6 +267,12 @@ pub struct InnerOrder {
 }
 
 #[derive(Debug)]
+pub enum OrderBookOrderPriority {
+    AlwaysFirst,
+    TradeThrough,
+}
+
+#[derive(Debug)]
 pub enum OrderBookError {
     OrderIdNotFound,
 }
@@ -287,6 +293,7 @@ pub struct OrderBook {
     inner: BTreeMap<OrderId, InnerOrder>,
     latency: LatencyModel,
     last_order_id: u64,
+    priority_setting: OrderBookOrderPriority,
 }
 
 impl Default for OrderBook {
@@ -301,6 +308,7 @@ impl OrderBook {
             inner: BTreeMap::new(),
             latency: LatencyModel::None,
             last_order_id: 0,
+            priority_setting: OrderBookOrderPriority::AlwaysFirst,
         }
     }
 
@@ -320,6 +328,7 @@ impl OrderBook {
             inner: BTreeMap::new(),
             latency: LatencyModel::FixedPeriod(latency),
             last_order_id: 0,
+            priority_setting: OrderBookOrderPriority::AlwaysFirst,
         }
     }
 
@@ -412,6 +421,7 @@ impl OrderBook {
         order: &InnerOrder,
         filled: &mut FillTracker,
         filled_trades: &FilledTrades,
+        priority_setting: &OrderBookOrderPriority,
     ) -> Vec<OrderResult> {
         let mut to_fill = order.qty;
         let mut trades = Vec::new();
@@ -432,28 +442,30 @@ impl OrderBook {
         for bid in &depth.bids {
             let filled_size = filled.get_fill(&order.symbol, &bid.price);
 
-            if is_buy && bid.price == price_check {
-                if let Some((_buy_vol, sell_vol)) = filled_trades.get(&price_check.to_string()) {
-                    let size = sell_vol - filled_size;
-                    if size == 0.0 {
-                        break;
+            if let OrderBookOrderPriority::AlwaysFirst = priority_setting {
+                if is_buy && bid.price == price_check {
+                    if let Some((_buy_vol, sell_vol)) = filled_trades.get(&price_check.to_string()) {
+                        let size = sell_vol - filled_size;
+                        if size == 0.0 {
+                            break;
+                        }
+
+                        let qty = if size >= to_fill { to_fill } else { size };
+                        to_fill -= qty;
+
+                        let trade = OrderResult {
+                            symbol: order.symbol.clone(),
+                            value: bid.price * order.qty,
+                            quantity: qty,
+                            date: depth.date,
+                            typ: OrderResultType::Buy,
+                            order_id: order.order_id,
+                            order_id_ref: None,
+                        };
+
+                        trades.push(trade);
+                        filled.insert_fill(&order.symbol, &bid.price, qty);
                     }
-
-                    let qty = if size >= to_fill { to_fill } else { size };
-                    to_fill -= qty;
-
-                    let trade = OrderResult {
-                        symbol: order.symbol.clone(),
-                        value: bid.price * order.qty,
-                        quantity: qty,
-                        date: depth.date,
-                        typ: OrderResultType::Buy,
-                        order_id: order.order_id,
-                        order_id_ref: None,
-                    };
-
-                    trades.push(trade);
-                    filled.insert_fill(&order.symbol, &bid.price, qty);
                 }
             }
 
@@ -488,28 +500,30 @@ impl OrderBook {
         for ask in &depth.asks {
             let filled_size = filled.get_fill(&order.symbol, &ask.price);
 
-            if !is_buy && ask.price == price_check {
-                if let Some((buy_vol, _sell_vol)) = filled_trades.get(&price_check.to_string()) {
-                    let size = buy_vol - filled_size;
-                    if size == 0.0 {
-                        break;
+            if let OrderBookOrderPriority::AlwaysFirst = priority_setting {
+                if !is_buy && ask.price == price_check {
+                    if let Some((buy_vol, _sell_vol)) = filled_trades.get(&price_check.to_string()) {
+                        let size = buy_vol - filled_size;
+                        if size == 0.0 {
+                            break;
+                        }
+
+                        let qty = if size >= to_fill { to_fill } else { size };
+                        to_fill -= qty;
+
+                        let trade = OrderResult {
+                            symbol: order.symbol.clone(),
+                            value: ask.price * order.qty,
+                            quantity: qty,
+                            date: depth.date,
+                            typ: OrderResultType::Sell,
+                            order_id: order.order_id,
+                            order_id_ref: None,
+                        };
+
+                        trades.push(trade);
+                        filled.insert_fill(&order.symbol, &ask.price, qty);
                     }
-
-                    let qty = if size >= to_fill { to_fill } else { size };
-                    to_fill -= qty;
-
-                    let trade = OrderResult {
-                        symbol: order.symbol.clone(),
-                        value: ask.price * order.qty,
-                        quantity: qty,
-                        date: depth.date,
-                        typ: OrderResultType::Sell,
-                        order_id: order.order_id,
-                        order_id_ref: None,
-                    };
-
-                    trades.push(trade);
-                    filled.insert_fill(&order.symbol, &ask.price, qty);
                 }
             }
 
@@ -613,26 +627,33 @@ impl OrderBook {
 
             if let Some(depth) = quotes.get(security_id) {
                 let mut completed_trades = match order.order_type {
-                    OrderType::MarketBuy => {
-                        Self::fill_order(depth, &order, &mut filled, &market_trades)
-                    }
+                    OrderType::MarketBuy => Self::fill_order(
+                        depth, 
+                        &order, 
+                        &mut filled, 
+                        &market_trades, 
+                        &self.priority_setting
+                    ),
                     OrderType::MarketSell => Self::fill_order(
                         depth,
                         &order,
                         &mut filled,
                         &market_trades,
+                        &self.priority_setting,
                     ),
                     OrderType::LimitBuy => Self::fill_order(
                         depth,
                         &order,
                         &mut filled,
                         &market_trades,
+                        &self.priority_setting,
                     ),
                     OrderType::LimitSell => Self::fill_order(
                         depth,
                         &order,
                         &mut filled,
                         &market_trades,
+                        &self.priority_setting,
                     ),
                     // There shouldn't be any cancel or modifies by this point
                     _ => vec![],
@@ -933,7 +954,7 @@ mod tests {
             time: 100,
         };
         let ask_trade = Trade {
-            coin: "ABC".to_string(),
+           coin: "ABC".to_string(),
             side: Side::Ask,
             px: 102.0,
             sz: 80.0,
