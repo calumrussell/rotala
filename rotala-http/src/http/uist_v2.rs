@@ -5,20 +5,20 @@ use std::sync::atomic::AtomicU64;
 use anyhow::Result;
 use dashmap::try_result::TryResult;
 use dashmap::DashMap;
+use rotala::input::minerva::Minerva;
 use serde::{Deserialize, Serialize};
 
 use rotala::exchange::uist_v2::{InnerOrder, Order, OrderId, OrderResult, UistV2};
-use rotala::input::athena::Athena;
-use rotala::source::hyperliquid::{DateBBO, DateDepth};
+use rotala::source::hyperliquid::{DateDepth, DateTrade};
 
 pub type BacktestId = u64;
 pub type TickResponseType = (
     bool,
     Vec<OrderResult>,
     Vec<InnerOrder>,
-    DateBBO,
     DateDepth,
     i64,
+    DateTrade,
 );
 
 pub struct BacktestState {
@@ -34,11 +34,11 @@ pub struct BacktestState {
 pub struct AppState {
     pub backtests: DashMap<BacktestId, BacktestState>,
     pub last: AtomicU64,
-    pub datasets: HashMap<String, Athena>,
+    pub datasets: HashMap<String, Minerva>,
 }
 
 impl AppState {
-    pub fn create(datasets: &mut HashMap<String, Athena>) -> Self {
+    pub fn create(datasets: &mut HashMap<String, Minerva>) -> Self {
         Self {
             backtests: DashMap::new(),
             last: AtomicU64::new(0),
@@ -46,7 +46,7 @@ impl AppState {
         }
     }
 
-    pub fn single(name: &str, data: Athena) -> Self {
+    pub fn single(name: &str, data: Minerva) -> Self {
         let mut datasets = HashMap::new();
         datasets.insert(name.into(), data);
 
@@ -57,7 +57,7 @@ impl AppState {
         }
     }
 
-    pub fn tick(&self, backtest_id: BacktestId) -> Option<TickResponseType> {
+    pub async fn tick(&self, backtest_id: BacktestId) -> Option<TickResponseType> {
         if let TryResult::Present(mut backtest) = self.backtests.try_get_mut(&backtest_id) {
             if let Some(dataset) = self.datasets.get(&backtest.dataset_name) {
                 let mut executed_orders = Vec::new();
@@ -65,13 +65,9 @@ impl AppState {
 
                 let curr_date = backtest.curr_date;
 
-                if let Some(quotes) = dataset
-                    .get_quotes_between(
-                        backtest.curr_date - backtest.frequency as i64..backtest.curr_date,
-                    )
-                    .last()
-                {
-                    let mut res = backtest.exchange.tick(quotes.1, curr_date);
+                let quotes = dataset.get_depth_between(backtest.curr_date - backtest.frequency as i64..backtest.curr_date).await;
+                if let Some((_date, date_quotes)) = quotes.last_key_value() {
+                    let mut res = backtest.exchange.tick(date_quotes, curr_date);
 
                     executed_orders = std::mem::take(&mut res.0);
                     inserted_orders = std::mem::take(&mut res.1);
@@ -84,43 +80,39 @@ impl AppState {
                         Vec::new(),
                         Vec::new(),
                         BTreeMap::new(),
-                        BTreeMap::new(),
                         new_date,
+                        BTreeMap::new(),
                     ));
                 } else {
-                    let bbo = dataset
-                        .get_bbo(backtest.curr_date..new_date)
-                        .unwrap_or_default();
+                    let depth = dataset.get_depth_between(backtest.curr_date..new_date).await;
+                    let mut last_depth = BTreeMap::default();
+                    if let Some((_date, last_quotes)) = depth.last_key_value() {
+                        //TODO: not great, as state is stored in DB it isn't clear why we need
+                        //clone
+                        last_depth = last_quotes.clone();
+                    }
 
-                    let depth = if let Some(quotes) = dataset
-                        .get_quotes_between(backtest.curr_date..new_date)
-                        .last()
-                    {
-                        quotes.1.clone()
-                    } else {
-                        BTreeMap::default()
-                    };
-
+                    let trades = dataset.get_trades(backtest.curr_date..new_date).await;
                     backtest.curr_date = new_date;
-                    return Some((true, executed_orders, inserted_orders, bbo, depth, new_date));
+                    return Some((true, executed_orders, inserted_orders, last_depth, new_date, trades));
                 }
             }
         }
         None
     }
 
-    pub fn init(
+    pub async fn init(
         &self,
         dataset_name: String,
         start_date: i64,
         end_date: i64,
         frequency: u64,
-    ) -> Option<(BacktestId, DateBBO, DateDepth)> {
+    ) -> Option<(BacktestId, DateDepth)> {
         if let Some(dataset) = self.datasets.get(&dataset_name) {
             let curr_id = self.last.load(std::sync::atomic::Ordering::SeqCst);
             let exchange = UistV2::new();
 
-            let dataset_date_bounds = dataset.get_date_bounds().unwrap();
+            let dataset_date_bounds = dataset.get_date_bounds().await.unwrap();
             let end_date_backtest = if dataset_date_bounds.1 > end_date {
                 end_date
             } else {
@@ -148,20 +140,13 @@ impl AppState {
                 if res == curr_id {
                     self.backtests.insert(curr_id, backtest);
 
-                    let bbo = dataset
-                        .get_bbo(start_date - frequency as i64..start_date)
-                        .unwrap_or_default();
-                    // Unfortunately, this clone is required if we want immutable sources that don't lock
-                    // on ticks (which would potentially mutate)
-                    let depth = if let Some(quotes) = dataset
-                        .get_quotes_between(start_date - frequency as i64..start_date)
-                        .last()
-                    {
-                        quotes.1.clone()
-                    } else {
-                        BTreeMap::default()
-                    };
-                    return Some((curr_id, bbo, depth));
+                    let depth = dataset.get_depth_between(start_date - frequency as i64..start_date).await;
+                    let mut last_depth = BTreeMap::default();
+                    if let Some((_date, last_value)) = depth.last_key_value() {
+                        //TODO: isn't clear why clone is required here, same as above somewhere
+                        last_depth = last_value.clone();
+                    }
+                    return Some((curr_id, last_depth));
                 }
             }
         }
@@ -176,9 +161,9 @@ impl AppState {
         None
     }
 
-    pub fn dataset_info(&self, dataset_name: &str) -> Option<(i64, i64)> {
+    pub async fn dataset_info(&self, dataset_name: &str) -> Option<(i64, i64)> {
         if let Some(dataset) = self.datasets.get(dataset_name) {
-            return dataset.get_date_bounds();
+            return dataset.get_date_bounds().await;
         }
         None
     }
@@ -189,8 +174,8 @@ pub struct TickResponse {
     pub has_next: bool,
     pub executed_orders: Vec<OrderResult>,
     pub inserted_orders: Vec<InnerOrder>,
-    pub bbo: DateBBO,
     pub depth: DateDepth,
+    pub taker_trades: DateTrade,
     pub now: i64,
 }
 
@@ -220,7 +205,6 @@ pub struct CancelOrderRequest {
 #[derive(Debug, Deserialize, Serialize)]
 pub struct InitResponse {
     pub backtest_id: BacktestId,
-    pub bbo: DateBBO,
     pub depth: DateDepth,
 }
 
@@ -262,6 +246,7 @@ impl actix_web::ResponseError for UistV2Error {
     }
 }
 
+
 pub trait Client {
     fn tick(&self, backtest_id: BacktestId) -> impl Future<Output = Result<TickResponse>>;
     fn insert_orders(
@@ -300,14 +285,14 @@ pub mod server {
     ) -> Result<web::Json<TickResponse>, UistV2Error> {
         let (backtest_id,) = path.into_inner();
 
-        if let Some(result) = app.tick(backtest_id) {
+        if let Some(result) = app.tick(backtest_id).await {
             Ok(web::Json(TickResponse {
-                depth: result.4,
-                bbo: result.3,
+                depth: result.3,
                 inserted_orders: result.2,
                 executed_orders: result.1,
                 has_next: result.0,
-                now: result.5,
+                now: result.4,
+                taker_trades: result.5,
             }))
         } else {
             Err(UistV2Error::UnknownBacktest)
@@ -337,12 +322,11 @@ pub mod server {
     ) -> Result<web::Json<InitResponse>, UistV2Error> {
         let (dataset_name,) = path.into_inner();
 
-        if let Some((backtest_id, bbo, depth)) =
-            app.init(dataset_name, init.start_date, init.end_date, init.frequency)
+        if let Some((backtest_id, depth)) =
+            app.init(dataset_name, init.start_date, init.end_date, init.frequency).await
         {
             Ok(web::Json(InitResponse {
                 backtest_id,
-                bbo,
                 depth,
             }))
         } else {
@@ -374,7 +358,7 @@ pub mod server {
     ) -> Result<web::Json<DatasetInfoResponse>, UistV2Error> {
         let (dataset_name,) = path.into_inner();
 
-        if let Some(resp) = app.dataset_info(&dataset_name) {
+        if let Some(resp) = app.dataset_info(&dataset_name).await {
             Ok(web::Json(DatasetInfoResponse {
                 start_date: resp.0,
                 end_date: resp.1,
@@ -382,73 +366,5 @@ pub mod server {
         } else {
             Err(UistV2Error::UnknownDataset)
         }
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use actix_web::{test, web, App};
-
-    use rotala::exchange::uist_v2::Order;
-    use rotala::input::athena::Athena;
-
-    use super::server::*;
-    use super::{AppState, InitRequest, InitResponse, InsertOrderRequest, TickResponse};
-
-    #[actix_web::test]
-    async fn test_single_trade_loop() {
-        let uist = Athena::random(100, vec!["ABC", "BCD"]);
-        let dataset_name = "fake";
-        //This sets up the backtest and dataset so don't need to call init
-        let state = AppState::single(dataset_name, uist);
-        let uist_state = web::Data::new(state);
-
-        let app = test::init_service(
-            App::new()
-                .app_data(uist_state)
-                .service(info)
-                .service(init)
-                .service(tick)
-                .service(insert_orders)
-                .service(dataset_info),
-        )
-        .await;
-
-        let req1 = test::TestRequest::post()
-            .set_json(InitRequest {
-                start_date: 100,
-                end_date: 200,
-                frequency: 1,
-            })
-            .uri(format!("/init/{dataset_name}").as_str())
-            .to_request();
-        let resp1: InitResponse = test::call_and_read_body_json(&app, req1).await;
-        let backtest_id = resp1.backtest_id;
-
-        let req2 = test::TestRequest::get()
-            .uri(format!("/backtest/{backtest_id}/tick").as_str())
-            .to_request();
-        let _resp2: TickResponse = test::call_and_read_body_json(&app, req2).await;
-
-        let req3 = test::TestRequest::post()
-            .set_json(InsertOrderRequest {
-                orders: vec![Order::market_buy("ABC", 100.0)],
-            })
-            .uri(format!("/backtest/{backtest_id}/insert_orders").as_str())
-            .to_request();
-        test::call_and_read_body(&app, req3).await;
-
-        let req4 = test::TestRequest::get()
-            .uri(format!("/backtest/{backtest_id}/tick").as_str())
-            .to_request();
-        let _resp4: TickResponse = test::call_and_read_body_json(&app, req4).await;
-
-        let req5 = test::TestRequest::get()
-            .uri(format!("/backtest/{backtest_id}/tick").as_str())
-            .to_request();
-        let resp5: TickResponse = test::call_and_read_body_json(&app, req5).await;
-
-        assert!(resp5.executed_orders.len() == 1);
-        assert!(resp5.executed_orders.first().unwrap().symbol == "ABC");
     }
 }

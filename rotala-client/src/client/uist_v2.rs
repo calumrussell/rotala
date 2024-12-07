@@ -1,7 +1,6 @@
 use anyhow::{Error, Result};
 use reqwest;
-use rotala::exchange::uist_v2::Order;
-use rotala::input::athena::Athena;
+use rotala::{exchange::uist_v2::Order, input::minerva::Minerva};
 use rotala_http::http::uist_v2::{
     AppState, BacktestId, Client, DatasetInfoResponse, InfoResponse, InitRequest, InitResponse,
     InsertOrderRequest, TickResponse, UistV2Error,
@@ -104,13 +103,10 @@ impl Client for TestClient {
         end_date: i64,
         frequency: u64,
     ) -> impl Future<Output = Result<InitResponse>> {
-        if let Some((backtest_id, bbo, depth)) =
-            self.state
-                .init(dataset_name, start_date, end_date, frequency)
-        {
+
+        if let Some((backtest_id, depth)) = futures::executor::block_on(self.state.init(dataset_name, start_date, end_date, frequency)) {
             future::ready(Ok(InitResponse {
                 backtest_id,
-                bbo,
                 depth,
             }))
         } else {
@@ -119,14 +115,14 @@ impl Client for TestClient {
     }
 
     fn tick(&self, backtest_id: BacktestId) -> impl Future<Output = Result<TickResponse>> {
-        if let Some(resp) = self.state.tick(backtest_id) {
+        if let Some(resp) = futures::executor::block_on(self.state.tick(backtest_id)) {
             future::ready(Ok(TickResponse {
-                depth: resp.4,
-                bbo: resp.3,
+                depth: resp.3,
                 inserted_orders: resp.2,
                 executed_orders: resp.1,
                 has_next: resp.0,
-                now: resp.5,
+                now: resp.4,
+                taker_trades: resp.5,
             }))
         } else {
             future::ready(Err(Error::new(UistV2Error::UnknownBacktest)))
@@ -161,7 +157,7 @@ impl Client for TestClient {
         &self,
         dataset_name: String,
     ) -> impl Future<Output = Result<DatasetInfoResponse>> {
-        if let Some(dataset) = self.state.dataset_info(&dataset_name) {
+        if let Some(dataset) = futures::executor::block_on(self.state.dataset_info(&dataset_name)) {
             future::ready(Ok(DatasetInfoResponse {
                 start_date: dataset.0,
                 end_date: dataset.1,
@@ -173,7 +169,7 @@ impl Client for TestClient {
 }
 
 impl TestClient {
-    pub fn single(name: &str, data: Athena) -> Self {
+    pub fn single(name: &str, data: Minerva) -> Self {
         Self {
             state: AppState::single(name, data),
         }

@@ -90,6 +90,7 @@ impl Minerva {
     }
 
     async fn get_connection(connection_string: &str) -> Result<Client> {
+        //TODO: will need connection pool here
         let (client, connection) = tokio_postgres::connect(connection_string, NoTls).await?;
 
         tokio::spawn(async move {
