@@ -3,12 +3,18 @@ use std::collections::{BTreeMap, HashMap};
 
 use deadpool_postgres::Pool;
 use tokio_pg_mapper::FromTokioPostgresRow;
-use tokio_postgres::NoTls;
 
 use crate::source::hyperliquid::{DateDepth, DateTrade, Depth, Level, Side};
 
 pub struct Minerva {
-    db: Pool,
+    trades: DateTrade,
+    depths: DateDepth,
+}
+
+impl Default for Minerva {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 #[derive(tokio_pg_mapper::PostgresMapper, Clone, Debug)]
@@ -82,42 +88,31 @@ impl From<Vec<L2Book>> for Depth {
 }
 
 impl Minerva {
-    pub async fn new(user: &str, dbname: &str, host: &str, password: &str) -> Minerva {
 
-        let mut pg_config = tokio_postgres::Config::new();
-        pg_config.user(user);
-        pg_config.dbname(dbname);
-        pg_config.host(host);
-        pg_config.password(password);
-
-        let mgr_config = deadpool_postgres::ManagerConfig {
-            recycling_method: deadpool_postgres::RecyclingMethod::Fast,
-        };
-        let mgr = deadpool_postgres::Manager::from_config(pg_config, NoTls, mgr_config);
-        let pool = Pool::builder(mgr).max_size(16).build().unwrap();
-        Minerva { db: pool }
+    pub fn new() -> Self {
+        Self { trades: BTreeMap::new(), depths: BTreeMap::new() }
     }
-    pub async fn get_date_bounds(&self) -> Option<(i64, i64)> {
+
+    pub async fn get_date_bounds(&self, pool: &Pool) -> Option<(i64, i64)> {
         //TODO: should cache result because this is potentially crippling
-        if let Ok(client) = self.db.get().await {
+        if let Ok(client) = pool.get().await {
             let query_result = client.query("select min(time), max(time) from trade", &[])
                 .await;
 
             if let Ok(rows) = query_result {
-                for row in rows {
-                    return Some((row.get(0), row.get(1)));
-                }
+                let first = rows.first().unwrap();
+                return Some((first.get(0), first.get(1)));
             };
         }
         None
     }
 
-    pub async fn get_trades(&self, dates: std::ops::Range<i64>) -> DateTrade {
+    pub async fn get_trades(&self, pool: &Pool, dates: std::ops::Range<i64>) -> DateTrade {
         let start_date = dates.start;
         let end_date = dates.end;
 
         let mut res = BTreeMap::new();
-        if let Ok(client) = self.db.get().await {
+        if let Ok(client) = pool.get().await {
 
             let query_result = client.query(
                     "select * from trade where time between $1 and $2",
@@ -141,14 +136,14 @@ impl Minerva {
         res
     }
 
-    pub async fn get_depth_between(&self, dates: std::ops::Range<i64>) -> BTreeMap<i64, DateDepth> {
+    pub async fn get_depth_between(&self, pool: &Pool, dates: std::ops::Range<i64>) -> BTreeMap<i64, DateDepth> {
         //Looks weird right now but we need this to work with BTreeMap because we will want to
         //cache values rather than send every request to DB
         let start_date = dates.start;
         let end_date = dates.end;
 
         let mut depth_result = BTreeMap::new();
-        if let Ok(client) = self.db.get().await {
+        if let Ok(client) = pool.get().await {
             let query_result = client.query(
                     "select * from l2Book where time between $1 and $2",
                     &[&start_date, &end_date],

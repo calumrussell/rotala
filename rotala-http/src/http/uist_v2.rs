@@ -1,4 +1,4 @@
-use std::collections::{BTreeMap, HashMap};
+use std::collections::BTreeMap;
 use std::future::Future;
 use std::sync::atomic::AtomicU64;
 
@@ -7,6 +7,7 @@ use dashmap::try_result::TryResult;
 use dashmap::DashMap;
 use rotala::input::minerva::Minerva;
 use serde::{Deserialize, Serialize};
+use deadpool_postgres::Pool;
 
 use rotala::exchange::uist_v2::{InnerOrder, Order, OrderId, OrderResult, UistV2};
 use rotala::source::hyperliquid::{DateDepth, DateTrade};
@@ -28,46 +29,64 @@ pub struct BacktestState {
     pub frequency: u64,
     pub end_date: i64,
     pub exchange: UistV2,
-    pub dataset_name: String,
 }
 
 pub struct AppState {
     pub backtests: DashMap<BacktestId, BacktestState>,
+    pub datasets: DashMap<BacktestId, Minerva>,
+    pub pool: Pool,
     pub last: AtomicU64,
-    pub datasets: HashMap<String, Minerva>,
 }
 
 impl AppState {
-    pub fn create(datasets: &mut HashMap<String, Minerva>) -> Self {
+    pub fn create_db_pool(user: &str, dbname: &str, host: &str, password: &str) -> Pool {
+        let mut pg_config = tokio_postgres::Config::new();
+        pg_config.user(user);
+        pg_config.dbname(dbname);
+        pg_config.host(host);
+        pg_config.password(password);
+
+        let mgr_config = deadpool_postgres::ManagerConfig {
+            recycling_method: deadpool_postgres::RecyclingMethod::Fast,
+        };
+        let mgr = deadpool_postgres::Manager::from_config(pg_config, tokio_postgres::NoTls, mgr_config);
+        Pool::builder(mgr).max_size(16).build().unwrap()
+    }
+
+    pub fn create(user: &str, dbname: &str, host: &str, password: &str) -> Self {
         Self {
             backtests: DashMap::new(),
             last: AtomicU64::new(0),
-            datasets: std::mem::take(datasets),
+            pool: Self::create_db_pool(user, dbname, host, password),
+            datasets: DashMap::new(),
         }
     }
 
-    pub fn single(name: &str, data: Minerva) -> Self {
-        let mut datasets = HashMap::new();
-        datasets.insert(name.into(), data);
+    pub fn single(user: &str, dbname: &str, host: &str, password: &str) -> Self {
+        let minerva = Minerva::new();
+
+        let datasets = DashMap::new();
+        datasets.insert(0, minerva);
 
         Self {
             backtests: DashMap::new(),
             last: AtomicU64::new(1),
+            pool: Self::create_db_pool(user, dbname, host, password),
             datasets,
         }
     }
 
     pub async fn tick(&self, backtest_id: BacktestId) -> Option<TickResponseType> {
         if let TryResult::Present(mut backtest) = self.backtests.try_get_mut(&backtest_id) {
-            if let Some(dataset) = self.datasets.get(&backtest.dataset_name) {
+            if let Some(dataset) = self.datasets.get(&backtest_id) {
                 let mut executed_orders = Vec::new();
                 let mut inserted_orders = Vec::new();
 
                 let curr_date = backtest.curr_date;
 
-                let back_depth = dataset.get_depth_between(backtest.curr_date - backtest.frequency as i64..backtest.curr_date).await;
+                let back_depth = dataset.get_depth_between(&self.pool, backtest.curr_date - backtest.frequency as i64..backtest.curr_date).await;
                 if let Some((_date, back_depth_last)) = back_depth.last_key_value() {
-                    let back_trades = dataset.get_trades(backtest.curr_date - backtest.frequency as i64..backtest.curr_date).await;
+                    let back_trades = dataset.get_trades(&self.pool, backtest.curr_date - backtest.frequency as i64..backtest.curr_date).await;
                     let mut res = backtest.exchange.tick(back_depth_last, &back_trades, curr_date);
 
                     executed_orders = std::mem::take(&mut res.0);
@@ -85,14 +104,14 @@ impl AppState {
                         BTreeMap::new(),
                     ));
                 } else {
-                    let depth = dataset.get_depth_between(backtest.curr_date..new_date).await;
+                    let depth = dataset.get_depth_between(&self.pool, backtest.curr_date..new_date).await;
                     let mut last_depth = BTreeMap::default();
                     if let Some((_date, last_quotes)) = depth.last_key_value() {
                         //TODO: not great, as state is stored in DB it isn't clear why we need
                         //clone
                         last_depth = last_quotes.clone();
                     }
-                    let trades = dataset.get_trades(backtest.curr_date..new_date).await;
+                    let trades = dataset.get_trades(&self.pool, backtest.curr_date..new_date).await;
                     backtest.curr_date = new_date;
                     return Some((true, executed_orders, inserted_orders, last_depth, new_date, trades));
                 }
@@ -103,51 +122,51 @@ impl AppState {
 
     pub async fn init(
         &self,
-        dataset_name: String,
         start_date: i64,
         end_date: i64,
         frequency: u64,
     ) -> Option<(BacktestId, DateDepth)> {
-        if let Some(dataset) = self.datasets.get(&dataset_name) {
-            let curr_id = self.last.load(std::sync::atomic::Ordering::SeqCst);
-            let exchange = UistV2::new();
+        let curr_id = self.last.load(std::sync::atomic::Ordering::SeqCst);
+        let exchange = UistV2::new();
 
-            let dataset_date_bounds = dataset.get_date_bounds().await.unwrap();
-            let end_date_backtest = if dataset_date_bounds.1 > end_date {
-                end_date
-            } else {
-                dataset_date_bounds.1
-            };
+        let minerva = Minerva::new();
 
-            let backtest = BacktestState {
-                id: curr_id,
-                start_date,
-                curr_date: start_date,
-                end_date: end_date_backtest,
-                frequency,
-                exchange,
-                dataset_name,
-            };
+        let dataset_date_bounds = minerva.get_date_bounds(&self.pool).await.unwrap();
+        let end_date_backtest = if dataset_date_bounds.1 > end_date {
+            end_date
+        } else {
+            dataset_date_bounds.1
+        };
 
-            let new_id = curr_id + 1;
-            //Attempt to increment the counter, if this is successful then we create new backtest
-            if let Ok(res) = self.last.compare_exchange(
-                curr_id,
-                new_id,
-                std::sync::atomic::Ordering::SeqCst,
-                std::sync::atomic::Ordering::SeqCst,
-            ) {
-                if res == curr_id {
-                    self.backtests.insert(curr_id, backtest);
+        let backtest = BacktestState {
+            id: curr_id,
+            start_date,
+            curr_date: start_date,
+            end_date: end_date_backtest,
+            frequency,
+            exchange,
+        };
 
-                    let depth = dataset.get_depth_between(start_date - frequency as i64..start_date).await;
-                    let mut last_depth = BTreeMap::default();
-                    if let Some((_date, last_value)) = depth.last_key_value() {
-                        //TODO: isn't clear why clone is required here, same as above somewhere
-                        last_depth = last_value.clone();
-                    }
-                    return Some((curr_id, last_depth));
+        let new_id = curr_id + 1;
+        //Attempt to increment the counter, if this is successful then we create new backtest
+        if let Ok(res) = self.last.compare_exchange(
+            curr_id,
+            new_id,
+            std::sync::atomic::Ordering::SeqCst,
+            std::sync::atomic::Ordering::SeqCst,
+        ) {
+            if res == curr_id {
+                self.backtests.insert(curr_id, backtest);
+
+                let depth = minerva.get_depth_between(&self.pool, start_date - frequency as i64..start_date).await;
+                let mut last_depth = BTreeMap::default();
+                if let Some((_date, last_value)) = depth.last_key_value() {
+                    //TODO: isn't clear why clone is required here, same as above somewhere
+                    last_depth = last_value.clone();
                 }
+
+                self.datasets.insert(curr_id, minerva);
+                return Some((curr_id, last_depth));
             }
         }
         None
@@ -161,11 +180,9 @@ impl AppState {
         None
     }
 
-    pub async fn dataset_info(&self, dataset_name: &str) -> Option<(i64, i64)> {
-        if let Some(dataset) = self.datasets.get(dataset_name) {
-            return dataset.get_date_bounds().await;
-        }
-        None
+    pub async fn dataset_info(&self) -> Option<(i64, i64)> {
+        let minerva = Minerva::new();
+        return minerva.get_date_bounds(&self.pool).await;
     }
 }
 
@@ -217,7 +234,6 @@ pub struct DatasetInfoResponse {
 #[derive(Debug, Deserialize, Serialize)]
 pub struct InfoResponse {
     pub version: String,
-    pub dataset: String,
 }
 
 #[derive(Debug)]
@@ -256,7 +272,6 @@ pub trait Client {
     ) -> impl Future<Output = Result<()>>;
     fn init(
         &self,
-        dataset_name: String,
         start_date: i64,
         end_date: i64,
         frequency: u64,
@@ -264,7 +279,6 @@ pub trait Client {
     fn info(&self, backtest_id: BacktestId) -> impl Future<Output = Result<InfoResponse>>;
     fn dataset_info(
         &self,
-        dataset_name: String,
     ) -> impl Future<Output = Result<DatasetInfoResponse>>;
 }
 
@@ -314,16 +328,15 @@ pub mod server {
         }
     }
 
-    #[post("/init/{dataset_name}")]
+    #[post("/init")]
     pub async fn init(
         app: web::Data<UistState>,
-        path: web::Path<(String,)>,
+        _path: web::Path<()>,
         init: web::Json<InitRequest>,
     ) -> Result<web::Json<InitResponse>, UistV2Error> {
-        let (dataset_name,) = path.into_inner();
 
         if let Some((backtest_id, depth)) =
-            app.init(dataset_name, init.start_date, init.end_date, init.frequency).await
+            app.init(init.start_date, init.end_date, init.frequency).await
         {
             Ok(web::Json(InitResponse {
                 backtest_id,
@@ -341,24 +354,21 @@ pub mod server {
     ) -> Result<web::Json<InfoResponse>, UistV2Error> {
         let (backtest_id,) = path.into_inner();
 
-        if let Some(resp) = app.backtests.get(&backtest_id) {
+        if let Some(_resp) = app.backtests.get(&backtest_id) {
             Ok(web::Json(InfoResponse {
                 version: "v1".to_string(),
-                dataset: resp.dataset_name.clone(),
             }))
         } else {
             Err(UistV2Error::UnknownBacktest)
         }
     }
 
-    #[get("/dataset/{dataset_name}/info")]
+    #[get("/dataset/info")]
     pub async fn dataset_info(
         app: web::Data<UistState>,
-        path: web::Path<(String,)>,
     ) -> Result<web::Json<DatasetInfoResponse>, UistV2Error> {
-        let (dataset_name,) = path.into_inner();
 
-        if let Some(resp) = app.dataset_info(&dataset_name).await {
+        if let Some(resp) = app.dataset_info().await {
             Ok(web::Json(DatasetInfoResponse {
                 start_date: resp.0,
                 end_date: resp.1,

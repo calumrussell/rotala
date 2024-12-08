@@ -1,7 +1,6 @@
 use std::env;
 
 use actix_web::{web, App, HttpServer};
-use rotala::input::minerva::Minerva;
 use rotala_http::http::uist_v2::server::*;
 use rotala_http::http::uist_v2::AppState;
 
@@ -17,9 +16,7 @@ async fn main() -> std::io::Result<()> {
     let password: String = args[5].clone();
     let dbname: String = args[6].clone();
 
-    let source = Minerva::new(&user, &dbname, &host, &password).await;
-    let app_state = AppState::single("Test", source);
-
+    let app_state = AppState::single(&user, &dbname, &host, &password);
     let uist_state = web::Data::new(app_state);
 
     HttpServer::new(move || {
