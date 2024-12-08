@@ -53,15 +53,13 @@ def create_orders(bid_grid, ask_grid):
 if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO)
 
-    dataset_name = "Test"
-    frequency = 250
+    frequency = 1000
     sim_length = frequency * 10000
     http_client = HttpClient("http://127.0.0.1:3000")
-    dataset_info = http_client.dataset_info(dataset_name)
+    dataset_info = http_client.dataset_info()
     start_date = dataset_info["start_date"]
 
     builder = BrokerBuilder()
-    builder.init_dataset_name(dataset_name)
     builder.init_cash(100000)
     builder.init_http(http_client)
     #Clear the first date so we have quotes always
@@ -69,14 +67,12 @@ if __name__ == "__main__":
     builder.init_frequency(frequency)
     brkr = builder.build()
 
+    count = 0
     last_mid = -1
     while True:
         brkr.tick()
 
         depth = brkr.latest_depth
-        print(depth)
-
-        """
         if not depth:
             continue
 
@@ -107,4 +103,3 @@ if __name__ == "__main__":
                     brkr.insert_order(order)
                     for order in create_orders(bid_grid, ask_grid)
                 ]
-        """

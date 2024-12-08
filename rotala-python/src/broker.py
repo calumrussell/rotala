@@ -11,7 +11,6 @@ class BrokerBuilder:
     def __init__(self):
         self.initial_cash = None
         self.http = None
-        self.dataset_name = None
         self.start_date = None
         self.end_date = None
         self.frequency = None
@@ -21,9 +20,6 @@ class BrokerBuilder:
 
     def init_http(self, http: HttpClient):
         self.http = http
-
-    def init_dataset_name(self, name: str):
-        self.dataset_name = name
 
     def init_dates(self, start_date: int, end_date: int):
         self.start_date = start_date
@@ -38,9 +34,6 @@ class BrokerBuilder:
 
         if not self.http:
             raise ValueError("BrokerBuilder needs http")
-
-        if not self.dataset_name:
-            raise ValueError("BrokerBuilder needs dataset name")
 
         return Broker(self)
 
@@ -179,7 +172,6 @@ class Broker:
         self.builder = builder
         self.http = builder.http
         self.cash = builder.initial_cash
-        self.dataset_name = builder.dataset_name
         self.holdings = {}
         self.pending_orders = []
         self.trade_log = []
@@ -191,7 +183,7 @@ class Broker:
 
         # Initializes backtest_id, can ignore result
         print(builder.start_date, builder.end_date)
-        init_response = self.http.init(self.dataset_name, builder.start_date, builder.end_date, builder.frequency)
+        init_response = self.http.init(builder.start_date, builder.end_date, builder.frequency)
         self.backtest_id = init_response["backtest_id"]
         self.latest_depth = init_response["depth"]
         self.cached_quotes = {}
@@ -290,6 +282,7 @@ class Broker:
         # Tick, reconcile our state
         self.order_inserted_on_last_tick = []
         tick_response = self.http.tick()
+        print(tick_response)
         for order_result_json in tick_response["executed_orders"]:
             order_result = OrderResult.from_dict(order_result_json)
             self._process_order_result(order_result)

@@ -1,21 +1,10 @@
 #![allow(dead_code)]
-use std::collections::{BTreeMap, HashMap};
+use std::collections::{btree_map::Range, BTreeMap, HashMap};
 
 use deadpool_postgres::Pool;
 use tokio_pg_mapper::FromTokioPostgresRow;
 
 use crate::source::hyperliquid::{DateDepth, DateTrade, Depth, Level, Side};
-
-pub struct Minerva {
-    trades: DateTrade,
-    depths: DateDepth,
-}
-
-impl Default for Minerva {
-    fn default() -> Self {
-        Self::new()
-    }
-}
 
 #[derive(tokio_pg_mapper::PostgresMapper, Clone, Debug)]
 #[pg_mapper(table = "l2Book")]
@@ -87,62 +76,30 @@ impl From<Vec<L2Book>> for Depth {
     }
 }
 
+pub struct Minerva {
+    trades: DateTrade,
+    depths: BTreeMap<i64, DateDepth>,
+}
+
+impl Default for Minerva {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+
 impl Minerva {
 
     pub fn new() -> Self {
         Self { trades: BTreeMap::new(), depths: BTreeMap::new() }
     }
 
-    pub async fn get_date_bounds(&self, pool: &Pool) -> Option<(i64, i64)> {
-        //TODO: should cache result because this is potentially crippling
-        if let Ok(client) = pool.get().await {
-            let query_result = client.query("select min(time), max(time) from trade", &[])
-                .await;
-
-            if let Ok(rows) = query_result {
-                let first = rows.first().unwrap();
-                return Some((first.get(0), first.get(1)));
-            };
-        }
-        None
-    }
-
-    pub async fn get_trades(&self, pool: &Pool, dates: std::ops::Range<i64>) -> DateTrade {
-        let start_date = dates.start;
-        let end_date = dates.end;
-
-        let mut res = BTreeMap::new();
-        if let Ok(client) = pool.get().await {
-
-            let query_result = client.query(
-                    "select * from trade where time between $1 and $2",
-                    &[&start_date, &end_date],
-                )
-                .await;
-
-            if let Ok(rows) = query_result {
-                for row in rows {
-                    if let Ok(trade) = Trade::from_row(row) {
-                        let hl_trade: crate::source::hyperliquid::Trade = trade.into();
-
-                        res.entry(hl_trade.time).or_insert_with(Vec::new);
-
-                        let date_trades = res.get_mut(&hl_trade.time).unwrap();
-                        date_trades.push(hl_trade);
-                    }
-                }
-            }
-        }
-        res
-    }
-
-    pub async fn get_depth_between(&self, pool: &Pool, dates: std::ops::Range<i64>) -> BTreeMap<i64, DateDepth> {
+    async fn init_depth_between(&mut self, pool: &Pool, dates: &std::ops::Range<i64>) {
         //Looks weird right now but we need this to work with BTreeMap because we will want to
         //cache values rather than send every request to DB
         let start_date = dates.start;
         let end_date = dates.end;
 
-        let mut depth_result = BTreeMap::new();
         if let Ok(client) = pool.get().await {
             let query_result = client.query(
                     "select * from l2Book where time between $1 and $2",
@@ -166,14 +123,65 @@ impl Minerva {
             for (date, rows) in sort_into_dates.iter_mut() {
                 let depth: Depth = std::mem::take(rows).into();
 
-                depth_result.entry(*date).or_insert_with(BTreeMap::new);
-                depth_result
+                self.depths.entry(*date).or_insert_with(BTreeMap::new);
+                self.depths 
                     .get_mut(date)
                     .unwrap()
                     .insert(depth.symbol.clone(), depth);
             }
         }
+    }
 
-        depth_result
+    async fn init_trades(&mut self, pool: &Pool, dates: &std::ops::Range<i64>) {
+        let start_date = dates.start;
+        let end_date = dates.end;
+
+        if let Ok(client) = pool.get().await {
+
+            let query_result = client.query(
+                    "select * from trade where time between $1 and $2",
+                    &[&start_date, &end_date],
+                )
+                .await;
+
+            if let Ok(rows) = query_result {
+                for row in rows {
+                    if let Ok(trade) = Trade::from_row(row) {
+                        let hl_trade: crate::source::hyperliquid::Trade = trade.into();
+
+                        self.trades.entry(hl_trade.time).or_insert_with(Vec::new);
+
+                        let date_trades = self.trades.get_mut(&hl_trade.time).unwrap();
+                        date_trades.push(hl_trade);
+                    }
+                }
+            }
+        }
+    }
+
+    pub async fn get_date_bounds(&self, pool: &Pool) -> Option<(i64, i64)> {
+        if let Ok(client) = pool.get().await {
+            let query_result = client.query("select min(time), max(time) from trade", &[])
+                .await;
+
+            if let Ok(rows) = query_result {
+                let first = rows.first().unwrap();
+                return Some((first.get(0), first.get(1)));
+            };
+        }
+        None
+    }
+
+    pub async fn get_trades_between(&self, dates: std::ops::Range<i64>) -> Range<i64, Vec<crate::source::hyperliquid::Trade>> {
+        self.trades.range(dates)
+    }
+
+    pub async fn get_depth_between(&self, dates: std::ops::Range<i64>) -> Range<i64, DateDepth> {
+        self.depths.range(dates)
+    }
+
+    pub async fn init_cache(&mut self, pool: &Pool, dates: std::ops::Range<i64>) {
+        self.init_trades(pool, &dates).await;
+        self.init_depth_between(pool, &dates).await;
     }
 }

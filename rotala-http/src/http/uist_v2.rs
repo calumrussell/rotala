@@ -39,6 +39,8 @@ pub struct AppState {
 }
 
 impl AppState {
+    const MAX_BACKTEST_LENGTH: i64 = 1_000_000;
+
     pub fn create_db_pool(user: &str, dbname: &str, host: &str, password: &str) -> Pool {
         let mut pg_config = tokio_postgres::Config::new();
         pg_config.user(user);
@@ -84,10 +86,14 @@ impl AppState {
 
                 let curr_date = backtest.curr_date;
 
-                let back_depth = dataset.get_depth_between(&self.pool, backtest.curr_date - backtest.frequency as i64..backtest.curr_date).await;
-                if let Some((_date, back_depth_last)) = back_depth.last_key_value() {
-                    let back_trades = dataset.get_trades(&self.pool, backtest.curr_date - backtest.frequency as i64..backtest.curr_date).await;
-                    let mut res = backtest.exchange.tick(back_depth_last, &back_trades, curr_date);
+                let back_depth = dataset.get_depth_between(backtest.curr_date - backtest.frequency as i64..backtest.curr_date).await;
+                if let Some((_date, back_depth_last)) = back_depth.last() {
+                    let back_trades = dataset.get_trades_between(backtest.curr_date - backtest.frequency as i64..backtest.curr_date).await;
+                    let mut back_trades_last = BTreeMap::default();
+                    if let Some((date, back_trades_last_query)) = back_trades.last() {
+                        back_trades_last.insert(*date, back_trades_last_query.to_vec());
+                    }
+                    let mut res = backtest.exchange.tick(back_depth_last, &back_trades_last, curr_date);
 
                     executed_orders = std::mem::take(&mut res.0);
                     inserted_orders = std::mem::take(&mut res.1);
@@ -104,16 +110,22 @@ impl AppState {
                         BTreeMap::new(),
                     ));
                 } else {
-                    let depth = dataset.get_depth_between(&self.pool, backtest.curr_date..new_date).await;
+                    let depth = dataset.get_depth_between(backtest.curr_date..new_date).await;
                     let mut last_depth = BTreeMap::default();
-                    if let Some((_date, last_quotes)) = depth.last_key_value() {
+                    if let Some((_date, queried_last_quotes)) = depth.last() {
                         //TODO: not great, as state is stored in DB it isn't clear why we need
                         //clone
-                        last_depth = last_quotes.clone();
+                        last_depth = queried_last_quotes.clone();
                     }
-                    let trades = dataset.get_trades(&self.pool, backtest.curr_date..new_date).await;
+                    let trades = dataset.get_trades_between(backtest.curr_date..new_date).await;
+                    let mut last_trades = BTreeMap::default();
+                    if let Some((date, queried_last_trades)) = trades.last() {
+                        //TODO: not great either
+                        last_trades.insert(*date, queried_last_trades.to_vec());
+                    }
+
                     backtest.curr_date = new_date;
-                    return Some((true, executed_orders, inserted_orders, last_depth, new_date, trades));
+                    return Some((true, executed_orders, inserted_orders, last_depth, new_date, last_trades));
                 }
             }
         }
@@ -129,14 +141,20 @@ impl AppState {
         let curr_id = self.last.load(std::sync::atomic::Ordering::SeqCst);
         let exchange = UistV2::new();
 
-        let minerva = Minerva::new();
+        let mut minerva = Minerva::new();
+        minerva.init_cache(&self.pool, start_date..end_date).await;
 
         let dataset_date_bounds = minerva.get_date_bounds(&self.pool).await.unwrap();
-        let end_date_backtest = if dataset_date_bounds.1 > end_date {
+        let mut end_date_backtest = if dataset_date_bounds.1 > end_date {
             end_date
         } else {
             dataset_date_bounds.1
         };
+
+        let backtest_length = (end_date_backtest - start_date) / frequency as i64;
+        if backtest_length > Self::MAX_BACKTEST_LENGTH {
+            end_date_backtest = start_date + (frequency as i64 * Self::MAX_BACKTEST_LENGTH);
+        }
 
         let backtest = BacktestState {
             id: curr_id,
@@ -158,9 +176,9 @@ impl AppState {
             if res == curr_id {
                 self.backtests.insert(curr_id, backtest);
 
-                let depth = minerva.get_depth_between(&self.pool, start_date - frequency as i64..start_date).await;
+                let depth = minerva.get_depth_between(start_date - frequency as i64..start_date).await;
                 let mut last_depth = BTreeMap::default();
-                if let Some((_date, last_value)) = depth.last_key_value() {
+                if let Some((_date, last_value)) = depth.last() {
                     //TODO: isn't clear why clone is required here, same as above somewhere
                     last_depth = last_value.clone();
                 }
