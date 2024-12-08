@@ -167,12 +167,10 @@ impl UistV2 {
         self.order_buffer.append(&mut orders);
     }
 
-    pub fn tick(&mut self, quotes: &DateDepth, now: i64) -> (Vec<OrderResult>, Vec<InnerOrder>) {
+    pub fn tick(&mut self, quotes: &DateDepth, trades: &DateTrade, now: i64) -> (Vec<OrderResult>, Vec<InnerOrder>) {
         //To eliminate lookahead bias, we only insert new orders after we have executed any orders
         //that were on the stack first
-        //TODO: stub with empty value for now
-        let trades = BTreeMap::new();
-        let executed_trades = self.orderbook.execute_orders(quotes, &trades, now);
+        let executed_trades = self.orderbook.execute_orders(quotes, trades, now);
         for executed_trade in &executed_trades {
             self.order_result_log.push(executed_trade.clone());
         }

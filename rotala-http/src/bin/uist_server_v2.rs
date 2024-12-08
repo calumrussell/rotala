@@ -13,12 +13,11 @@ async fn main() -> std::io::Result<()> {
     let address: String = args[1].clone();
     let port: u16 = args[2].parse().unwrap();
     let host: String = args[3].clone();
-    let user: String = args[3].clone();
-    let password: String = args[3].clone();
-    let dbname: String = args[3].clone();
+    let user: String = args[4].clone();
+    let password: String = args[5].clone();
+    let dbname: String = args[6].clone();
 
-    let conn = format!("host={} user={} password={} dbname={}", host, user, password, dbname);
-    let source = Minerva::new(&conn).await;
+    let source = Minerva::new(&user, &dbname, &host, &password).await;
     let app_state = AppState::single("Test", source);
 
     let uist_state = web::Data::new(app_state);

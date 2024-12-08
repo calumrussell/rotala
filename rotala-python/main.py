@@ -51,7 +51,7 @@ def create_orders(bid_grid, ask_grid):
 
 
 if __name__ == "__main__":
-    logging.basicConfig(level=logging.CRITICAL)
+    logging.basicConfig(level=logging.INFO)
 
     dataset_name = "Test"
     frequency = 250
@@ -74,6 +74,9 @@ if __name__ == "__main__":
         brkr.tick()
 
         depth = brkr.latest_depth
+        print(depth)
+
+        """
         if not depth:
             continue
 
@@ -104,3 +107,4 @@ if __name__ == "__main__":
                     brkr.insert_order(order)
                     for order in create_orders(bid_grid, ask_grid)
                 ]
+        """

@@ -65,9 +65,10 @@ impl AppState {
 
                 let curr_date = backtest.curr_date;
 
-                let quotes = dataset.get_depth_between(backtest.curr_date - backtest.frequency as i64..backtest.curr_date).await;
-                if let Some((_date, date_quotes)) = quotes.last_key_value() {
-                    let mut res = backtest.exchange.tick(date_quotes, curr_date);
+                let back_depth = dataset.get_depth_between(backtest.curr_date - backtest.frequency as i64..backtest.curr_date).await;
+                if let Some((_date, back_depth_last)) = back_depth.last_key_value() {
+                    let back_trades = dataset.get_trades(backtest.curr_date - backtest.frequency as i64..backtest.curr_date).await;
+                    let mut res = backtest.exchange.tick(back_depth_last, &back_trades, curr_date);
 
                     executed_orders = std::mem::take(&mut res.0);
                     inserted_orders = std::mem::take(&mut res.1);
@@ -91,7 +92,6 @@ impl AppState {
                         //clone
                         last_depth = last_quotes.clone();
                     }
-
                     let trades = dataset.get_trades(backtest.curr_date..new_date).await;
                     backtest.curr_date = new_date;
                     return Some((true, executed_orders, inserted_orders, last_depth, new_date, trades));

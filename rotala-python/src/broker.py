@@ -190,12 +190,11 @@ class Broker:
         self.ts = None
 
         # Initializes backtest_id, can ignore result
+        print(builder.start_date, builder.end_date)
         init_response = self.http.init(self.dataset_name, builder.start_date, builder.end_date, builder.frequency)
         self.backtest_id = init_response["backtest_id"]
-        self.latest_quotes = init_response["bbo"]
         self.latest_depth = init_response["depth"]
         self.cached_quotes = {}
-        self.ts = list(self.latest_quotes.values())[0]["date"]
 
     def _update_holdings(self, position: str, chg: float):
         if position not in self.holdings:
@@ -304,9 +303,6 @@ class Broker:
             logger.critical("Sim finished")
             exit(0)
         else:
-            self.latest_quotes = tick_response["bbo"]
-            if self.latest_quotes:
-                self.cached_quotes = self.latest_quotes
             self.latest_depth = tick_response["depth"]
 
         self.ts = tick_response["now"]

@@ -1,14 +1,14 @@
 #![allow(dead_code)]
 use std::collections::{BTreeMap, HashMap};
 
-use anyhow::Result;
+use deadpool_postgres::Pool;
 use tokio_pg_mapper::FromTokioPostgresRow;
-use tokio_postgres::{Client, NoTls};
+use tokio_postgres::NoTls;
 
 use crate::source::hyperliquid::{DateDepth, DateTrade, Depth, Level, Side};
 
 pub struct Minerva {
-    db: Client,
+    db: Pool,
 }
 
 #[derive(tokio_pg_mapper::PostgresMapper, Clone, Debug)]
@@ -82,57 +82,59 @@ impl From<Vec<L2Book>> for Depth {
 }
 
 impl Minerva {
-    pub async fn new(connection_string: &str) -> Minerva {
-        if let Ok(client) = Minerva::get_connection(connection_string).await {
-            return Minerva { db: client };
-        }
-        panic!("Could not connect to database")
+    pub async fn new(user: &str, dbname: &str, host: &str, password: &str) -> Minerva {
+
+        let mut pg_config = tokio_postgres::Config::new();
+        pg_config.user(user);
+        pg_config.dbname(dbname);
+        pg_config.host(host);
+        pg_config.password(password);
+
+        let mgr_config = deadpool_postgres::ManagerConfig {
+            recycling_method: deadpool_postgres::RecyclingMethod::Fast,
+        };
+        let mgr = deadpool_postgres::Manager::from_config(pg_config, NoTls, mgr_config);
+        let pool = Pool::builder(mgr).max_size(16).build().unwrap();
+        Minerva { db: pool }
     }
-
-    async fn get_connection(connection_string: &str) -> Result<Client> {
-        //TODO: will need connection pool here
-        let (client, connection) = tokio_postgres::connect(connection_string, NoTls).await?;
-
-        tokio::spawn(async move {
-            if let Err(e) = connection.await {
-                eprintln!("connection error: {}", e);
-            }
-        });
-
-        Ok(client)
-    }
-
     pub async fn get_date_bounds(&self) -> Option<(i64, i64)> {
         //TODO: should cache result because this is potentially crippling
-        let _query_result = self
-            .db
-            .query("select min(time), max(time) from trade", &[])
-            .await;
-        unimplemented!()
+        if let Ok(client) = self.db.get().await {
+            let query_result = client.query("select min(time), max(time) from trade", &[])
+                .await;
+
+            if let Ok(rows) = query_result {
+                for row in rows {
+                    return Some((row.get(0), row.get(1)));
+                }
+            };
+        }
+        None
     }
 
     pub async fn get_trades(&self, dates: std::ops::Range<i64>) -> DateTrade {
         let start_date = dates.start;
         let end_date = dates.end;
 
-        let query_result = self
-            .db
-            .query(
-                "select * from trade where time between $1 and $2",
-                &[&start_date, &end_date],
-            )
-            .await;
-
         let mut res = BTreeMap::new();
-        if let Ok(rows) = query_result {
-            for row in rows {
-                if let Ok(trade) = Trade::from_row(row) {
-                    let hl_trade: crate::source::hyperliquid::Trade = trade.into();
+        if let Ok(client) = self.db.get().await {
 
-                    res.entry(hl_trade.time).or_insert_with(Vec::new);
+            let query_result = client.query(
+                    "select * from trade where time between $1 and $2",
+                    &[&start_date, &end_date],
+                )
+                .await;
 
-                    let date_trades = res.get_mut(&hl_trade.time).unwrap();
-                    date_trades.push(hl_trade);
+            if let Ok(rows) = query_result {
+                for row in rows {
+                    if let Ok(trade) = Trade::from_row(row) {
+                        let hl_trade: crate::source::hyperliquid::Trade = trade.into();
+
+                        res.entry(hl_trade.time).or_insert_with(Vec::new);
+
+                        let date_trades = res.get_mut(&hl_trade.time).unwrap();
+                        date_trades.push(hl_trade);
+                    }
                 }
             }
         }
@@ -145,36 +147,36 @@ impl Minerva {
         let start_date = dates.start;
         let end_date = dates.end;
 
-        let query_result = self
-            .db
-            .query(
-                "select * from l2Book where time between $1 and $2",
-                &[&start_date, &end_date],
-            )
-            .await;
+        let mut depth_result = BTreeMap::new();
+        if let Ok(client) = self.db.get().await {
+            let query_result = client.query(
+                    "select * from l2Book where time between $1 and $2",
+                    &[&start_date, &end_date],
+                )
+                .await;
 
-        let mut sort_into_dates = HashMap::new();
-        if let Ok(rows) = query_result {
-            for row in rows {
-                if let Ok(book) = L2Book::from_row(row) {
-                    sort_into_dates.entry(book.time).or_insert_with(Vec::new);
-                    sort_into_dates
-                        .get_mut(&book.time)
-                        .unwrap()
-                        .push(book.clone());
+            let mut sort_into_dates = HashMap::new();
+            if let Ok(rows) = query_result {
+                for row in rows {
+                    if let Ok(book) = L2Book::from_row(row) {
+                        sort_into_dates.entry(book.time).or_insert_with(Vec::new);
+                        sort_into_dates
+                            .get_mut(&book.time)
+                            .unwrap()
+                            .push(book.clone());
+                    }
                 }
             }
-        }
 
-        let mut depth_result = BTreeMap::new();
-        for (date, rows) in sort_into_dates.iter_mut() {
-            let depth: Depth = std::mem::take(rows).into();
+            for (date, rows) in sort_into_dates.iter_mut() {
+                let depth: Depth = std::mem::take(rows).into();
 
-            depth_result.entry(*date).or_insert_with(BTreeMap::new);
-            depth_result
-                .get_mut(date)
-                .unwrap()
-                .insert(depth.symbol.clone(), depth);
+                depth_result.entry(*date).or_insert_with(BTreeMap::new);
+                depth_result
+                    .get_mut(date)
+                    .unwrap()
+                    .insert(depth.symbol.clone(), depth);
+            }
         }
 
         depth_result
