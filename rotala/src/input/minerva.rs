@@ -2,35 +2,38 @@
 use std::collections::{btree_map::Range, BTreeMap, HashMap};
 
 use deadpool_postgres::Pool;
+use serde_json::Value;
 use tokio_pg_mapper::FromTokioPostgresRow;
 
 use crate::source::hyperliquid::{DateDepth, DateTrade, Depth, Level, Side};
 
 #[derive(tokio_pg_mapper::PostgresMapper, Clone, Debug)]
-#[pg_mapper(table = "l2Book")]
+#[pg_mapper(table = "depth")]
 pub struct L2Book {
     coin: String,
     side: bool,
     px: String,
     sz: String,
     time: i64,
+    exchange: String,
+    meta: Value,
 }
 
 #[derive(tokio_pg_mapper::PostgresMapper, Clone, Debug)]
 #[pg_mapper(table = "trade")]
 pub struct Trade {
     pub coin: String,
-    pub side: String,
+    pub side: bool,
     pub px: String,
     pub sz: String,
-    pub hash: String,
     pub time: i64,
-    pub tid: i64,
+    pub exchange: String,
+    pub meta: Value,
 }
 
 impl From<Trade> for crate::source::hyperliquid::Trade {
     fn from(value: Trade) -> Self {
-        let side = if value.side == "B" {
+        let side = if value.side == false {
             Side::Bid
         } else {
             Side::Ask
@@ -102,7 +105,7 @@ impl Minerva {
 
         if let Ok(client) = pool.get().await {
             let query_result = client.query(
-                    "select * from l2Book where time between $1 and $2",
+                    "select * from depth where time between $1 and $2",
                     &[&start_date, &end_date],
                 )
                 .await;
