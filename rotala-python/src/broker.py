@@ -182,11 +182,23 @@ class Broker:
         self.ts = None
 
         # Initializes backtest_id, can ignore result
-        print(builder.start_date, builder.end_date)
+        logger.info(f"{self.backtest_id}-{self.ts} INIT: {builder.start_date}, {builder.end_date}")
         init_response = self.http.init(builder.start_date, builder.end_date, builder.frequency)
         self.backtest_id = init_response["backtest_id"]
         self.latest_depth = init_response["depth"]
+        self.latest_quotes = Broker._convert_depth_to_quotes(self.latest_depth)
         self.cached_quotes = {}
+
+    def _convert_depth_to_quotes(depth):
+        bbo = {}
+        for coin in depth:
+            coin_depth = depth[coin]
+            coin_bids = coin_depth["bids"]
+            coin_asks = coin_depth["asks"]
+
+            tmp = {"bid": coin_bids[0]["price"], "ask": coin_asks[-1]["price"]}
+            bbo[coin] = tmp
+        return bbo
 
     def _update_holdings(self, position: str, chg: float):
         if position not in self.holdings:
@@ -282,7 +294,6 @@ class Broker:
         # Tick, reconcile our state
         self.order_inserted_on_last_tick = []
         tick_response = self.http.tick()
-        print(tick_response)
         for order_result_json in tick_response["executed_orders"]:
             order_result = OrderResult.from_dict(order_result_json)
             self._process_order_result(order_result)
@@ -297,6 +308,9 @@ class Broker:
             exit(0)
         else:
             self.latest_depth = tick_response["depth"]
+            if self.latest_depth:
+                self.latest_quotes = Broker._convert_depth_to_quotes(self.latest_depth)
+                self.cached_quotes = {**self.cached_quotes, **self.latest_quotes}
 
         self.ts = tick_response["now"]
 

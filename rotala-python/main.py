@@ -76,9 +76,12 @@ if __name__ == "__main__":
         if not depth:
             continue
 
-        bid_grid, ask_grid = create_grid(depth)
+        if not depth.get("SOL"):
+            continue
 
+        bid_grid, ask_grid = create_grid(depth)
         best_bid, best_ask, mid_price = get_best_and_mid(depth)
+
         if last_mid == -1:
             last_mid = mid_price
 
