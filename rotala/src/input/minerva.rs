@@ -33,7 +33,7 @@ pub struct Trade {
 
 impl From<Trade> for crate::source::hyperliquid::Trade {
     fn from(value: Trade) -> Self {
-        let side = if value.side == false {
+        let side = if !value.side {
             Side::Bid
         } else {
             Side::Ask
@@ -128,7 +128,7 @@ impl Minerva {
             for (date, rows) in sort_into_dates.iter_mut() {
                 let depth: Depth = std::mem::take(rows).into();
 
-                self.depths.entry(*date).or_insert_with(BTreeMap::new);
+                self.depths.entry(*date).or_default();
                 self.depths
                     .get_mut(date)
                     .unwrap()
@@ -154,7 +154,7 @@ impl Minerva {
                     if let Ok(trade) = Trade::from_row(row) {
                         let hl_trade: crate::source::hyperliquid::Trade = trade.into();
 
-                        self.trades.entry(hl_trade.time).or_insert_with(Vec::new);
+                        self.trades.entry(hl_trade.time).or_default();
 
                         let date_trades = self.trades.get_mut(&hl_trade.time).unwrap();
                         date_trades.push(hl_trade);
