@@ -5,9 +5,9 @@ use std::sync::atomic::AtomicU64;
 use anyhow::Result;
 use dashmap::try_result::TryResult;
 use dashmap::DashMap;
+use deadpool_postgres::Pool;
 use rotala::input::minerva::Minerva;
 use serde::{Deserialize, Serialize};
-use deadpool_postgres::Pool;
 
 use rotala::exchange::uist_v2::{InnerOrder, Order, OrderId, OrderResult, UistV2};
 use rotala::source::hyperliquid::{DateDepth, DateTrade};
@@ -51,7 +51,8 @@ impl AppState {
         let mgr_config = deadpool_postgres::ManagerConfig {
             recycling_method: deadpool_postgres::RecyclingMethod::Fast,
         };
-        let mgr = deadpool_postgres::Manager::from_config(pg_config, tokio_postgres::NoTls, mgr_config);
+        let mgr =
+            deadpool_postgres::Manager::from_config(pg_config, tokio_postgres::NoTls, mgr_config);
         Pool::builder(mgr).max_size(16).build().unwrap()
     }
 
@@ -86,14 +87,25 @@ impl AppState {
 
                 let curr_date = backtest.curr_date;
 
-                let back_depth = dataset.get_depth_between(backtest.curr_date - backtest.frequency as i64..backtest.curr_date).await;
+                let back_depth = dataset
+                    .get_depth_between(
+                        backtest.curr_date - backtest.frequency as i64..backtest.curr_date,
+                    )
+                    .await;
                 if let Some((_date, back_depth_last)) = back_depth.last() {
-                    let back_trades = dataset.get_trades_between(backtest.curr_date - backtest.frequency as i64..backtest.curr_date).await;
+                    let back_trades = dataset
+                        .get_trades_between(
+                            backtest.curr_date - backtest.frequency as i64..backtest.curr_date,
+                        )
+                        .await;
                     let mut back_trades_last = BTreeMap::default();
                     if let Some((date, back_trades_last_query)) = back_trades.last() {
                         back_trades_last.insert(*date, back_trades_last_query.to_vec());
                     }
-                    let mut res = backtest.exchange.tick(back_depth_last, &back_trades_last, curr_date);
+                    let mut res =
+                        backtest
+                            .exchange
+                            .tick(back_depth_last, &back_trades_last, curr_date);
 
                     executed_orders = std::mem::take(&mut res.0);
                     inserted_orders = std::mem::take(&mut res.1);
@@ -110,14 +122,18 @@ impl AppState {
                         BTreeMap::new(),
                     ));
                 } else {
-                    let depth = dataset.get_depth_between(backtest.curr_date..new_date).await;
+                    let depth = dataset
+                        .get_depth_between(backtest.curr_date..new_date)
+                        .await;
                     let mut last_depth = BTreeMap::default();
                     if let Some((_date, queried_last_quotes)) = depth.last() {
                         //TODO: not great, as state is stored in DB it isn't clear why we need
                         //clone
                         last_depth = queried_last_quotes.clone();
                     }
-                    let trades = dataset.get_trades_between(backtest.curr_date..new_date).await;
+                    let trades = dataset
+                        .get_trades_between(backtest.curr_date..new_date)
+                        .await;
                     let mut last_trades = BTreeMap::default();
                     if let Some((date, queried_last_trades)) = trades.last() {
                         //TODO: not great either
@@ -125,7 +141,14 @@ impl AppState {
                     }
 
                     backtest.curr_date = new_date;
-                    return Some((true, executed_orders, inserted_orders, last_depth, new_date, last_trades));
+                    return Some((
+                        true,
+                        executed_orders,
+                        inserted_orders,
+                        last_depth,
+                        new_date,
+                        last_trades,
+                    ));
                 }
             }
         }
@@ -176,7 +199,9 @@ impl AppState {
             if res == curr_id {
                 self.backtests.insert(curr_id, backtest);
 
-                let depth = minerva.get_depth_between(start_date - frequency as i64..start_date).await;
+                let depth = minerva
+                    .get_depth_between(start_date - frequency as i64..start_date)
+                    .await;
                 let mut last_depth = BTreeMap::default();
                 if let Some((_date, last_value)) = depth.last() {
                     //TODO: isn't clear why clone is required here, same as above somewhere
@@ -280,7 +305,6 @@ impl actix_web::ResponseError for UistV2Error {
     }
 }
 
-
 pub trait Client {
     fn tick(&self, backtest_id: BacktestId) -> impl Future<Output = Result<TickResponse>>;
     fn insert_orders(
@@ -295,9 +319,7 @@ pub trait Client {
         frequency: u64,
     ) -> impl Future<Output = Result<InitResponse>>;
     fn info(&self, backtest_id: BacktestId) -> impl Future<Output = Result<InfoResponse>>;
-    fn dataset_info(
-        &self,
-    ) -> impl Future<Output = Result<DatasetInfoResponse>>;
+    fn dataset_info(&self) -> impl Future<Output = Result<DatasetInfoResponse>>;
 }
 
 type UistState = AppState;
@@ -352,14 +374,11 @@ pub mod server {
         _path: web::Path<()>,
         init: web::Json<InitRequest>,
     ) -> Result<web::Json<InitResponse>, UistV2Error> {
-
-        if let Some((backtest_id, depth)) =
-            app.init(init.start_date, init.end_date, init.frequency).await
+        if let Some((backtest_id, depth)) = app
+            .init(init.start_date, init.end_date, init.frequency)
+            .await
         {
-            Ok(web::Json(InitResponse {
-                backtest_id,
-                depth,
-            }))
+            Ok(web::Json(InitResponse { backtest_id, depth }))
         } else {
             Err(UistV2Error::UnknownDataset)
         }
@@ -385,7 +404,6 @@ pub mod server {
     pub async fn dataset_info(
         app: web::Data<UistState>,
     ) -> Result<web::Json<DatasetInfoResponse>, UistV2Error> {
-
         if let Some(resp) = app.dataset_info().await {
             Ok(web::Json(DatasetInfoResponse {
                 start_date: resp.0,

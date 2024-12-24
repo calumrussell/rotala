@@ -167,7 +167,12 @@ impl UistV2 {
         self.order_buffer.append(&mut orders);
     }
 
-    pub fn tick(&mut self, quotes: &DateDepth, trades: &DateTrade, now: i64) -> (Vec<OrderResult>, Vec<InnerOrder>) {
+    pub fn tick(
+        &mut self,
+        quotes: &DateDepth,
+        trades: &DateTrade,
+        now: i64,
+    ) -> (Vec<OrderResult>, Vec<InnerOrder>) {
         //To eliminate lookahead bias, we only insert new orders after we have executed any orders
         //that were on the stack first
         let executed_trades = self.orderbook.execute_orders(quotes, trades, now);

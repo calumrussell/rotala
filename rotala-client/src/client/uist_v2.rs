@@ -39,12 +39,7 @@ impl Client for HttpClient {
             .await?)
     }
 
-    async fn init(
-        &self,
-        start_date: i64,
-        end_date: i64,
-        frequency: u64,
-    ) -> Result<InitResponse> {
+    async fn init(&self, start_date: i64, end_date: i64, frequency: u64) -> Result<InitResponse> {
         let req = InitRequest {
             start_date,
             end_date,
@@ -101,12 +96,10 @@ impl Client for TestClient {
         end_date: i64,
         frequency: u64,
     ) -> impl Future<Output = Result<InitResponse>> {
-
-        if let Some((backtest_id, depth)) = futures::executor::block_on(self.state.init(start_date, end_date, frequency)) {
-            future::ready(Ok(InitResponse {
-                backtest_id,
-                depth,
-            }))
+        if let Some((backtest_id, depth)) =
+            futures::executor::block_on(self.state.init(start_date, end_date, frequency))
+        {
+            future::ready(Ok(InitResponse { backtest_id, depth }))
         } else {
             future::ready(Err(Error::new(UistV2Error::UnknownDataset)))
         }
@@ -150,9 +143,7 @@ impl Client for TestClient {
         }
     }
 
-    fn dataset_info(
-        &self,
-    ) -> impl Future<Output = Result<DatasetInfoResponse>> {
+    fn dataset_info(&self) -> impl Future<Output = Result<DatasetInfoResponse>> {
         if let Some(dataset) = futures::executor::block_on(self.state.dataset_info()) {
             future::ready(Ok(DatasetInfoResponse {
                 start_date: dataset.0,

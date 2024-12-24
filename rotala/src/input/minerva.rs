@@ -90,11 +90,12 @@ impl Default for Minerva {
     }
 }
 
-
 impl Minerva {
-
     pub fn new() -> Self {
-        Self { trades: BTreeMap::new(), depths: BTreeMap::new() }
+        Self {
+            trades: BTreeMap::new(),
+            depths: BTreeMap::new(),
+        }
     }
 
     async fn init_depth_between(&mut self, pool: &Pool, dates: &std::ops::Range<i64>) {
@@ -104,7 +105,8 @@ impl Minerva {
         let end_date = dates.end;
 
         if let Ok(client) = pool.get().await {
-            let query_result = client.query(
+            let query_result = client
+                .query(
                     "select * from depth where time between $1 and $2",
                     &[&start_date, &end_date],
                 )
@@ -127,7 +129,7 @@ impl Minerva {
                 let depth: Depth = std::mem::take(rows).into();
 
                 self.depths.entry(*date).or_insert_with(BTreeMap::new);
-                self.depths 
+                self.depths
                     .get_mut(date)
                     .unwrap()
                     .insert(depth.symbol.clone(), depth);
@@ -140,8 +142,8 @@ impl Minerva {
         let end_date = dates.end;
 
         if let Ok(client) = pool.get().await {
-
-            let query_result = client.query(
+            let query_result = client
+                .query(
                     "select * from trade where time between $1 and $2",
                     &[&start_date, &end_date],
                 )
@@ -164,7 +166,8 @@ impl Minerva {
 
     pub async fn get_date_bounds(&self, pool: &Pool) -> Option<(i64, i64)> {
         if let Ok(client) = pool.get().await {
-            let query_result = client.query("select min(time), max(time) from trade", &[])
+            let query_result = client
+                .query("select min(time), max(time) from trade", &[])
                 .await;
 
             if let Ok(rows) = query_result {
@@ -175,7 +178,10 @@ impl Minerva {
         None
     }
 
-    pub async fn get_trades_between(&self, dates: std::ops::Range<i64>) -> Range<i64, Vec<crate::source::hyperliquid::Trade>> {
+    pub async fn get_trades_between(
+        &self,
+        dates: std::ops::Range<i64>,
+    ) -> Range<i64, Vec<crate::source::hyperliquid::Trade>> {
         self.trades.range(dates)
     }
 
