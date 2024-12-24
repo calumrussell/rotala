@@ -1,10 +1,8 @@
 use std::env;
 
 use actix_web::{web, App, HttpServer};
-use rotala::input::athena::Athena;
 use rotala_http::http::uist_v2::server::*;
 use rotala_http::http::uist_v2::AppState;
-use std::path::Path;
 
 #[actix_web::main]
 async fn main() -> std::io::Result<()> {
@@ -13,11 +11,12 @@ async fn main() -> std::io::Result<()> {
 
     let address: String = args[1].clone();
     let port: u16 = args[2].parse().unwrap();
-    let file_path = Path::new(&args[3]);
+    let host: String = args[3].clone();
+    let user: String = args[4].clone();
+    let password: String = args[5].clone();
+    let dbname: String = args[6].clone();
 
-    let source = Athena::from_file(file_path);
-    let app_state = AppState::single("Test", source);
-
+    let app_state = AppState::single(&user, &dbname, &host, &password);
     let uist_state = web::Data::new(app_state);
 
     HttpServer::new(move || {

@@ -19,10 +19,10 @@ class HttpClient:
         self.s = s
         return
 
-    def init(self, dataset_name, start_date, end_date, frequency):
+    def init(self, start_date, end_date, frequency):
         val = f'{{"start_date": {start_date}, "end_date": {end_date}, "frequency": {frequency}}}'
         r = self.s.post(
-            f"{self.base_url}/init/{dataset_name}",
+            f"{self.base_url}/init",
             data=val,
             headers={"Content-type": "application/json"},
         )
@@ -57,6 +57,6 @@ class HttpClient:
         r = self.s.get(f"{self.base_url}/backtest/{self.backtest_id}/info")
         return r.json()
 
-    def dataset_info(self, dataset):
-        r = self.s.get(f"{self.base_url}/dataset/{dataset}/info")
+    def dataset_info(self):
+        r = self.s.get(f"{self.base_url}/dataset/info")
         return r.json()
