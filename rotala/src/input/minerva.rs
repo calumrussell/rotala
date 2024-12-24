@@ -33,11 +33,7 @@ pub struct Trade {
 
 impl From<Trade> for crate::source::hyperliquid::Trade {
     fn from(value: Trade) -> Self {
-        let side = if !value.side {
-            Side::Bid
-        } else {
-            Side::Ask
-        };
+        let side = if !value.side { Side::Bid } else { Side::Ask };
 
         Self {
             coin: value.coin,
