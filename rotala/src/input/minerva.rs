@@ -108,6 +108,9 @@ impl Minerva {
                 )
                 .await;
 
+            //TODO: there is a bug here, this is putting all of the rows for a date under a symbol
+            //so SOL will have levels for HYPE if they share a quote date. Think this explains
+            //sparsity of quotes.
             let mut sort_into_dates = HashMap::new();
             if let Ok(rows) = query_result {
                 for row in rows {
