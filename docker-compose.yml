@@ -4,5 +4,6 @@ services:
 
   uist_v2:
     build: .
-    network_mode: host
-    command: cargo run --bin uist_server_v2 localhost ${PORT} ${DB_HOST} ${DB_USER} ${DB_PWD} ${DB_NAME}
+    ports:
+      - 0.0.0.0:3000:${PORT}
+    command: cargo run --bin uist_server_v2 0.0.0.0 ${PORT} ${DB_HOST} ${DB_USER} ${DB_PWD} ${DB_NAME
