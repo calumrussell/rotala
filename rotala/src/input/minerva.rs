@@ -108,33 +108,43 @@ impl Minerva {
                 )
                 .await;
 
-            let mut sort_into_dates: HashMap<i64, HashMap<String, Vec<L2Book>>> = HashMap::new();
+            let mut sort_into_dates: HashMap<i64, HashMap<String, HashMap<String, Vec<L2Book>>>> = HashMap::new();
             if let Ok(rows) = query_result {
                 for row in rows {
                     if let Ok(book) = L2Book::from_row(row) {
                         sort_into_dates.entry(book.time).or_default();
 
                         let date = sort_into_dates.get_mut(&book.time).unwrap();
+                        let quote_name = format!("{}@{}", book.coin, book.exchange);
 
-                        if !date.contains_key(&book.coin) {
-                            date.insert(book.coin.clone(), Vec::new());
+                        if !date.contains_key(&book.exchange) {
+                            date.insert(book.exchange.clone(), HashMap::new());
                         }
 
-                        let coin_date: &mut Vec<L2Book> = date.get_mut(&book.coin).unwrap();
+                        let exchange = date.get_mut(&book.exchange).unwrap();
+
+                        if !exchange.contains_key(&book.coin) {
+                            exchange.insert(book.coin.clone(), Vec::new());
+                        }
+
+                        let coin_date: &mut Vec<L2Book> = exchange.get_mut(&quote_name).unwrap();
                         coin_date.push(book);
                     }
                 }
             }
 
-            for (date, coin_map) in sort_into_dates.iter_mut() {
-                for (coin, book) in coin_map.iter_mut() {
-                    let depth: Depth = std::mem::take(book).into();
+            for (date, exchange_map) in sort_into_dates.iter_mut() {
+                for (exchange, coin_map) in exchange_map.iter_mut() {
+                    for (coin, book) in coin_map.iter_mut() {
+                        let depth: Depth = std::mem::take(book).into();
 
-                    self.depths.entry(*date).or_default();
-                    self.depths
-                        .get_mut(date)
-                        .unwrap()
-                        .insert(coin.to_string(), depth);
+                        self.depths.entry(*date).or_default();
+                        let date_map = self.depths.get_mut(date).unwrap();
+
+                        date_map.entry(exchange.to_string()).or_default();
+
+                        date_map.get_mut(exchange).unwrap().insert(coin.to_string(), depth);
+                    }
                 }
             }
         }
