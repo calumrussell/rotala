@@ -55,7 +55,12 @@ pub struct Order {
 }
 
 impl Order {
-    fn market(order_type: OrderType, symbol: impl Into<String>, shares: f64, exchange: impl Into<String>) -> Self {
+    fn market(
+        order_type: OrderType,
+        symbol: impl Into<String>,
+        shares: f64,
+        exchange: impl Into<String>,
+    ) -> Self {
         Self {
             order_type,
             symbol: symbol.into(),
@@ -66,14 +71,20 @@ impl Order {
         }
     }
 
-    fn delayed(order_type: OrderType, symbol: impl Into<String>, shares: f64, price: f64, exchange: impl Into<String>) -> Self {
+    fn delayed(
+        order_type: OrderType,
+        symbol: impl Into<String>,
+        shares: f64,
+        price: f64,
+        exchange: impl Into<String>,
+    ) -> Self {
         Self {
             order_type,
             symbol: symbol.into(),
             qty: shares,
             price: Some(price),
             order_id_ref: None,
-            exchange: exchange.into()
+            exchange: exchange.into(),
         }
     }
 
@@ -81,19 +92,38 @@ impl Order {
         Order::market(OrderType::MarketBuy, symbol, shares, exchange)
     }
 
-    pub fn market_sell(symbol: impl Into<String>, shares: f64, exchange: impl Into<String>) -> Self {
+    pub fn market_sell(
+        symbol: impl Into<String>,
+        shares: f64,
+        exchange: impl Into<String>,
+    ) -> Self {
         Order::market(OrderType::MarketSell, symbol, shares, exchange)
     }
 
-    pub fn limit_buy(symbol: impl Into<String>, shares: f64, price: f64, exchange: impl Into<String>) -> Self {
+    pub fn limit_buy(
+        symbol: impl Into<String>,
+        shares: f64,
+        price: f64,
+        exchange: impl Into<String>,
+    ) -> Self {
         Order::delayed(OrderType::LimitBuy, symbol, shares, price, exchange)
     }
 
-    pub fn limit_sell(symbol: impl Into<String>, shares: f64, price: f64, exchange: impl Into<String>) -> Self {
+    pub fn limit_sell(
+        symbol: impl Into<String>,
+        shares: f64,
+        price: f64,
+        exchange: impl Into<String>,
+    ) -> Self {
         Order::delayed(OrderType::LimitSell, symbol, shares, price, exchange)
     }
 
-    pub fn modify_order(symbol: impl Into<String>, order_id: OrderId, qty_change: f64, exchange: impl Into<String>) -> Self {
+    pub fn modify_order(
+        symbol: impl Into<String>,
+        order_id: OrderId,
+        qty_change: f64,
+        exchange: impl Into<String>,
+    ) -> Self {
         Self {
             order_id_ref: Some(order_id),
             order_type: OrderType::Modify,
@@ -104,14 +134,18 @@ impl Order {
         }
     }
 
-    pub fn cancel_order(symbol: impl Into<String>, order_id: OrderId, exchange: impl Into<String>) -> Self {
+    pub fn cancel_order(
+        symbol: impl Into<String>,
+        order_id: OrderId,
+        exchange: impl Into<String>,
+    ) -> Self {
         Self {
             order_id_ref: Some(order_id),
             order_type: OrderType::Cancel,
             symbol: symbol.into(),
             price: None,
             qty: 0.0,
-            exchange: exchange.into()
+            exchange: exchange.into(),
         }
     }
 }
@@ -641,7 +675,7 @@ impl OrderBook {
                 unexecuted_orders.insert(order_id, order);
                 continue;
             }
-            
+
             if let Some(exchange) = quotes.get(&order.exchange) {
                 if let Some(depth) = exchange.get(security_id) {
                     let mut completed_trades = match order.order_type {
@@ -683,7 +717,6 @@ impl OrderBook {
 
                     trade_results.append(&mut completed_trades)
                 }
-
             } else {
                 unexecuted_orders.insert(order_id, order);
             }
@@ -743,7 +776,10 @@ mod tests {
 
         let mut quotes: DateDepth = BTreeMap::new();
         quotes.insert("exchange".to_string(), BTreeMap::new());
-        quotes.get_mut("exchange").unwrap().insert("ABC".to_string(), depth);
+        quotes
+            .get_mut("exchange")
+            .unwrap()
+            .insert("ABC".to_string(), depth);
         quotes
     }
 
@@ -788,7 +824,10 @@ mod tests {
 
         let mut quotes: DateDepth = BTreeMap::new();
         quotes.insert("exchange".to_string(), BTreeMap::new());
-        quotes.get_mut("exchange").unwrap().insert("ABC".to_string(), depth);
+        quotes
+            .get_mut("exchange")
+            .unwrap()
+            .insert("ABC".to_string(), depth);
         quotes
     }
 
@@ -906,7 +945,10 @@ mod tests {
 
         let mut quotes: DateDepth = BTreeMap::new();
         quotes.insert("exchange".to_string(), BTreeMap::new());
-        quotes.get_mut("exchange").unwrap().insert("ABC".to_string(), depth);
+        quotes
+            .get_mut("exchange")
+            .unwrap()
+            .insert("ABC".to_string(), depth);
 
         let bid_trade = Trade {
             coin: "ABC".to_string(),
@@ -973,7 +1015,10 @@ mod tests {
 
         let mut quotes: DateDepth = BTreeMap::new();
         quotes.insert("exchange".to_string(), BTreeMap::new());
-        quotes.get_mut("exchange").unwrap().insert("ABC".to_string(), depth);
+        quotes
+            .get_mut("exchange")
+            .unwrap()
+            .insert("ABC".to_string(), depth);
 
         let bid_trade = Trade {
             coin: "ABC".to_string(),
@@ -1041,7 +1086,10 @@ mod tests {
 
         let mut quotes: DateDepth = BTreeMap::new();
         quotes.insert("exchange".to_string(), BTreeMap::new());
-        quotes.get_mut("exchange").unwrap().insert("ABC".to_string(), depth);
+        quotes
+            .get_mut("exchange")
+            .unwrap()
+            .insert("ABC".to_string(), depth);
 
         let bid_trade = Trade {
             coin: "ABC".to_string(),
@@ -1261,7 +1309,10 @@ mod tests {
 
         let mut quotes: DateDepth = BTreeMap::new();
         quotes.insert("exchange".to_string(), BTreeMap::new());
-        quotes.get_mut("exchange").unwrap().insert("ABC".to_string(), depth);
+        quotes
+            .get_mut("exchange")
+            .unwrap()
+            .insert("ABC".to_string(), depth);
 
         let bid_trade = Trade {
             coin: "ABC".to_string(),
@@ -1311,7 +1362,10 @@ mod tests {
 
         let mut quotes: DateDepth = BTreeMap::new();
         quotes.insert("exchange".to_string(), BTreeMap::new());
-        quotes.get_mut("exchange").unwrap().insert("ABC".to_string(), depth);
+        quotes
+            .get_mut("exchange")
+            .unwrap()
+            .insert("ABC".to_string(), depth);
 
         let bid_trade = Trade {
             coin: "ABC".to_string(),

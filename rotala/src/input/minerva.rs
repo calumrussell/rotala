@@ -111,7 +111,8 @@ impl Minerva {
                 )
                 .await;
 
-            let mut sort_into_dates: HashMap<i64, HashMap<String, HashMap<String, Vec<L2Book>>>> = HashMap::new();
+            let mut sort_into_dates: HashMap<i64, HashMap<String, HashMap<String, Vec<L2Book>>>> =
+                HashMap::new();
             if let Ok(rows) = query_result {
                 for row in rows {
                     if let Ok(book) = L2Book::from_row(row) {
@@ -144,7 +145,10 @@ impl Minerva {
 
                         let date_map = self.depths.get_mut(date).unwrap();
                         date_map.entry(exchange.to_string()).or_default();
-                        date_map.get_mut(exchange).unwrap().insert(coin.to_string(), depth);
+                        date_map
+                            .get_mut(exchange)
+                            .unwrap()
+                            .insert(coin.to_string(), depth);
                     }
                 }
             }

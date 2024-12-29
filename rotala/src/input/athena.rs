@@ -24,7 +24,12 @@ impl Athena {
         self.inner.range(dates)
     }
 
-    pub fn get_best_bid(&self, dates: std::ops::Range<i64>, symbol: &str, exchange: &str) -> Option<&Level> {
+    pub fn get_best_bid(
+        &self,
+        dates: std::ops::Range<i64>,
+        symbol: &str,
+        exchange: &str,
+    ) -> Option<&Level> {
         let depth_between = self.get_quotes_between(dates);
         if let Some(last_depth) = depth_between.last() {
             if let Some(exchange_depth) = last_depth.1.get(exchange) {
@@ -36,7 +41,12 @@ impl Athena {
         None
     }
 
-    pub fn get_best_ask(&self, dates: std::ops::Range<i64>, symbol: &str, exchange: &str) -> Option<&Level> {
+    pub fn get_best_ask(
+        &self,
+        dates: std::ops::Range<i64>,
+        symbol: &str,
+        exchange: &str,
+    ) -> Option<&Level> {
         let depth_between = self.get_quotes_between(dates);
         if let Some(last_depth) = depth_between.last() {
             if let Some(exchange_depth) = last_depth.1.get(exchange) {
@@ -74,7 +84,14 @@ impl Athena {
         date_map.get_mut(&exchange).unwrap().insert(symbol, depth);
     }
 
-    pub fn add_price_level(&mut self, date: i64, symbol: &str, level: Level, side: Side, exchange: &str) {
+    pub fn add_price_level(
+        &mut self,
+        date: i64,
+        symbol: &str,
+        level: Level,
+        side: Side,
+        exchange: &str,
+    ) {
         self.inner.entry(date).or_default();
 
         let date_map = self.inner.get_mut(&date).unwrap();
@@ -194,8 +211,23 @@ mod tests {
         athena.add_price_level(100, "ABC", bid1, Side::Bid, "exchange");
         athena.add_price_level(100, "ABC", ask1, Side::Ask, "exchange");
 
-        println!("{:?}", athena.get_best_bid(100..101, "ABC", "exchange").unwrap());
-        assert_eq!(athena.get_best_bid(100..101, "ABC" ,"exchange").unwrap().price, 101.0);
-        assert_eq!(athena.get_best_ask(100..101, "ABC", "exchange").unwrap().price, 102.0);
+        println!(
+            "{:?}",
+            athena.get_best_bid(100..101, "ABC", "exchange").unwrap()
+        );
+        assert_eq!(
+            athena
+                .get_best_bid(100..101, "ABC", "exchange")
+                .unwrap()
+                .price,
+            101.0
+        );
+        assert_eq!(
+            athena
+                .get_best_ask(100..101, "ABC", "exchange")
+                .unwrap()
+                .price,
+            102.0
+        );
     }
 }
