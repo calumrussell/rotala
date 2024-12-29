@@ -24,7 +24,7 @@ impl Athena {
         self.inner.range(dates)
     }
 
-    pub fn get_best_bid(&self, dates: std::ops::Range<i64>, exchange: &str, symbol: &str) -> Option<&Level> {
+    pub fn get_best_bid(&self, dates: std::ops::Range<i64>, symbol: &str, exchange: &str) -> Option<&Level> {
         let depth_between = self.get_quotes_between(dates);
         if let Some(last_depth) = depth_between.last() {
             if let Some(exchange_depth) = last_depth.1.get(exchange) {
@@ -194,6 +194,7 @@ mod tests {
         athena.add_price_level(100, "ABC", bid1, Side::Bid, "exchange");
         athena.add_price_level(100, "ABC", ask1, Side::Ask, "exchange");
 
+        println!("{:?}", athena.get_best_bid(100..101, "ABC", "exchange").unwrap());
         assert_eq!(athena.get_best_bid(100..101, "ABC" ,"exchange").unwrap().price, 101.0);
         assert_eq!(athena.get_best_ask(100..101, "ABC", "exchange").unwrap().price, 102.0);
     }
