@@ -1,0 +1,9 @@
+version: '3.9'
+
+services:
+
+  uist_v2:
+    build: .
+    ports:
+      - 0.0.0.0:3000:${PORT}
+    command: cargo run --bin uist_server_v2 0.0.0.0 ${PORT} ${DB_HOST} ${DB_USER} ${DB_PWD} ${DB_NAME
