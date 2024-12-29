@@ -112,10 +112,7 @@ impl Minerva {
             if let Ok(rows) = query_result {
                 for row in rows {
                     if let Ok(book) = L2Book::from_row(row) {
-
-                        if !sort_into_dates.contains_key(&book.time) {
-                            sort_into_dates.insert(book.time, HashMap::new());
-                        }
+                        sort_into_dates.entry(book.time).or_default();
 
                         let date = sort_into_dates.get_mut(&book.time).unwrap();
 
@@ -131,7 +128,6 @@ impl Minerva {
 
             for (date, coin_map) in sort_into_dates.iter_mut() {
                 for (coin, book) in coin_map.iter_mut() {
-
                     let depth: Depth = std::mem::take(book).into();
 
                     self.depths.entry(*date).or_default();
