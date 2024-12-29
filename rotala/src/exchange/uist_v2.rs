@@ -458,7 +458,7 @@ impl OrderBook {
 
                         let trade = OrderResult {
                             symbol: order.symbol.clone(),
-                            value: bid.price * order.qty,
+                            value: bid.price * qty,
                             quantity: qty,
                             date: depth.date,
                             typ: OrderResultType::Buy,
@@ -483,13 +483,14 @@ impl OrderBook {
                 to_fill -= qty;
                 let trade = OrderResult {
                     symbol: order.symbol.clone(),
-                    value: bid.price * order.qty,
+                    value: bid.price * qty,
                     quantity: qty,
                     date: depth.date,
                     typ: OrderResultType::Sell,
                     order_id: order.order_id,
                     order_id_ref: None,
                 };
+
                 trades.push(trade);
                 filled.insert_fill(&order.symbol, &bid.price, qty);
 
@@ -515,7 +516,7 @@ impl OrderBook {
 
                         let trade = OrderResult {
                             symbol: order.symbol.clone(),
-                            value: ask.price * order.qty,
+                            value: ask.price * qty,
                             quantity: qty,
                             date: depth.date,
                             typ: OrderResultType::Sell,
@@ -540,7 +541,7 @@ impl OrderBook {
                 to_fill -= qty;
                 let trade = OrderResult {
                     symbol: order.symbol.clone(),
-                    value: ask.price * order.qty,
+                    value: ask.price * qty,
                     quantity: qty,
                     date: depth.date,
                     typ: OrderResultType::Buy,

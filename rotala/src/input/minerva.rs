@@ -108,27 +108,34 @@ impl Minerva {
                 )
                 .await;
 
-            let mut sort_into_dates = HashMap::new();
+            let mut sort_into_dates: HashMap<i64, HashMap<String, Vec<L2Book>>> = HashMap::new();
             if let Ok(rows) = query_result {
                 for row in rows {
                     if let Ok(book) = L2Book::from_row(row) {
-                        sort_into_dates.entry(book.time).or_insert_with(Vec::new);
-                        sort_into_dates
-                            .get_mut(&book.time)
-                            .unwrap()
-                            .push(book.clone());
+                        sort_into_dates.entry(book.time).or_default();
+
+                        let date = sort_into_dates.get_mut(&book.time).unwrap();
+
+                        if !date.contains_key(&book.coin) {
+                            date.insert(book.coin.clone(), Vec::new());
+                        }
+
+                        let coin_date: &mut Vec<L2Book> = date.get_mut(&book.coin).unwrap();
+                        coin_date.push(book);
                     }
                 }
             }
 
-            for (date, rows) in sort_into_dates.iter_mut() {
-                let depth: Depth = std::mem::take(rows).into();
+            for (date, coin_map) in sort_into_dates.iter_mut() {
+                for (coin, book) in coin_map.iter_mut() {
+                    let depth: Depth = std::mem::take(book).into();
 
-                self.depths.entry(*date).or_default();
-                self.depths
-                    .get_mut(date)
-                    .unwrap()
-                    .insert(depth.symbol.clone(), depth);
+                    self.depths.entry(*date).or_default();
+                    self.depths
+                        .get_mut(date)
+                        .unwrap()
+                        .insert(coin.to_string(), depth);
+                }
             }
         }
     }
