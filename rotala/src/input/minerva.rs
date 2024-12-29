@@ -41,6 +41,7 @@ impl From<Trade> for crate::source::hyperliquid::Trade {
             px: str::parse::<f64>(&value.px).unwrap(),
             sz: str::parse::<f64>(&value.sz).unwrap(),
             time: value.time,
+            exchange: value.exchange,
         }
     }
 }
@@ -52,6 +53,7 @@ impl From<Vec<L2Book>> for Depth {
 
         let date = values.first().unwrap().time;
         let symbol = values.first().unwrap().coin.clone();
+        let exchange = values.first().unwrap().exchange.clone();
 
         for row in values {
             match row.side {
@@ -71,6 +73,7 @@ impl From<Vec<L2Book>> for Depth {
             asks,
             date,
             symbol,
+            exchange,
         }
     }
 }
@@ -137,12 +140,10 @@ impl Minerva {
                 for (exchange, coin_map) in exchange_map.iter_mut() {
                     for (coin, book) in coin_map.iter_mut() {
                         let depth: Depth = std::mem::take(book).into();
-
                         self.depths.entry(*date).or_default();
+
                         let date_map = self.depths.get_mut(date).unwrap();
-
                         date_map.entry(exchange.to_string()).or_default();
-
                         date_map.get_mut(exchange).unwrap().insert(coin.to_string(), depth);
                     }
                 }
