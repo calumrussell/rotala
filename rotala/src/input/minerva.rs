@@ -119,7 +119,6 @@ impl Minerva {
                         sort_into_dates.entry(book.time).or_default();
 
                         let date = sort_into_dates.get_mut(&book.time).unwrap();
-                        let quote_name = format!("{}@{}", book.coin, book.exchange);
 
                         if !date.contains_key(&book.exchange) {
                             date.insert(book.exchange.clone(), HashMap::new());
@@ -131,7 +130,7 @@ impl Minerva {
                             exchange.insert(book.coin.clone(), Vec::new());
                         }
 
-                        let coin_date: &mut Vec<L2Book> = exchange.get_mut(&quote_name).unwrap();
+                        let coin_date: &mut Vec<L2Book> = exchange.get_mut(&book.coin).unwrap();
                         coin_date.push(book);
                     }
                 }
