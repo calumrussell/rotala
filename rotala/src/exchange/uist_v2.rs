@@ -133,6 +133,7 @@ pub struct OrderResult {
     pub typ: OrderResultType,
     pub order_id: OrderId,
     pub order_id_ref: Option<OrderId>,
+    pub exchange: String,
 }
 
 #[derive(Debug)]
@@ -380,6 +381,7 @@ impl OrderBook {
                     typ: OrderResultType::Cancel,
                     order_id: cancel_order.order_id,
                     order_id_ref: Some(*order_to_cancel_id),
+                    exchange: cancel_order.exchange.clone(),
                 };
                 res.push(order_result);
             }
@@ -420,6 +422,7 @@ impl OrderBook {
                 typ: OrderResultType::Modify,
                 order_id: modify_order.order_id,
                 order_id_ref: Some(modify_order.order_id_ref.unwrap()),
+                exchange: modify_order.exchange.clone(),
             };
             res.push(order_result);
         }
@@ -471,6 +474,7 @@ impl OrderBook {
                             typ: OrderResultType::Buy,
                             order_id: order.order_id,
                             order_id_ref: None,
+                            exchange: order.exchange.clone(),
                         };
 
                         trades.push(trade);
@@ -496,6 +500,7 @@ impl OrderBook {
                     typ: OrderResultType::Sell,
                     order_id: order.order_id,
                     order_id_ref: None,
+                    exchange: order.exchange.clone(),
                 };
 
                 trades.push(trade);
@@ -529,6 +534,7 @@ impl OrderBook {
                             typ: OrderResultType::Sell,
                             order_id: order.order_id,
                             order_id_ref: None,
+                            exchange: order.exchange.clone(),
                         };
 
                         trades.push(trade);
@@ -554,6 +560,7 @@ impl OrderBook {
                     typ: OrderResultType::Buy,
                     order_id: order.order_id,
                     order_id_ref: None,
+                    exchange: order.exchange.clone(),
                 };
                 trades.push(trade);
                 filled.insert_fill(&order.symbol, &ask.price, qty);
