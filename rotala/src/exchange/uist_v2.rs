@@ -51,62 +51,101 @@ pub struct Order {
     pub qty: f64,
     pub price: Option<f64>,
     pub order_id_ref: Option<OrderId>,
+    pub exchange: String,
 }
 
 impl Order {
-    fn market(order_type: OrderType, symbol: impl Into<String>, shares: f64) -> Self {
+    fn market(
+        order_type: OrderType,
+        symbol: impl Into<String>,
+        shares: f64,
+        exchange: impl Into<String>,
+    ) -> Self {
         Self {
             order_type,
             symbol: symbol.into(),
             qty: shares,
             price: None,
             order_id_ref: None,
+            exchange: exchange.into(),
         }
     }
 
-    fn delayed(order_type: OrderType, symbol: impl Into<String>, shares: f64, price: f64) -> Self {
+    fn delayed(
+        order_type: OrderType,
+        symbol: impl Into<String>,
+        shares: f64,
+        price: f64,
+        exchange: impl Into<String>,
+    ) -> Self {
         Self {
             order_type,
             symbol: symbol.into(),
             qty: shares,
             price: Some(price),
             order_id_ref: None,
+            exchange: exchange.into(),
         }
     }
 
-    pub fn market_buy(symbol: impl Into<String>, shares: f64) -> Self {
-        Order::market(OrderType::MarketBuy, symbol, shares)
+    pub fn market_buy(symbol: impl Into<String>, shares: f64, exchange: impl Into<String>) -> Self {
+        Order::market(OrderType::MarketBuy, symbol, shares, exchange)
     }
 
-    pub fn market_sell(symbol: impl Into<String>, shares: f64) -> Self {
-        Order::market(OrderType::MarketSell, symbol, shares)
+    pub fn market_sell(
+        symbol: impl Into<String>,
+        shares: f64,
+        exchange: impl Into<String>,
+    ) -> Self {
+        Order::market(OrderType::MarketSell, symbol, shares, exchange)
     }
 
-    pub fn limit_buy(symbol: impl Into<String>, shares: f64, price: f64) -> Self {
-        Order::delayed(OrderType::LimitBuy, symbol, shares, price)
+    pub fn limit_buy(
+        symbol: impl Into<String>,
+        shares: f64,
+        price: f64,
+        exchange: impl Into<String>,
+    ) -> Self {
+        Order::delayed(OrderType::LimitBuy, symbol, shares, price, exchange)
     }
 
-    pub fn limit_sell(symbol: impl Into<String>, shares: f64, price: f64) -> Self {
-        Order::delayed(OrderType::LimitSell, symbol, shares, price)
+    pub fn limit_sell(
+        symbol: impl Into<String>,
+        shares: f64,
+        price: f64,
+        exchange: impl Into<String>,
+    ) -> Self {
+        Order::delayed(OrderType::LimitSell, symbol, shares, price, exchange)
     }
 
-    pub fn modify_order(symbol: impl Into<String>, order_id: OrderId, qty_change: f64) -> Self {
+    pub fn modify_order(
+        symbol: impl Into<String>,
+        order_id: OrderId,
+        qty_change: f64,
+        exchange: impl Into<String>,
+    ) -> Self {
         Self {
             order_id_ref: Some(order_id),
             order_type: OrderType::Modify,
             symbol: symbol.into(),
             price: None,
             qty: qty_change,
+            exchange: exchange.into(),
         }
     }
 
-    pub fn cancel_order(symbol: impl Into<String>, order_id: OrderId) -> Self {
+    pub fn cancel_order(
+        symbol: impl Into<String>,
+        order_id: OrderId,
+        exchange: impl Into<String>,
+    ) -> Self {
         Self {
             order_id_ref: Some(order_id),
             order_type: OrderType::Cancel,
             symbol: symbol.into(),
             price: None,
             qty: 0.0,
+            exchange: exchange.into(),
         }
     }
 }
@@ -128,6 +167,7 @@ pub struct OrderResult {
     pub typ: OrderResultType,
     pub order_id: OrderId,
     pub order_id_ref: Option<OrderId>,
+    pub exchange: String,
 }
 
 #[derive(Debug)]
@@ -267,6 +307,7 @@ pub struct InnerOrder {
     pub recieved_timestamp: i64,
     pub order_id: OrderId,
     pub order_id_ref: Option<OrderId>,
+    pub exchange: String,
 }
 
 #[derive(Debug)]
@@ -344,6 +385,7 @@ impl OrderBook {
             qty: order.qty,
             price: order.price,
             order_id_ref: order.order_id_ref,
+            exchange: order.exchange,
         };
 
         self.inner.insert(self.last_order_id, inner_order.clone());
@@ -373,6 +415,7 @@ impl OrderBook {
                     typ: OrderResultType::Cancel,
                     order_id: cancel_order.order_id,
                     order_id_ref: Some(*order_to_cancel_id),
+                    exchange: cancel_order.exchange.clone(),
                 };
                 res.push(order_result);
             }
@@ -413,6 +456,7 @@ impl OrderBook {
                 typ: OrderResultType::Modify,
                 order_id: modify_order.order_id,
                 order_id_ref: Some(modify_order.order_id_ref.unwrap()),
+                exchange: modify_order.exchange.clone(),
             };
             res.push(order_result);
         }
@@ -464,6 +508,7 @@ impl OrderBook {
                             typ: OrderResultType::Buy,
                             order_id: order.order_id,
                             order_id_ref: None,
+                            exchange: order.exchange.clone(),
                         };
 
                         trades.push(trade);
@@ -489,6 +534,7 @@ impl OrderBook {
                     typ: OrderResultType::Sell,
                     order_id: order.order_id,
                     order_id_ref: None,
+                    exchange: order.exchange.clone(),
                 };
 
                 trades.push(trade);
@@ -522,6 +568,7 @@ impl OrderBook {
                             typ: OrderResultType::Sell,
                             order_id: order.order_id,
                             order_id_ref: None,
+                            exchange: order.exchange.clone(),
                         };
 
                         trades.push(trade);
@@ -547,6 +594,7 @@ impl OrderBook {
                     typ: OrderResultType::Buy,
                     order_id: order.order_id,
                     order_id_ref: None,
+                    exchange: order.exchange.clone(),
                 };
                 trades.push(trade);
                 filled.insert_fill(&order.symbol, &ask.price, qty);
@@ -628,45 +676,47 @@ impl OrderBook {
                 continue;
             }
 
-            if let Some(depth) = quotes.get(security_id) {
-                let mut completed_trades = match order.order_type {
-                    OrderType::MarketBuy => Self::fill_order(
-                        depth,
-                        &order,
-                        &mut filled,
-                        &taker_trades,
-                        &self.priority_setting,
-                    ),
-                    OrderType::MarketSell => Self::fill_order(
-                        depth,
-                        &order,
-                        &mut filled,
-                        &taker_trades,
-                        &self.priority_setting,
-                    ),
-                    OrderType::LimitBuy => Self::fill_order(
-                        depth,
-                        &order,
-                        &mut filled,
-                        &taker_trades,
-                        &self.priority_setting,
-                    ),
-                    OrderType::LimitSell => Self::fill_order(
-                        depth,
-                        &order,
-                        &mut filled,
-                        &taker_trades,
-                        &self.priority_setting,
-                    ),
-                    // There shouldn't be any cancel or modifies by this point
-                    _ => vec![],
-                };
+            if let Some(exchange) = quotes.get(&order.exchange) {
+                if let Some(depth) = exchange.get(security_id) {
+                    let mut completed_trades = match order.order_type {
+                        OrderType::MarketBuy => Self::fill_order(
+                            depth,
+                            &order,
+                            &mut filled,
+                            &taker_trades,
+                            &self.priority_setting,
+                        ),
+                        OrderType::MarketSell => Self::fill_order(
+                            depth,
+                            &order,
+                            &mut filled,
+                            &taker_trades,
+                            &self.priority_setting,
+                        ),
+                        OrderType::LimitBuy => Self::fill_order(
+                            depth,
+                            &order,
+                            &mut filled,
+                            &taker_trades,
+                            &self.priority_setting,
+                        ),
+                        OrderType::LimitSell => Self::fill_order(
+                            depth,
+                            &order,
+                            &mut filled,
+                            &taker_trades,
+                            &self.priority_setting,
+                        ),
+                        // There shouldn't be any cancel or modifies by this point
+                        _ => vec![],
+                    };
 
-                if completed_trades.is_empty() {
-                    unexecuted_orders.insert(order_id, order);
+                    if completed_trades.is_empty() {
+                        unexecuted_orders.insert(order_id, order);
+                    }
+
+                    trade_results.append(&mut completed_trades)
                 }
-
-                trade_results.append(&mut completed_trades)
             } else {
                 unexecuted_orders.insert(order_id, order);
             }
@@ -692,6 +742,7 @@ mod tests {
             px: 100.0,
             sz: 100.0,
             time: 100,
+            exchange: "exchange".to_string(),
         };
         let ask_trade = Trade {
             coin: "ABC".to_string(),
@@ -699,6 +750,7 @@ mod tests {
             px: 102.0,
             sz: 100.0,
             time: 100,
+            exchange: "exchange".to_string(),
         };
 
         let mut trades: DateTrade = BTreeMap::new();
@@ -718,12 +770,16 @@ mod tests {
             size: 100.0,
         };
 
-        let mut depth = Depth::new(100, "ABC");
+        let mut depth = Depth::new(100, "ABC", "exchange");
         depth.add_level(bid_level, Side::Bid);
         depth.add_level(ask_level, Side::Ask);
 
         let mut quotes: DateDepth = BTreeMap::new();
-        quotes.insert("ABC".to_string(), depth);
+        quotes.insert("exchange".to_string(), BTreeMap::new());
+        quotes
+            .get_mut("exchange")
+            .unwrap()
+            .insert("ABC".to_string(), depth);
         quotes
     }
 
@@ -734,6 +790,7 @@ mod tests {
             px: 98.0,
             sz: 20.0,
             time: 100,
+            exchange: "exchange".to_string(),
         };
         let ask_trade = Trade {
             coin: "ABC".to_string(),
@@ -741,6 +798,7 @@ mod tests {
             px: 102.0,
             sz: 20.0,
             time: 100,
+            exchange: "exchange".to_string(),
         };
 
         let mut trades: DateTrade = BTreeMap::new();
@@ -760,13 +818,16 @@ mod tests {
             size: 20.0,
         };
 
-        let mut depth = Depth::new(100, "ABC");
+        let mut depth = Depth::new(100, "ABC", "exchange");
         depth.add_level(bid_level, Side::Bid);
         depth.add_level(ask_level, Side::Ask);
 
         let mut quotes: DateDepth = BTreeMap::new();
-        quotes.insert("ABC".to_string(), depth);
-
+        quotes.insert("exchange".to_string(), BTreeMap::new());
+        quotes
+            .get_mut("exchange")
+            .unwrap()
+            .insert("ABC".to_string(), depth);
         quotes
     }
 
@@ -775,7 +836,7 @@ mod tests {
         let quotes = quotes();
         let trades = trades();
         let mut orderbook = OrderBook::new();
-        orderbook.insert_order(Order::cancel_order("ABC", 10), 100);
+        orderbook.insert_order(Order::cancel_order("ABC", 10, "exchange"), 100);
         let res = orderbook.execute_orders(&quotes, &trades, 100);
         assert!(res.is_empty())
     }
@@ -785,7 +846,7 @@ mod tests {
         let quotes = quotes();
         let trades = trades();
         let mut orderbook = OrderBook::new();
-        orderbook.insert_order(Order::modify_order("ABC", 10, 100.0), 100);
+        orderbook.insert_order(Order::modify_order("ABC", 10, 100.0, "exchange"), 100);
         let res = orderbook.execute_orders(&quotes, &trades, 100);
         assert!(res.is_empty())
     }
@@ -797,18 +858,18 @@ mod tests {
 
         let mut orderbook = OrderBook::new();
         let oid = orderbook
-            .insert_order(Order::limit_buy("ABC", 100.0, 1.0), 100)
+            .insert_order(Order::limit_buy("ABC", 100.0, 1.0, "exchange"), 100)
             .order_id;
 
-        orderbook.insert_order(Order::cancel_order("ABC", oid), 100);
+        orderbook.insert_order(Order::cancel_order("ABC", oid, "exchange"), 100);
         let res = orderbook.execute_orders(&quotes, &trades, 100);
         println!("{:?}", res);
         assert!(res.len() == 1);
 
         let oid1 = orderbook
-            .insert_order(Order::limit_buy("ABC", 200.0, 1.0), 100)
+            .insert_order(Order::limit_buy("ABC", 200.0, 1.0, "exchange"), 100)
             .order_id;
-        orderbook.insert_order(Order::modify_order("ABC", oid1, 100.0), 100);
+        orderbook.insert_order(Order::modify_order("ABC", oid1, 100.0, "exchange"), 100);
         let res = orderbook.execute_orders(&quotes, &trades, 100);
         assert!(res.len() == 1);
     }
@@ -819,7 +880,7 @@ mod tests {
         let trades = trades();
 
         let mut orderbook = OrderBook::new();
-        let order = Order::market_buy("ABC", 100.0);
+        let order = Order::market_buy("ABC", 100.0, "exchange");
         orderbook.insert_order(order, 100);
 
         let res = orderbook.execute_orders(&quotes, &trades, 100);
@@ -835,7 +896,7 @@ mod tests {
         let trades = trades();
 
         let mut orderbook = OrderBook::new();
-        let order = Order::market_sell("ABC", 100.0);
+        let order = Order::market_sell("ABC", 100.0, "exchange");
         orderbook.insert_order(order, 100);
 
         let res = orderbook.execute_orders(&quotes, &trades, 100);
@@ -850,7 +911,7 @@ mod tests {
         let quotes = quotes();
         let trades = trades();
         let mut orderbook = OrderBook::new();
-        let order = Order::market_buy("ABC", 50.0);
+        let order = Order::market_buy("ABC", 50.0, "exchange");
         orderbook.insert_order(order, 100);
 
         let res = orderbook.execute_orders(&quotes, &trades, 100);
@@ -877,13 +938,17 @@ mod tests {
             size: 20.0,
         };
 
-        let mut depth = Depth::new(100, "ABC");
+        let mut depth = Depth::new(100, "ABC", "exchange");
         depth.add_level(bid_level, Side::Bid);
         depth.add_level(ask_level, Side::Ask);
         depth.add_level(ask_level_1, Side::Ask);
 
         let mut quotes: DateDepth = BTreeMap::new();
-        quotes.insert("ABC".to_string(), depth);
+        quotes.insert("exchange".to_string(), BTreeMap::new());
+        quotes
+            .get_mut("exchange")
+            .unwrap()
+            .insert("ABC".to_string(), depth);
 
         let bid_trade = Trade {
             coin: "ABC".to_string(),
@@ -891,6 +956,7 @@ mod tests {
             px: 100.0,
             sz: 100.0,
             time: 100,
+            exchange: "exchange".to_string(),
         };
         let ask_trade = Trade {
             coin: "ABC".to_string(),
@@ -898,13 +964,14 @@ mod tests {
             px: 102.0,
             sz: 80.0,
             time: 100,
+            exchange: "exchange".to_string(),
         };
 
         let mut trades: DateTrade = BTreeMap::new();
         trades.insert(100, vec![bid_trade, ask_trade]);
 
         let mut orderbook = OrderBook::new();
-        let order = Order::market_buy("ABC", 100.0);
+        let order = Order::market_buy("ABC", 100.0, "exchange");
         orderbook.insert_order(order, 100);
 
         let res = orderbook.execute_orders(&quotes, &trades, 100);
@@ -940,14 +1007,18 @@ mod tests {
             size: 20.0,
         };
 
-        let mut depth = Depth::new(100, "ABC");
+        let mut depth = Depth::new(100, "ABC", "exchange");
         depth.add_level(bid_level, Side::Bid);
         depth.add_level(ask_level, Side::Ask);
         depth.add_level(ask_level_1, Side::Ask);
         depth.add_level(ask_level_2, Side::Ask);
 
         let mut quotes: DateDepth = BTreeMap::new();
-        quotes.insert("ABC".to_string(), depth);
+        quotes.insert("exchange".to_string(), BTreeMap::new());
+        quotes
+            .get_mut("exchange")
+            .unwrap()
+            .insert("ABC".to_string(), depth);
 
         let bid_trade = Trade {
             coin: "ABC".to_string(),
@@ -955,6 +1026,7 @@ mod tests {
             px: 100.0,
             sz: 100.0,
             time: 100,
+            exchange: "exchange".to_string(),
         };
         let ask_trade = Trade {
             coin: "ABC".to_string(),
@@ -962,13 +1034,14 @@ mod tests {
             px: 102.0,
             sz: 80.0,
             time: 100,
+            exchange: "exchange".to_string(),
         };
 
         let mut trades: DateTrade = BTreeMap::new();
         trades.insert(100, vec![bid_trade, ask_trade]);
 
         let mut orderbook = OrderBook::new();
-        let order = Order::limit_buy("ABC", 120.0, 103.00);
+        let order = Order::limit_buy("ABC", 120.0, 103.00, "exchange");
         orderbook.insert_order(order, 100);
 
         let res = orderbook.execute_orders(&quotes, &trades, 100);
@@ -1005,14 +1078,18 @@ mod tests {
             size: 80.0,
         };
 
-        let mut depth = Depth::new(100, "ABC");
+        let mut depth = Depth::new(100, "ABC", "exchange");
         depth.add_level(bid_level_0, Side::Bid);
         depth.add_level(bid_level_1, Side::Bid);
         depth.add_level(bid_level_2, Side::Bid);
         depth.add_level(ask_level, Side::Ask);
 
         let mut quotes: DateDepth = BTreeMap::new();
-        quotes.insert("ABC".to_string(), depth);
+        quotes.insert("exchange".to_string(), BTreeMap::new());
+        quotes
+            .get_mut("exchange")
+            .unwrap()
+            .insert("ABC".to_string(), depth);
 
         let bid_trade = Trade {
             coin: "ABC".to_string(),
@@ -1020,6 +1097,7 @@ mod tests {
             px: 100.0,
             sz: 80.0,
             time: 100,
+            exchange: "exchange".to_string(),
         };
         let ask_trade = Trade {
             coin: "ABC".to_string(),
@@ -1027,13 +1105,14 @@ mod tests {
             px: 102.0,
             sz: 80.0,
             time: 100,
+            exchange: "exchange".to_string(),
         };
 
         let mut trades: DateTrade = BTreeMap::new();
         trades.insert(100, vec![bid_trade, ask_trade]);
 
         let mut orderbook = OrderBook::new();
-        let order = Order::limit_sell("ABC", 120.0, 99.00);
+        let order = Order::limit_sell("ABC", 120.0, 99.00, "exchange");
         orderbook.insert_order(order, 100);
 
         let res = orderbook.execute_orders(&quotes, &trades, 100);
@@ -1053,9 +1132,9 @@ mod tests {
         let quotes = quotes1();
         let trades = trades1();
         let mut orderbook = OrderBook::new();
-        let first_order = Order::limit_buy("ABC", 20.0, 103.00);
+        let first_order = Order::limit_buy("ABC", 20.0, 103.00, "exchange");
         orderbook.insert_order(first_order, 100);
-        let second_order = Order::limit_buy("ABC", 20.0, 103.00);
+        let second_order = Order::limit_buy("ABC", 20.0, 103.00, "exchange");
         orderbook.insert_order(second_order, 100);
 
         let res = orderbook.execute_orders(&quotes, &trades, 100);
@@ -1075,22 +1154,24 @@ mod tests {
             size: 20.0,
         };
 
-        let mut depth = Depth::new(100, "ABC");
+        let mut depth = Depth::new(100, "ABC", "exchange");
         depth.add_level(bid_level.clone(), Side::Bid);
         depth.add_level(ask_level.clone(), Side::Ask);
 
-        let mut depth_101 = Depth::new(101, "ABC");
+        let mut depth_101 = Depth::new(101, "ABC", "exchange");
         depth_101.add_level(bid_level.clone(), Side::Bid);
         depth_101.add_level(ask_level.clone(), Side::Ask);
 
-        let mut depth_102 = Depth::new(102, "ABC");
+        let mut depth_102 = Depth::new(102, "ABC", "exchange");
         depth_102.add_level(bid_level, Side::Bid);
         depth_102.add_level(ask_level, Side::Ask);
 
         let mut quotes: DateDepth = BTreeMap::new();
-        quotes.insert("ABC".to_string(), depth);
-        quotes.insert("ABC".to_string(), depth_101);
-        quotes.insert("ABC".to_string(), depth_102);
+        quotes.insert("exchange".to_string(), BTreeMap::new());
+        let exchange = quotes.get_mut("exchange").unwrap();
+        exchange.insert("ABC".to_string(), depth);
+        exchange.insert("ABC".to_string(), depth_101);
+        exchange.insert("ABC".to_string(), depth_102);
 
         let bid_trade = Trade {
             coin: "ABC".to_string(),
@@ -1098,6 +1179,7 @@ mod tests {
             px: 98.0,
             sz: 20.0,
             time: 100,
+            exchange: "exchange".to_string(),
         };
         let ask_trade = Trade {
             coin: "ABC".to_string(),
@@ -1105,13 +1187,14 @@ mod tests {
             px: 102.0,
             sz: 20.0,
             time: 100,
+            exchange: "exchange".to_string(),
         };
 
         let mut trades: DateTrade = BTreeMap::new();
         trades.insert(100, vec![bid_trade, ask_trade]);
 
         let mut orderbook = OrderBook::with_latency(1);
-        let order = Order::limit_buy("ABC", 20.0, 103.00);
+        let order = Order::limit_buy("ABC", 20.0, 103.00, "exchange");
         orderbook.insert_order(order, 100);
 
         let trades_100 = orderbook.execute_orders(&quotes, &trades, 100);
@@ -1130,7 +1213,7 @@ mod tests {
         let quotes = quotes1();
         let trades = trades1();
         let mut orderbook = OrderBook::new();
-        let order = Order::market_buy("ABC", 20.0);
+        let order = Order::market_buy("ABC", 20.0, "exchange");
         orderbook.insert_order(order, 100);
 
         let completed_trades = orderbook.execute_orders(&quotes, &trades, 100);
@@ -1152,22 +1235,24 @@ mod tests {
             size: 20.0,
         };
 
-        let mut depth = Depth::new(100, "ABC");
+        let mut depth = Depth::new(100, "ABC", "exchange");
         depth.add_level(bid_level.clone(), Side::Bid);
         depth.add_level(ask_level.clone(), Side::Ask);
 
-        let mut depth_101 = Depth::new(101, "ABC");
+        let mut depth_101 = Depth::new(101, "ABC", "exchange");
         depth_101.add_level(bid_level.clone(), Side::Bid);
         depth_101.add_level(ask_level.clone(), Side::Ask);
 
-        let mut depth_102 = Depth::new(102, "ABC");
+        let mut depth_102 = Depth::new(102, "ABC", "exchange");
         depth_102.add_level(bid_level, Side::Bid);
         depth_102.add_level(ask_level, Side::Ask);
 
         let mut quotes: DateDepth = BTreeMap::new();
-        quotes.insert("ABC".to_string(), depth);
-        quotes.insert("ABC".to_string(), depth_101);
-        quotes.insert("ABC".to_string(), depth_102);
+        quotes.insert("exchange".to_string(), BTreeMap::new());
+        let exchange = quotes.get_mut("exchange").unwrap();
+        exchange.insert("ABC".to_string(), depth);
+        exchange.insert("ABC".to_string(), depth_101);
+        exchange.insert("ABC".to_string(), depth_102);
 
         let bid_trade = Trade {
             coin: "ABC".to_string(),
@@ -1175,6 +1260,7 @@ mod tests {
             px: 98.0,
             sz: 20.0,
             time: 100,
+            exchange: "exchange".to_string(),
         };
         let ask_trade = Trade {
             coin: "ABC".to_string(),
@@ -1182,15 +1268,16 @@ mod tests {
             px: 102.0,
             sz: 20.0,
             time: 100,
+            exchange: "exchange".to_string(),
         };
 
         let mut trades: DateTrade = BTreeMap::new();
         trades.insert(100, vec![bid_trade, ask_trade]);
 
         let mut orderbook = OrderBook::new();
-        let order = Order::limit_buy("ABC", 20.0, 103.00);
-        let order1 = Order::limit_buy("ABC", 20.0, 103.00);
-        let order2 = Order::limit_buy("ABC", 20.0, 103.00);
+        let order = Order::limit_buy("ABC", 20.0, 103.00, "exchange");
+        let order1 = Order::limit_buy("ABC", 20.0, 103.00, "exchange");
+        let order2 = Order::limit_buy("ABC", 20.0, 103.00, "exchange");
 
         let res = orderbook.insert_order(order, 100);
         let res1 = orderbook.insert_order(order1, 100);
@@ -1216,12 +1303,16 @@ mod tests {
             size: 100.0,
         };
 
-        let mut depth = Depth::new(100, "ABC");
+        let mut depth = Depth::new(100, "ABC", "exchange");
         depth.add_level(bid_level.clone(), Side::Bid);
         depth.add_level(ask_level.clone(), Side::Ask);
 
         let mut quotes: DateDepth = BTreeMap::new();
-        quotes.insert("ABC".to_string(), depth);
+        quotes.insert("exchange".to_string(), BTreeMap::new());
+        quotes
+            .get_mut("exchange")
+            .unwrap()
+            .insert("ABC".to_string(), depth);
 
         let bid_trade = Trade {
             coin: "ABC".to_string(),
@@ -1229,6 +1320,7 @@ mod tests {
             px: 98.0,
             sz: 20.0,
             time: 100,
+            exchange: "exchange".to_string(),
         };
         let ask_trade = Trade {
             coin: "ABC".to_string(),
@@ -1236,15 +1328,16 @@ mod tests {
             px: 102.0,
             sz: 20.0,
             time: 100,
+            exchange: "exchange".to_string(),
         };
 
         let mut trades: DateTrade = BTreeMap::new();
         trades.insert(100, vec![bid_trade, ask_trade]);
 
         let mut orderbook = OrderBook::new();
-        let buy_order = Order::limit_buy("ABC", 10.0, 98.00);
+        let buy_order = Order::limit_buy("ABC", 10.0, 98.00, "exchange");
         orderbook.insert_order(buy_order, 99);
-        let sell_order = Order::limit_sell("ABC", 10.0, 102.00);
+        let sell_order = Order::limit_sell("ABC", 10.0, 102.00, "exchange");
         orderbook.insert_order(sell_order, 99);
 
         let res = orderbook.execute_orders(&quotes, &trades, 100);
@@ -1263,12 +1356,16 @@ mod tests {
             size: 100.0,
         };
 
-        let mut depth = Depth::new(100, "ABC");
+        let mut depth = Depth::new(100, "ABC", "exchange");
         depth.add_level(bid_level.clone(), Side::Bid);
         depth.add_level(ask_level.clone(), Side::Ask);
 
         let mut quotes: DateDepth = BTreeMap::new();
-        quotes.insert("ABC".to_string(), depth);
+        quotes.insert("exchange".to_string(), BTreeMap::new());
+        quotes
+            .get_mut("exchange")
+            .unwrap()
+            .insert("ABC".to_string(), depth);
 
         let bid_trade = Trade {
             coin: "ABC".to_string(),
@@ -1276,6 +1373,7 @@ mod tests {
             px: 98.0,
             sz: 20.0,
             time: 100,
+            exchange: "exchange".to_string(),
         };
         let ask_trade = Trade {
             coin: "ABC".to_string(),
@@ -1283,15 +1381,16 @@ mod tests {
             px: 102.0,
             sz: 20.0,
             time: 100,
+            exchange: "exchange".to_string(),
         };
 
         let mut trades: DateTrade = BTreeMap::new();
         trades.insert(100, vec![bid_trade, ask_trade]);
 
         let mut orderbook = OrderBook::new();
-        let buy_order = Order::limit_buy("ABC", 40.0, 98.00);
+        let buy_order = Order::limit_buy("ABC", 40.0, 98.00, "exchange");
         orderbook.insert_order(buy_order, 99);
-        let sell_order = Order::limit_sell("ABC", 40.0, 102.00);
+        let sell_order = Order::limit_sell("ABC", 40.0, 102.00, "exchange");
         orderbook.insert_order(sell_order, 99);
 
         let res = orderbook.execute_orders(&quotes, &trades, 100);

@@ -45,6 +45,7 @@ impl From<L2Book> for Depth {
     fn from(value: L2Book) -> Depth {
         let date = value.raw.data.time as i64;
         let symbol = value.raw.data.coin;
+        let exchange = "hl".to_string();
 
         let mut bids_depth: Vec<Level> = Vec::new();
         let mut asks_depth: Vec<Level> = Vec::new();
@@ -66,6 +67,7 @@ impl From<L2Book> for Depth {
             asks: asks_depth,
             date,
             symbol,
+            exchange,
         }
     }
 }
@@ -113,6 +115,7 @@ pub struct Depth {
     pub asks: Vec<Level>,
     pub date: i64,
     pub symbol: String,
+    pub exchange: String,
 }
 
 impl Depth {
@@ -153,12 +156,13 @@ impl Depth {
         })
     }
 
-    pub fn new(date: i64, symbol: impl Into<String>) -> Self {
+    pub fn new(date: i64, symbol: impl Into<String>, exchange: impl Into<String>) -> Self {
         Self {
             bids: vec![],
             asks: vec![],
             date,
             symbol: symbol.into(),
+            exchange: exchange.into(),
         }
     }
 }
@@ -180,8 +184,9 @@ pub struct Trade {
     pub px: f64,
     pub sz: f64,
     pub time: i64,
+    pub exchange: String,
 }
 
-pub type DateDepth = BTreeMap<String, Depth>;
+pub type DateDepth = BTreeMap<String, BTreeMap<String, Depth>>;
 pub type DateBBO = BTreeMap<String, BBO>;
 pub type DateTrade = BTreeMap<i64, Vec<Trade>>;

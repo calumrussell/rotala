@@ -24,33 +24,49 @@ impl Athena {
         self.inner.range(dates)
     }
 
-    pub fn get_best_bid(&self, dates: std::ops::Range<i64>, symbol: &str) -> Option<&Level> {
+    pub fn get_best_bid(
+        &self,
+        dates: std::ops::Range<i64>,
+        symbol: &str,
+        exchange: &str,
+    ) -> Option<&Level> {
         let depth_between = self.get_quotes_between(dates);
         if let Some(last_depth) = depth_between.last() {
-            if let Some(coin_depth) = last_depth.1.get(symbol) {
-                return coin_depth.get_best_bid();
+            if let Some(exchange_depth) = last_depth.1.get(exchange) {
+                if let Some(coin_depth) = exchange_depth.get(symbol) {
+                    return coin_depth.get_best_bid();
+                }
             }
         }
         None
     }
 
-    pub fn get_best_ask(&self, dates: std::ops::Range<i64>, symbol: &str) -> Option<&Level> {
+    pub fn get_best_ask(
+        &self,
+        dates: std::ops::Range<i64>,
+        symbol: &str,
+        exchange: &str,
+    ) -> Option<&Level> {
         let depth_between = self.get_quotes_between(dates);
         if let Some(last_depth) = depth_between.last() {
-            if let Some(coin_depth) = last_depth.1.get(symbol) {
-                return coin_depth.get_best_ask();
+            if let Some(exchange_depth) = last_depth.1.get(exchange) {
+                if let Some(coin_depth) = exchange_depth.get(symbol) {
+                    return coin_depth.get_best_ask();
+                }
             }
         }
         None
     }
 
-    pub fn get_bbo(&self, dates: std::ops::Range<i64>) -> Option<DateBBO> {
+    pub fn get_bbo(&self, dates: std::ops::Range<i64>, exchange: &str) -> Option<DateBBO> {
         let mut res = BTreeMap::new();
 
         let depth_between = self.get_quotes_between(dates);
         if let Some(last_depth) = depth_between.last() {
-            for (symbol, depth) in last_depth.1 {
-                res.insert(symbol.clone(), depth.get_bbo()?);
+            if let Some(exchange_depth) = last_depth.1.get(exchange) {
+                for (symbol, depth) in exchange_depth {
+                    res.insert(symbol.clone(), depth.get_bbo()?);
+                }
             }
         }
         Some(res)
@@ -59,21 +75,30 @@ impl Athena {
     pub fn add_depth(&mut self, depth: Depth) {
         let date = depth.date;
         let symbol = depth.symbol.clone();
+        let exchange = depth.exchange.clone();
 
         self.inner.entry(date).or_default();
 
-        let date_levels = self.inner.get_mut(&date).unwrap();
-        date_levels.insert(symbol, depth);
+        let date_map = self.inner.get_mut(&date).unwrap();
+        date_map.entry(exchange.to_string()).or_default();
+        date_map.get_mut(&exchange).unwrap().insert(symbol, depth);
     }
 
-    pub fn add_price_level(&mut self, date: i64, symbol: &str, level: Level, side: Side) {
+    pub fn add_price_level(
+        &mut self,
+        date: i64,
+        symbol: &str,
+        level: Level,
+        side: Side,
+        exchange: &str,
+    ) {
         self.inner.entry(date).or_default();
 
-        let symbol_string = symbol.into();
+        let date_map = self.inner.get_mut(&date).unwrap();
+        date_map.entry(exchange.to_string()).or_default();
 
-        //We will always have a value due to the above block so can unwrap safely
-        let date_levels = self.inner.get_mut(&date).unwrap();
-        if let Some(depth) = date_levels.get_mut(&symbol_string) {
+        let date_levels = date_map.get_mut(&exchange.to_string()).unwrap();
+        if let Some(depth) = date_levels.get_mut(symbol) {
             depth.add_level(level, side)
         } else {
             let depth = match side {
@@ -82,16 +107,18 @@ impl Athena {
                     asks: vec![],
                     symbol: symbol.to_string(),
                     date,
+                    exchange: exchange.to_string(),
                 },
                 Side::Ask => Depth {
                     bids: vec![],
                     asks: vec![level],
                     symbol: symbol.to_string(),
                     date,
+                    exchange: exchange.to_string(),
                 },
             };
 
-            date_levels.insert(symbol_string, depth);
+            date_levels.insert(symbol.to_string(), depth);
         }
     }
 
@@ -117,8 +144,8 @@ impl Athena {
                     size: random_size,
                 };
 
-                source.add_price_level(date, symbol, bid_level, Side::Bid);
-                source.add_price_level(date, symbol, ask_level, Side::Ask);
+                source.add_price_level(date, symbol, bid_level, Side::Bid, "exchange");
+                source.add_price_level(date, symbol, ask_level, Side::Ask, "exchange");
             }
         }
         source
@@ -178,13 +205,29 @@ mod tests {
             size: 100.0,
         };
 
-        athena.add_price_level(100, "ABC", bid0, Side::Bid);
-        athena.add_price_level(100, "ABC", ask0, Side::Ask);
+        athena.add_price_level(100, "ABC", bid0, Side::Bid, "exchange");
+        athena.add_price_level(100, "ABC", ask0, Side::Ask, "exchange");
 
-        athena.add_price_level(100, "ABC", bid1, Side::Bid);
-        athena.add_price_level(100, "ABC", ask1, Side::Ask);
+        athena.add_price_level(100, "ABC", bid1, Side::Bid, "exchange");
+        athena.add_price_level(100, "ABC", ask1, Side::Ask, "exchange");
 
-        assert_eq!(athena.get_best_bid(100..101, "ABC").unwrap().price, 101.0);
-        assert_eq!(athena.get_best_ask(100..101, "ABC").unwrap().price, 102.0);
+        println!(
+            "{:?}",
+            athena.get_best_bid(100..101, "ABC", "exchange").unwrap()
+        );
+        assert_eq!(
+            athena
+                .get_best_bid(100..101, "ABC", "exchange")
+                .unwrap()
+                .price,
+            101.0
+        );
+        assert_eq!(
+            athena
+                .get_best_ask(100..101, "ABC", "exchange")
+                .unwrap()
+                .price,
+            102.0
+        );
     }
 }
