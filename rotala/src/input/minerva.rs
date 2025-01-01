@@ -57,11 +57,11 @@ impl From<Vec<L2Book>> for Depth {
 
         for row in values {
             match row.side {
-                true => bids.push(Level {
+                false => bids.push(Level {
                     price: str::parse::<f64>(&row.px).unwrap(),
                     size: str::parse::<f64>(&row.sz).unwrap(),
                 }),
-                false => asks.push(Level {
+                true => asks.push(Level {
                     price: str::parse::<f64>(&row.px).unwrap(),
                     size: str::parse::<f64>(&row.sz).unwrap(),
                 }),
