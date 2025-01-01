@@ -10,7 +10,7 @@ use rotala::input::minerva::Minerva;
 use serde::{Deserialize, Serialize};
 
 use rotala::exchange::uist_v2::{InnerOrder, Order, OrderId, OrderResult, UistV2};
-use rotala::source::hyperliquid::{DateDepth, DateTrade};
+use rotala::source::hyperliquid::{DateDepth, Trade};
 
 pub type BacktestId = u64;
 pub type TickResponseType = (
@@ -19,7 +19,7 @@ pub type TickResponseType = (
     Vec<InnerOrder>,
     DateDepth,
     i64,
-    DateTrade,
+    Vec<Trade>,
 );
 
 pub struct BacktestState {
@@ -119,7 +119,7 @@ impl AppState {
                         Vec::new(),
                         BTreeMap::new(),
                         new_date,
-                        BTreeMap::new(),
+                        Vec::new(),
                     ));
                 } else {
                     let depth = dataset
@@ -134,10 +134,12 @@ impl AppState {
                     let trades = dataset
                         .get_trades_between(backtest.curr_date..new_date)
                         .await;
-                    let mut last_trades = BTreeMap::default();
-                    if let Some((date, queried_last_trades)) = trades.last() {
+                    let mut last_trades = Vec::default();
+                    if let Some((_date, queried_last_trades)) = trades.last() {
                         //TODO: not great either
-                        last_trades.insert(*date, queried_last_trades.to_vec());
+                        for trade in queried_last_trades {
+                            last_trades.push(trade.clone());
+                        }
                     }
 
                     backtest.curr_date = new_date;
@@ -235,7 +237,7 @@ pub struct TickResponse {
     pub executed_orders: Vec<OrderResult>,
     pub inserted_orders: Vec<InnerOrder>,
     pub depth: DateDepth,
-    pub taker_trades: DateTrade,
+    pub taker_trades: Vec<Trade>,
     pub now: i64,
 }
 
