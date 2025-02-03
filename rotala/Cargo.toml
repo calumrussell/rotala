@@ -11,7 +11,7 @@ rust-version = "1.75"
 
 [dependencies]
 time = { version = "0.3.17", features = ["macros", "parsing"] }
-rand = "0.8.4"
+rand = "0.9.0"
 rand_distr = "0.4.1"
 reqwest = { version = "0.12.5", features = ["blocking", "json"] }
 zip = "2.1.3"

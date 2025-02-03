@@ -11,7 +11,7 @@ readme = "README.md"
 [dependencies]
 itertools = "0.13.0"
 time = { version = "0.3.17", features = ["macros", "parsing"] }
-rand = "0.8.4"
+rand = "0.9.0"
 rand_distr = "0.4.1"
 log = "0.4.17"
 pyo3 = { version = "0.23.2", optional = true }
