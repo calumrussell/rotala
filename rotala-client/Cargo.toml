@@ -12,7 +12,7 @@ readme = "README.md"
 itertools = "0.13.0"
 time = { version = "0.3.17", features = ["macros", "parsing"] }
 rand = "0.8.4"
-rand_distr = "0.4.1"
+rand_distr = "0.5.1"
 log = "0.4.17"
 pyo3 = { version = "0.23.2", optional = true }
 tokio = { version = "1.32.0", features = ["full"] }
