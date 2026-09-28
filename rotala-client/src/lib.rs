@@ -54,6 +54,7 @@
 #[allow(unused)]
 pub mod broker;
 pub mod client;
+pub mod fxmacrodata;
 pub mod perf;
 pub mod schedule;
 pub mod strategy;
